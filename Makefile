@@ -1,4 +1,4 @@
-.PHONY: build vet test test-verbose test-race run tidy
+.PHONY: build vet test test-verbose test-race test-live run tidy
 
 build:
 	CGO_ENABLED=0 go build ./...
@@ -14,6 +14,9 @@ test-verbose:
 
 test-race:
 	go test ./... -race
+
+test-live:
+	go test ./internal/sonos/... -live -v
 
 run:
 	go run ./cmd/sonos

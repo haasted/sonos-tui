@@ -2,7 +2,7 @@ package sonos_test
 
 // Evaluates github.com/koron/go-ssdp as a replacement for the hand-rolled
 // SSDP search in discovery.go (sonos-5e1). Requires a live network with
-// real Sonos speakers — mirrors TestDiscover_Integration's skip convention
+// real Sonos speakers — gated behind the -live flag (see discovery_test.go)
 // so `go test ./...` stays green without one.
 
 import (
@@ -22,12 +22,14 @@ import (
 const sonosZonePlayerST = "urn:schemas-upnp-org:device:ZonePlayer:1"
 
 // TestKoronSSDP_ListSpeakers_Integration lists all Sonos speakers on the network via koron/go-ssdp.
-// Run with: go test ./internal/sonos/... -run KoronSSDP -v (after removing the t.Skip below).
+// Run with: make test-live (or go test ./internal/sonos/... -live -run KoronSSDP -v)
 func TestKoronSSDP_ListSpeakers_Integration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
-	t.Skip("skipping by default — remove this line to run against a real network")
+	if !*live {
+		t.Skip("skipping live test; run with -live to include it")
+	}
 
 	start := time.Now()
 	services, err := ssdp.Search(sonosZonePlayerST, 4, "")
@@ -52,7 +54,9 @@ func TestKoronSSDP_MatchesHandRolledDiscover_Integration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
-	t.Skip("skipping by default — remove this line to run against a real network")
+	if !*live {
+		t.Skip("skipping live test; run with -live to include it")
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel()

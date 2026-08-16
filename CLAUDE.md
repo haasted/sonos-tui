@@ -14,7 +14,9 @@ Do not run git commits, pushes, or remote sync unless explicitly asked. At hando
 
 Prefer Makefile targets over raw command-line invocations for building and testing (e.g. `make test` over `go test ./...`). Only fall back to the command line when no target covers what's needed.
 
-Current targets: `build`, `vet`, `test`, `test-verbose`, `test-race`, `run`, `tidy` — see `Makefile`.
+Current targets: `build`, `vet`, `test`, `test-verbose`, `test-race`, `test-live`, `run`, `tidy` — see `Makefile`.
+
+`test-live` runs tests gated behind the `-live` flag, which require a real network with real Sonos speakers. The default `test`/`test-verbose`/`test-race` targets never touch the network.
 
 ## Architecture Overview
 

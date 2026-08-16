@@ -2,6 +2,7 @@ package sonos_test
 
 import (
 	"context"
+	"flag"
 	"testing"
 	"time"
 
@@ -9,6 +10,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// live gates tests that require a real network with real Sonos speakers.
+// Run with: go test ./... -live -v (or make test-live).
+var live = flag.Bool("live", false, "run tests against real network devices")
 
 // realSSDP is a verbatim SSDP response as returned by a Sonos Era 100 over UDP.
 // The LOCATION field is the critical one — it must contain port 1400.
@@ -48,12 +53,14 @@ func TestExtractHeader_MissingHeader(t *testing.T) {
 }
 
 // TestDiscover_Integration requires a live Sonos speaker on the local network.
-// Run with: go test ./... -run Integration -v
+// Run with: go test ./internal/sonos/... -live -run Integration -v
 func TestDiscover_Integration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
-	// t.Skip("skipping by default — remove this line to run against a real network")
+	if !*live {
+		t.Skip("skipping live test; run with -live to include it")
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel()
