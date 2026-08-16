@@ -12,13 +12,9 @@ Do not run git commits, pushes, or remote sync unless explicitly asked. At hando
 
 ## Build & Test
 
-_Add your build and test commands here_
+Prefer Makefile targets over raw command-line invocations for building and testing (e.g. `make test` over `go test ./...`). Only fall back to the command line when no target covers what's needed.
 
-```bash
-# Example:
-# npm install
-# npm test
-```
+Current targets: `build`, `vet`, `test`, `test-verbose`, `test-race`, `run`, `tidy` — see `Makefile`.
 
 ## Architecture Overview
 
