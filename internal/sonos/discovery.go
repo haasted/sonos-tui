@@ -24,9 +24,9 @@ var ssdpRequest = strings.Join([]string{
 
 // Speaker holds the basic information discovered about a Sonos speaker.
 type Speaker struct {
-	IP          string
-	Location    string // Full URL to device_description.xml
-	USN         string // Unique Service Name (contains RINCON ID)
+	IP       string
+	Location string // Full URL to device_description.xml
+	USN      string // Unique Service Name (contains RINCON ID)
 }
 
 // discoverChanBuffer bounds how many Speakers can queue on the channel
@@ -79,14 +79,19 @@ func Discover(ctx context.Context) (<-chan Speaker, error) {
 	ch := make(chan Speaker, discoverChanBuffer)
 
 	go func() {
+		var (
+			seen      = map[string]bool{}
+			buf       = make([]byte, 4096)
+			watchDone = make(chan struct{})
+		)
+
 		defer close(ch)
 		defer conn.Close()
+		defer close(watchDone)
 
 		// net.PacketConn has no context-aware read, so a watcher closes
 		// the conn on early cancellation to unblock ReadFrom before the
 		// deadline.
-		watchDone := make(chan struct{})
-		defer close(watchDone)
 		go func() {
 			select {
 			case <-ctx.Done():
@@ -94,9 +99,6 @@ func Discover(ctx context.Context) (<-chan Speaker, error) {
 			case <-watchDone:
 			}
 		}()
-
-		seen := map[string]bool{}
-		buf := make([]byte, 4096)
 
 		for {
 			n, addr, err := conn.ReadFrom(buf)
@@ -133,7 +135,8 @@ func Discover(ctx context.Context) (<-chan Speaker, error) {
 }
 
 func extractHeader(response, header string) string {
-	for _, line := range strings.Split(response, "\n") {
+	println(" --- \n", response, "\n --- ")
+	for line := range strings.SplitSeq(response, "\n") {
 		line = strings.TrimRight(line, "\r")
 		if idx := strings.IndexByte(line, ':'); idx > 0 {
 			name := line[:idx]

@@ -10,6 +10,10 @@ No dedicated issue tracker is configured for this project. Use TodoWrite for ses
 
 Do not run git commits, pushes, or remote sync unless explicitly asked. At handoff, report changed files, validation performed, and suggested next commands; wait for approval before committing or pushing.
 
+## Comments
+
+Comment the generated code lightly. If something is in desperate need of a longer explanation, ask for permission.
+
 ## Build & Test
 
 Prefer Makefile targets over raw command-line invocations for building and testing (e.g. `make test` over `go test ./...`). Only fall back to the command line when no target covers what's needed.
