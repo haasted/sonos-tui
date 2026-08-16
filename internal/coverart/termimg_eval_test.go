@@ -51,29 +51,36 @@ var allProtocols = []termimg.Protocol{
 	termimg.Halfblocks,
 }
 
-// TestRenderFromFile_AllProtocols renders every fixture under every protocol, forced explicitly so it doesn't depend on the terminal.
+// rowCounts are the target sizes exercised for each render, from a tiny thumbnail up to a fairly large one.
+var rowCounts = []int{5, 10, 20, 50}
+
+// TestRenderFromFile_AllProtocols renders every fixture under every protocol at several sizes, forced explicitly so it doesn't depend on the terminal.
 func TestRenderFromFile_AllProtocols(t *testing.T) {
-	cols, rows, _ := squareCellSize(t, 20)
+	for _, rowCount := range rowCounts {
+		t.Run(fmt.Sprintf("%drows", rowCount), func(t *testing.T) {
+			cols, rows, _ := squareCellSize(t, rowCount)
 
-	for _, name := range fixtureNames {
-		t.Run(name, func(t *testing.T) {
-			path := fixturePath(t, name)
+			for _, name := range fixtureNames {
+				t.Run(name, func(t *testing.T) {
+					path := fixturePath(t, name)
 
-			for _, proto := range allProtocols {
-				t.Run(proto.String(), func(t *testing.T) {
-					img, err := termimg.Open(path)
-					require.NoError(t, err)
+					for _, proto := range allProtocols {
+						t.Run(proto.String(), func(t *testing.T) {
+							img, err := termimg.Open(path)
+							require.NoError(t, err)
 
-					out, err := img.
-						Protocol(proto).
-						Width(cols).
-						Height(rows).
-						Scale(termimg.ScaleFit).
-						Render()
+							out, err := img.
+								Protocol(proto).
+								Width(cols).
+								Height(rows).
+								Scale(termimg.ScaleFit).
+								Render()
 
-					require.NoError(t, err, "protocol %s should render without error", proto)
-					assert.NotEmpty(t, out, "protocol %s produced empty output", proto)
-					printPreview(t, proto.String(), out)
+							require.NoError(t, err, "protocol %s should render without error", proto)
+							assert.NotEmpty(t, out, "protocol %s produced empty output", proto)
+							printPreview(t, proto.String(), out)
+						})
+					}
 				})
 			}
 		})
