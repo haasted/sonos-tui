@@ -1,4 +1,4 @@
-.PHONY: build vet test test-verbose test-race test-live run tidy
+.PHONY: build vet test test-verbose test-race test-live run tidy adr-html
 
 build:
 	CGO_ENABLED=0 go build ./...
@@ -23,3 +23,6 @@ run:
 
 tidy:
 	go mod tidy
+
+adr-html:
+	./scripts/render_adr_html.sh

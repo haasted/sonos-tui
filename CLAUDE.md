@@ -18,7 +18,9 @@ Comment the generated code lightly. If something is in desperate need of a longe
 
 Prefer Makefile targets over raw command-line invocations for building and testing (e.g. `make test` over `go test ./...`). Only fall back to the command line when no target covers what's needed.
 
-Current targets: `build`, `vet`, `test`, `test-verbose`, `test-race`, `test-live`, `run`, `tidy` — see `Makefile`.
+Current targets: `build`, `vet`, `test`, `test-verbose`, `test-race`, `test-live`, `run`, `tidy`, `adr-html` — see `Makefile`.
+
+`adr-html` renders each `ADRs/*.md` to a full standalone HTML page (`ADRs/html/<adr-basename>/index.html`) with diagrams rendered as linked SVGs (via `mmdc` + `npx marked`, not inlined, no Docker, no publishing).
 
 `test-live` runs tests gated behind the `-live` flag, which require a real network with real Sonos speakers. The default `test`/`test-verbose`/`test-race` targets never touch the network.
 
