@@ -1,9 +1,12 @@
-.PHONY: build test run tidy
+.PHONY: build test test-verbose run tidy
 
 build:
 	go build ./...
 
 test:
+	go test ./...
+
+test-verbose:
 	go test ./... -v
 
 run:

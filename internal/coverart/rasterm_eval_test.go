@@ -18,10 +18,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// decodeFixture decodes the shared fixture; rasterm has no Open/From helper, so callers always decode themselves.
-func decodeFixture(t *testing.T) image.Image {
+// decodeFixture decodes a named fixture; rasterm has no Open/From helper, so callers always decode themselves.
+func decodeFixture(t *testing.T, name string) image.Image {
 	t.Helper()
-	f, err := os.Open(fixturePath(t))
+	f, err := os.Open(fixturePath(t, name))
 	require.NoError(t, err)
 	defer f.Close()
 	img, _, err := image.Decode(f)
@@ -37,51 +37,56 @@ func toPaletted(img image.Image, w, h int) *image.Paletted {
 	return dst
 }
 
-// TestRasterm_AllProtocols mirrors TestRenderFromFile_AllProtocols.
+// TestRasterm_AllProtocols mirrors TestRenderFromFile_AllProtocols, across every fixture.
 func TestRasterm_AllProtocols(t *testing.T) {
-	img := decodeFixture(t)
 	cols, rows, feat := squareCellSize(t, 20)
 
-	t.Run("ITerm2", func(t *testing.T) {
-		var buf bytes.Buffer
-		err := rasterm.ItermWriteImageWithOptions(&buf, img, rasterm.ItermImgOpts{
-			Width:  fmt.Sprintf("%d", cols),
-			Height: fmt.Sprintf("%d", rows),
+	for _, name := range fixtureNames {
+		t.Run(name, func(t *testing.T) {
+			img := decodeFixture(t, name)
+
+			t.Run("ITerm2", func(t *testing.T) {
+				var buf bytes.Buffer
+				err := rasterm.ItermWriteImageWithOptions(&buf, img, rasterm.ItermImgOpts{
+					Width:  fmt.Sprintf("%d", cols),
+					Height: fmt.Sprintf("%d", rows),
+				})
+				require.NoError(t, err)
+				assert.NotEmpty(t, buf.String())
+				printPreview(t, "ITerm2", buf.String())
+			})
+
+			t.Run("Kitty", func(t *testing.T) {
+				var buf bytes.Buffer
+				err := rasterm.KittyWriteImage(&buf, img, rasterm.KittyImgOpts{
+					DstCols: uint32(cols),
+					DstRows: uint32(rows),
+				})
+				require.NoError(t, err)
+				assert.NotEmpty(t, buf.String())
+				printPreview(t, "Kitty", buf.String())
+			})
+
+			t.Run("Sixel", func(t *testing.T) {
+				// Sixel has no cell-size option — pre-resize to pixels using the detected cell size instead.
+				paletted := toPaletted(img, cols*feat.FontWidth, rows*feat.FontHeight)
+				var buf bytes.Buffer
+				err := rasterm.SixelWriteImage(&buf, paletted)
+				require.NoError(t, err)
+				assert.NotEmpty(t, buf.String())
+				printPreview(t, "Sixel", buf.String())
+			})
+
+			t.Run("Halfblocks", func(t *testing.T) {
+				t.Skip("rasterm has no halfblock renderer — no universal fallback like go-termimg's")
+			})
 		})
-		require.NoError(t, err)
-		assert.NotEmpty(t, buf.String())
-		printPreview(t, "ITerm2", buf.String())
-	})
-
-	t.Run("Kitty", func(t *testing.T) {
-		var buf bytes.Buffer
-		err := rasterm.KittyWriteImage(&buf, img, rasterm.KittyImgOpts{
-			DstCols: uint32(cols),
-			DstRows: uint32(rows),
-		})
-		require.NoError(t, err)
-		assert.NotEmpty(t, buf.String())
-		printPreview(t, "Kitty", buf.String())
-	})
-
-	t.Run("Sixel", func(t *testing.T) {
-		// Sixel has no cell-size option — pre-resize to pixels using the detected cell size instead.
-		paletted := toPaletted(img, cols*feat.FontWidth, rows*feat.FontHeight)
-		var buf bytes.Buffer
-		err := rasterm.SixelWriteImage(&buf, paletted)
-		require.NoError(t, err)
-		assert.NotEmpty(t, buf.String())
-		printPreview(t, "Sixel", buf.String())
-	})
-
-	t.Run("Halfblocks", func(t *testing.T) {
-		t.Skip("rasterm has no halfblock renderer — no universal fallback like go-termimg's")
-	})
+	}
 }
 
 // TestRasterm_ProtocolDetection mirrors TestRenderFromFile_VisualPreview; rasterm has no single Auto entrypoint, so detection is a manual cascade.
 func TestRasterm_ProtocolDetection(t *testing.T) {
-	img := decodeFixture(t)
+	img := decodeFixture(t, defaultFixture)
 	cols, rows, feat := squareCellSize(t, 20)
 
 	var buf bytes.Buffer
@@ -112,7 +117,7 @@ func TestRasterm_ProtocolDetection(t *testing.T) {
 
 // TestRasterm_SquareAspect mirrors TestRenderFromFile_SquareAspect, reusing squareCellSize; Kitty is used since DstCols/DstRows map directly onto cell counts.
 func TestRasterm_SquareAspect(t *testing.T) {
-	img := decodeFixture(t)
+	img := decodeFixture(t, defaultFixture)
 	cols, rows, feat := squareCellSize(t, 20)
 
 	var buf bytes.Buffer
@@ -124,32 +129,38 @@ func TestRasterm_SquareAspect(t *testing.T) {
 	printPreview(t, label, buf.String())
 }
 
-// TestRasterm_ReaderVsFile mirrors TestRenderFromReader_HTTPStylePath: decoding fixture bytes via a file vs an in-memory reader should encode identically.
+// TestRasterm_ReaderVsFile mirrors TestRenderFromReader_HTTPStylePath: decoding fixture bytes via a file vs an in-memory reader should encode identically, for every fixture.
 func TestRasterm_ReaderVsFile(t *testing.T) {
 	cols, rows, _ := squareCellSize(t, 20)
 
-	f, err := os.Open(fixturePath(t))
-	require.NoError(t, err)
-	defer f.Close()
-	fileImg, _, err := image.Decode(f)
-	require.NoError(t, err)
+	for _, name := range fixtureNames {
+		t.Run(name, func(t *testing.T) {
+			path := fixturePath(t, name)
 
-	data, err := os.ReadFile(fixturePath(t))
-	require.NoError(t, err)
-	readerImg, _, err := image.Decode(bytes.NewReader(data))
-	require.NoError(t, err)
+			f, err := os.Open(path)
+			require.NoError(t, err)
+			defer f.Close()
+			fileImg, _, err := image.Decode(f)
+			require.NoError(t, err)
 
-	opts := rasterm.KittyImgOpts{DstCols: uint32(cols), DstRows: uint32(rows)}
-	var wantBuf, gotBuf bytes.Buffer
-	require.NoError(t, rasterm.KittyWriteImage(&wantBuf, fileImg, opts))
-	require.NoError(t, rasterm.KittyWriteImage(&gotBuf, readerImg, opts))
+			data, err := os.ReadFile(path)
+			require.NoError(t, err)
+			readerImg, _, err := image.Decode(bytes.NewReader(data))
+			require.NoError(t, err)
 
-	assert.Equal(t, wantBuf.String(), gotBuf.String())
+			opts := rasterm.KittyImgOpts{DstCols: uint32(cols), DstRows: uint32(rows)}
+			var wantBuf, gotBuf bytes.Buffer
+			require.NoError(t, rasterm.KittyWriteImage(&wantBuf, fileImg, opts))
+			require.NoError(t, rasterm.KittyWriteImage(&gotBuf, readerImg, opts))
+
+			assert.Equal(t, wantBuf.String(), gotBuf.String())
+		})
+	}
 }
 
 // TestRasterm_SmallSizeShape mirrors TestSmallSizeOutput_HasReasonableShape; rasterm output is one escape sequence, not a text grid, so shape means header/footer framing.
 func TestRasterm_SmallSizeShape(t *testing.T) {
-	img := decodeFixture(t)
+	img := decodeFixture(t, defaultFixture)
 	cols, rows, _ := squareCellSize(t, 20)
 
 	var buf bytes.Buffer

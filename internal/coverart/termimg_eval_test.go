@@ -14,10 +14,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fixturePath returns the path to the shared test cover art.
-func fixturePath(t *testing.T) string {
+// defaultFixture is used by tests that only need one representative image (library-mechanics checks, not content-sensitive ones).
+const defaultFixture = "hellwalkers-cover.jpg"
+
+// fixtureNames are all cover art files in data/, used to parameterize content-sensitive tests.
+var fixtureNames = []string{
+	"hellwalkers-cover.jpg",
+	"bojack-horseman-cover.jpg",
+	"jeff-buckley-cover.jpg",
+	"bowie-heroes-cover.jpg",
+}
+
+// fixturePath returns the path to a named cover art file in data/.
+func fixturePath(t *testing.T, name string) string {
 	t.Helper()
-	path := filepath.Join("..", "..", "data", "hellwalkers-cover.jpg")
+	path := filepath.Join("..", "..", "data", name)
 	_, err := os.Stat(path)
 	require.NoError(t, err, "test fixture missing: %s", path)
 	return path
@@ -40,26 +51,31 @@ var allProtocols = []termimg.Protocol{
 	termimg.Halfblocks,
 }
 
-// TestRenderFromFile_AllProtocols renders the fixture under every protocol, forced explicitly so it doesn't depend on the terminal.
+// TestRenderFromFile_AllProtocols renders every fixture under every protocol, forced explicitly so it doesn't depend on the terminal.
 func TestRenderFromFile_AllProtocols(t *testing.T) {
-	path := fixturePath(t)
 	cols, rows, _ := squareCellSize(t, 20)
 
-	for _, proto := range allProtocols {
-		t.Run(proto.String(), func(t *testing.T) {
-			img, err := termimg.Open(path)
-			require.NoError(t, err)
+	for _, name := range fixtureNames {
+		t.Run(name, func(t *testing.T) {
+			path := fixturePath(t, name)
 
-			out, err := img.
-				Protocol(proto).
-				Width(cols).
-				Height(rows).
-				Scale(termimg.ScaleFit).
-				Render()
+			for _, proto := range allProtocols {
+				t.Run(proto.String(), func(t *testing.T) {
+					img, err := termimg.Open(path)
+					require.NoError(t, err)
 
-			require.NoError(t, err, "protocol %s should render without error", proto)
-			assert.NotEmpty(t, out, "protocol %s produced empty output", proto)
-			printPreview(t, proto.String(), out)
+					out, err := img.
+						Protocol(proto).
+						Width(cols).
+						Height(rows).
+						Scale(termimg.ScaleFit).
+						Render()
+
+					require.NoError(t, err, "protocol %s should render without error", proto)
+					assert.NotEmpty(t, out, "protocol %s produced empty output", proto)
+					printPreview(t, proto.String(), out)
+				})
+			}
 		})
 	}
 }
@@ -75,7 +91,7 @@ func printPreview(t *testing.T, label, out string) {
 
 // TestRenderFromFile_VisualPreview renders with Protocol(Auto), the same detection path production code would use.
 func TestRenderFromFile_VisualPreview(t *testing.T) {
-	path := fixturePath(t)
+	path := fixturePath(t, defaultFixture)
 
 	img, err := termimg.Open(path)
 	require.NoError(t, err)
@@ -88,7 +104,7 @@ func TestRenderFromFile_VisualPreview(t *testing.T) {
 
 // TestRenderFromFile_SquareAspect renders the fixture at an aspect-corrected size so it appears square on screen.
 func TestRenderFromFile_SquareAspect(t *testing.T) {
-	path := fixturePath(t)
+	path := fixturePath(t, defaultFixture)
 	cols, rows, feat := squareCellSize(t, 20)
 	cellAspect := float64(feat.FontWidth) / float64(feat.FontHeight)
 
@@ -104,29 +120,33 @@ func TestRenderFromFile_SquareAspect(t *testing.T) {
 	printPreview(t, label, out)
 }
 
-// TestRenderFromReader_HTTPStylePath checks termimg.From (the io.Reader path a fetched AlbumArtURI would use) matches Open().
+// TestRenderFromReader_HTTPStylePath checks termimg.From (the io.Reader path a fetched AlbumArtURI would use) matches Open(), for every fixture.
 func TestRenderFromReader_HTTPStylePath(t *testing.T) {
-	path := fixturePath(t)
+	for _, name := range fixtureNames {
+		t.Run(name, func(t *testing.T) {
+			path := fixturePath(t, name)
 
-	fileImg, err := termimg.Open(path)
-	require.NoError(t, err)
-	wantOut, err := fileImg.Protocol(termimg.Halfblocks).Width(20).Height(20).Scale(termimg.ScaleFit).Render()
-	require.NoError(t, err)
+			fileImg, err := termimg.Open(path)
+			require.NoError(t, err)
+			wantOut, err := fileImg.Protocol(termimg.Halfblocks).Width(20).Height(20).Scale(termimg.ScaleFit).Render()
+			require.NoError(t, err)
 
-	data, err := os.ReadFile(path)
-	require.NoError(t, err)
+			data, err := os.ReadFile(path)
+			require.NoError(t, err)
 
-	readerImg, err := termimg.From(bytes.NewReader(data))
-	require.NoError(t, err)
-	gotOut, err := readerImg.Protocol(termimg.Halfblocks).Width(20).Height(20).Scale(termimg.ScaleFit).Render()
-	require.NoError(t, err)
+			readerImg, err := termimg.From(bytes.NewReader(data))
+			require.NoError(t, err)
+			gotOut, err := readerImg.Protocol(termimg.Halfblocks).Width(20).Height(20).Scale(termimg.ScaleFit).Render()
+			require.NoError(t, err)
 
-	assert.Equal(t, wantOut, gotOut, "rendering via io.Reader should match rendering via Open() for the same bytes")
+			assert.Equal(t, wantOut, gotOut, "rendering via io.Reader should match rendering via Open() for the same bytes")
+		})
+	}
 }
 
 // TestSmallSizeOutput_HasReasonableShape sanity-checks a 20x20 render produces a multi-line grid, not a degenerate output.
 func TestSmallSizeOutput_HasReasonableShape(t *testing.T) {
-	path := fixturePath(t)
+	path := fixturePath(t, defaultFixture)
 
 	img, err := termimg.Open(path)
 	require.NoError(t, err)
@@ -147,7 +167,7 @@ func TestInvalidImageData_ReturnsError(t *testing.T) {
 
 // TestUnsupportedProtocolValue confirms Protocol(Unsupported) fails rather than silently falling back.
 func TestUnsupportedProtocolValue(t *testing.T) {
-	path := fixturePath(t)
+	path := fixturePath(t, defaultFixture)
 
 	img, err := termimg.Open(path)
 	require.NoError(t, err)
