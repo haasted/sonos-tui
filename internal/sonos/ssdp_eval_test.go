@@ -6,6 +6,7 @@ package sonos_test
 // so `go test ./...` stays green without one.
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"sync"
@@ -52,6 +53,9 @@ func TestKoronSSDP_MatchesHandRolledDiscover_Integration(t *testing.T) {
 	}
 	t.Skip("skipping by default — remove this line to run against a real network")
 
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+
 	var (
 		wg         sync.WaitGroup
 		handRolled []sonos.Speaker
@@ -62,7 +66,7 @@ func TestKoronSSDP_MatchesHandRolledDiscover_Integration(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		var err error
-		handRolled, err = sonos.Discover(4 * time.Second)
+		handRolled, err = sonos.Discover(ctx)
 		require.NoError(t, err)
 	}()
 

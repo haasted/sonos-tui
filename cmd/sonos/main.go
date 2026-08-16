@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -18,7 +19,9 @@ func main() {
 	} else {
 		// Auto-discover speakers on the local network.
 		fmt.Println("Discovering Sonos speakers...")
-		speakers, err := sonos.Discover(4 * time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+		defer cancel()
+		speakers, err := sonos.Discover(ctx)
 		if err != nil {
 			log.Fatalf("Discovery failed: %v", err)
 		}

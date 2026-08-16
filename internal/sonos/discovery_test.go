@@ -1,6 +1,7 @@
 package sonos_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -54,7 +55,10 @@ func TestDiscover_Integration(t *testing.T) {
 	}
 	t.Skip("skipping by default — remove this line to run against a real network")
 
-	speakers, err := sonos.Discover(4 * time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+
+	speakers, err := sonos.Discover(ctx)
 	require.NoError(t, err)
 	require.NotEmpty(t, speakers, "expected at least one Sonos speaker on the network")
 
@@ -64,5 +68,29 @@ func TestDiscover_Integration(t *testing.T) {
 		assert.Contains(t, s.Location, ":1400", "LOCATION must reference port 1400")
 		t.Logf("Found: %s  %s", s.IP, s.Location)
 	}
+}
+
+// TestDiscover_RequiresDeadline confirms Discover rejects an undeadlined context rather than blocking forever.
+func TestDiscover_RequiresDeadline(t *testing.T) {
+	_, err := sonos.Discover(context.Background())
+	assert.Error(t, err)
+}
+
+// TestDiscover_EarlyCancellation confirms canceling ctx interrupts the blocking read well before its deadline.
+func TestDiscover_EarlyCancellation(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+	}()
+
+	start := time.Now()
+	_, err := sonos.Discover(ctx)
+	elapsed := time.Since(start)
+
+	require.NoError(t, err)
+	assert.Less(t, elapsed, 2*time.Second, "expected cancellation to interrupt the read well before the 5s deadline")
 }
 

@@ -1,10 +1,11 @@
 package sonos
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
-	"time"
 )
 
 const (
@@ -29,8 +30,17 @@ type Speaker struct {
 }
 
 // Discover sends an SSDP multicast and returns all Sonos speakers found
-// within the given timeout.
-func Discover(timeout time.Duration) ([]Speaker, error) {
+// before ctx's deadline. ctx must carry a deadline (via context.WithTimeout
+// or context.WithDeadline) since SSDP discovery is inherently time-boxed —
+// devices may never reply, so an undeadlined context would block forever.
+// If ctx is canceled early, whatever speakers were found up to that point
+// are returned with a nil error, same as a natural deadline expiry.
+func Discover(ctx context.Context) ([]Speaker, error) {
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return nil, errors.New("sonos: Discover requires a context with a deadline")
+	}
+
 	localIP, err := getLocalIP()
 	if err != nil {
 		return nil, fmt.Errorf("detecting local IP: %w", err)
@@ -52,9 +62,21 @@ func Discover(timeout time.Duration) ([]Speaker, error) {
 		return nil, fmt.Errorf("sending SSDP request: %w", err)
 	}
 
-	if err := conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+	if err := conn.SetReadDeadline(deadline); err != nil {
 		return nil, err
 	}
+
+	// net.PacketConn has no context-aware read, so a watcher closes the
+	// conn on early cancellation to unblock ReadFrom before the deadline.
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		select {
+		case <-ctx.Done():
+			conn.Close()
+		case <-done:
+		}
+	}()
 
 	seen := map[string]bool{}
 	var speakers []Speaker
