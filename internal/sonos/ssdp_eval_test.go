@@ -7,7 +7,6 @@ package sonos_test
 
 import (
 	"context"
-	"fmt"
 	"net/url"
 	"sync"
 	"testing"
@@ -30,7 +29,9 @@ func TestKoronSSDP_ListSpeakers_Integration(t *testing.T) {
 	}
 	t.Skip("skipping by default — remove this line to run against a real network")
 
+	start := time.Now()
 	services, err := ssdp.Search(sonosZonePlayerST, 4, "")
+	t.Logf("ssdp.Search returned %d service(s) after %v (blocking call — no per-response timing available)", len(services), time.Since(start))
 	require.NoError(t, err)
 	require.NotEmpty(t, services, "expected at least one Sonos speaker on the network")
 
@@ -56,6 +57,8 @@ func TestKoronSSDP_MatchesHandRolledDiscover_Integration(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel()
 
+	start := time.Now()
+
 	var (
 		wg         sync.WaitGroup
 		handRolled []sonos.Speaker
@@ -65,21 +68,22 @@ func TestKoronSSDP_MatchesHandRolledDiscover_Integration(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		var err error
-		handRolled, err = sonos.Discover(ctx)
+		ch, err := sonos.Discover(ctx)
 		require.NoError(t, err)
+		for s := range ch {
+			handRolled = append(handRolled, s)
+			t.Logf("sonos.Discover found after %v: %s  %s", time.Since(start), s.IP, s.USN)
+		}
 	}()
 
 	go func() {
-		var err error
 		defer wg.Done()
+		var err error
 		services, err = ssdp.Search(sonosZonePlayerST, 4, "")
 		require.NoError(t, err)
+		t.Logf("ssdp.Search returned %d service(s) after %v (blocking call — no per-response timing available)", len(services), time.Since(start))
 	}()
 	wg.Wait()
-
-	fmt.Printf("Framework: %+v\n", services)
-	fmt.Printf("Handroll: %+v\n", handRolled)
 
 	found := make(map[string]bool, len(handRolled))
 	for _, s := range handRolled {

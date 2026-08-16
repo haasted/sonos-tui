@@ -29,13 +29,19 @@ type Speaker struct {
 	USN         string // Unique Service Name (contains RINCON ID)
 }
 
-// Discover sends an SSDP multicast and returns all Sonos speakers found
-// before ctx's deadline. ctx must carry a deadline (via context.WithTimeout
-// or context.WithDeadline) since SSDP discovery is inherently time-boxed —
-// devices may never reply, so an undeadlined context would block forever.
-// If ctx is canceled early, whatever speakers were found up to that point
-// are returned with a nil error, same as a natural deadline expiry.
-func Discover(ctx context.Context) ([]Speaker, error) {
+// discoverChanBuffer bounds how many Speakers can queue on the channel
+// Discover returns before its background goroutine blocks on send. Small on
+// purpose — this streams a handful of physical devices on a LAN, not a
+// high-volume feed.
+const discoverChanBuffer = 10
+
+// Discover sends an SSDP multicast and streams each Sonos speaker found on
+// the returned channel as its response arrives, closing the channel once
+// ctx's deadline passes or ctx is canceled. ctx must carry a deadline (via
+// context.WithTimeout or context.WithDeadline) since SSDP discovery is
+// inherently time-boxed — devices may never reply, so an undeadlined
+// context would block forever.
+func Discover(ctx context.Context) (<-chan Speaker, error) {
 	deadline, ok := ctx.Deadline()
 	if !ok {
 		return nil, errors.New("sonos: Discover requires a context with a deadline")
@@ -46,68 +52,84 @@ func Discover(ctx context.Context) ([]Speaker, error) {
 		return nil, fmt.Errorf("detecting local IP: %w", err)
 	}
 
-	// Bind UDP socket to the active LAN interface.
+	// Bind UDP socket to the active LAN interface. Ownership passes to the
+	// background goroutine below once it starts — from here on, any error
+	// path before that must close conn itself.
 	conn, err := net.ListenPacket("udp4", localIP+":0")
 	if err != nil {
 		return nil, fmt.Errorf("opening UDP socket: %w", err)
 	}
-	defer conn.Close()
 
 	dest, err := net.ResolveUDPAddr("udp4", ssdpAddr)
 	if err != nil {
+		conn.Close()
 		return nil, err
 	}
 
 	if _, err := conn.WriteTo([]byte(ssdpRequest), dest); err != nil {
+		conn.Close()
 		return nil, fmt.Errorf("sending SSDP request: %w", err)
 	}
 
 	if err := conn.SetReadDeadline(deadline); err != nil {
+		conn.Close()
 		return nil, err
 	}
 
-	// net.PacketConn has no context-aware read, so a watcher closes the
-	// conn on early cancellation to unblock ReadFrom before the deadline.
-	done := make(chan struct{})
-	defer close(done)
+	ch := make(chan Speaker, discoverChanBuffer)
+
 	go func() {
-		select {
-		case <-ctx.Done():
-			conn.Close()
-		case <-done:
+		defer close(ch)
+		defer conn.Close()
+
+		// net.PacketConn has no context-aware read, so a watcher closes
+		// the conn on early cancellation to unblock ReadFrom before the
+		// deadline.
+		watchDone := make(chan struct{})
+		defer close(watchDone)
+		go func() {
+			select {
+			case <-ctx.Done():
+				conn.Close()
+			case <-watchDone:
+			}
+		}()
+
+		seen := map[string]bool{}
+		buf := make([]byte, 4096)
+
+		for {
+			n, addr, err := conn.ReadFrom(buf)
+			if err != nil {
+				return // timeout or closed
+			}
+
+			ip := addr.(*net.UDPAddr).IP.String()
+			if seen[ip] {
+				continue
+			}
+			seen[ip] = true
+
+			response := string(buf[:n])
+			location := extractHeader(response, "LOCATION")
+			if location == "" {
+				continue
+			}
+
+			speaker := Speaker{
+				IP:       ip,
+				Location: location,
+				USN:      extractHeader(response, "USN"),
+			}
+			select {
+			case ch <- speaker:
+			case <-ctx.Done():
+				return
+			}
 		}
 	}()
 
-	seen := map[string]bool{}
-	var speakers []Speaker
-	buf := make([]byte, 4096)
-
-	for {
-		n, addr, err := conn.ReadFrom(buf)
-		if err != nil {
-			break // timeout or closed
-		}
-
-		ip := addr.(*net.UDPAddr).IP.String()
-		if seen[ip] {
-			continue
-		}
-		seen[ip] = true
-
-		response := string(buf[:n])
-		location := extractHeader(response, "LOCATION")
-		usn := extractHeader(response, "USN")
-
-		if location != "" {
-			speakers = append(speakers, Speaker{
-				IP:       ip,
-				Location: location,
-				USN:      usn,
-			})
-		}
-	}
-
-	return speakers, nil
+	return ch, nil
 }
 
 func extractHeader(response, header string) string {

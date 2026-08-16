@@ -17,21 +17,23 @@ func main() {
 		// IP provided explicitly: go run ./cmd/sonos 192.168.68.57
 		ip = os.Args[1]
 	} else {
-		// Auto-discover speakers on the local network.
+		// Auto-discover speakers on the local network, printing each as
+		// it's found rather than waiting for the full discovery window.
 		fmt.Println("Discovering Sonos speakers...")
 		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 		defer cancel()
-		speakers, err := sonos.Discover(ctx)
+		ch, err := sonos.Discover(ctx)
 		if err != nil {
 			log.Fatalf("Discovery failed: %v", err)
 		}
+
+		var speakers []sonos.Speaker
+		for s := range ch {
+			speakers = append(speakers, s)
+			fmt.Printf("  [%d] %s  (%s)\n", len(speakers), s.IP, s.USN)
+		}
 		if len(speakers) == 0 {
 			log.Fatal("No Sonos speakers found on the local network.")
-		}
-
-		fmt.Printf("Found %d speaker(s):\n", len(speakers))
-		for i, s := range speakers {
-			fmt.Printf("  [%d] %s  (%s)\n", i+1, s.IP, s.USN)
 		}
 		fmt.Println()
 

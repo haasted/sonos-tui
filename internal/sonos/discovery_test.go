@@ -53,20 +53,26 @@ func TestDiscover_Integration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
-	t.Skip("skipping by default — remove this line to run against a real network")
+	// t.Skip("skipping by default — remove this line to run against a real network")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel()
 
-	speakers, err := sonos.Discover(ctx)
+	start := time.Now()
+	ch, err := sonos.Discover(ctx)
 	require.NoError(t, err)
+
+	var speakers []sonos.Speaker
+	for s := range ch {
+		speakers = append(speakers, s)
+		t.Logf("Found after %v: %s  %s", time.Since(start), s.IP, s.Location)
+	}
 	require.NotEmpty(t, speakers, "expected at least one Sonos speaker on the network")
 
 	for _, s := range speakers {
 		assert.NotEmpty(t, s.IP)
 		assert.Contains(t, s.Location, "http://")
 		assert.Contains(t, s.Location, ":1400", "LOCATION must reference port 1400")
-		t.Logf("Found: %s  %s", s.IP, s.Location)
 	}
 }
 
@@ -87,10 +93,12 @@ func TestDiscover_EarlyCancellation(t *testing.T) {
 	}()
 
 	start := time.Now()
-	_, err := sonos.Discover(ctx)
+	ch, err := sonos.Discover(ctx)
+	require.NoError(t, err)
+
+	for range ch {
+	}
 	elapsed := time.Since(start)
 
-	require.NoError(t, err)
 	assert.Less(t, elapsed, 2*time.Second, "expected cancellation to interrupt the read well before the 5s deadline")
 }
-
