@@ -3,7 +3,9 @@ module github.com/haasted/sonos-sandbox
 go 1.26.3
 
 require (
+	github.com/BourgeoisBear/rasterm v1.1.2
 	github.com/blacktop/go-termimg v0.1.26
+	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
 	github.com/stretchr/testify v1.11.1
 )
 
@@ -21,7 +23,6 @@ require (
 	github.com/makeworld-the-better-one/dither/v2 v2.4.0 // indirect
 	github.com/mattn/go-runewidth v0.0.19 // indirect
 	github.com/mattn/go-sixel v0.0.8 // indirect
-	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/soniakeys/quant v1.0.0 // indirect
