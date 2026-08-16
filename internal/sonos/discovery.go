@@ -3,7 +3,6 @@ package sonos
 import (
 	"fmt"
 	"net"
-	"regexp"
 	"strings"
 	"time"
 )
@@ -89,15 +88,18 @@ func Discover(timeout time.Duration) ([]Speaker, error) {
 	return speakers, nil
 }
 
-var headerRe = regexp.MustCompile(`(?im)^([^:]+):\s*(.+)$`)
-
 func extractHeader(response, header string) string {
-	for _, match := range headerRe.FindAllStringSubmatch(response, -1) {
-		if strings.EqualFold(match[1], header) {
-			return strings.TrimSpace(match[2])
+	for _, line := range strings.Split(response, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if idx := strings.IndexByte(line, ':'); idx > 0 {
+			name := line[:idx]
+			if strings.EqualFold(name, header) {
+				return strings.TrimSpace(line[idx+1:])
+			}
 		}
 	}
 	return ""
+
 }
 
 // getLocalIP finds the IP of the active LAN interface by attempting a
