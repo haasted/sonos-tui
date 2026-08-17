@@ -14,6 +14,12 @@ Do not run git commits, pushes, or remote sync unless explicitly asked. At hando
 
 Comment the generated code lightly. If something is in desperate need of a longer explanation, ask for permission.
 
+## Architecture
+
+When working on generic functionality or utilities, consider whether it's possible to solve by adding a well-tested and proven dependency.
+
+If my instructions are vague, ambiguous or are over-looking something, feel free to doubt and press for more reflection or answers.
+
 ## Build & Test
 
 Prefer Makefile targets over raw command-line invocations for building and testing (e.g. `make test` over `go test ./...`). Only fall back to the command line when no target covers what's needed.
@@ -23,11 +29,3 @@ Current targets: `build`, `vet`, `test`, `test-verbose`, `test-race`, `test-live
 `adr-html` renders each `ADRs/*.md` to a full standalone HTML page (`ADRs/html/<adr-basename>/index.html`) with diagrams rendered as linked SVGs (via `mmdc` + `npx marked`, not inlined, no Docker, no publishing).
 
 `test-live` runs tests gated behind the `-live` flag, which require a real network with real Sonos speakers. The default `test`/`test-verbose`/`test-race` targets never touch the network.
-
-## Architecture Overview
-
-_Add a brief overview of your project architecture_
-
-## Conventions & Patterns
-
-_Add your project-specific conventions here_

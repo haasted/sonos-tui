@@ -135,7 +135,6 @@ func Discover(ctx context.Context) (<-chan Speaker, error) {
 }
 
 func extractHeader(response, header string) string {
-	println(" --- \n", response, "\n --- ")
 	for line := range strings.SplitSeq(response, "\n") {
 		line = strings.TrimRight(line, "\r")
 		if idx := strings.IndexByte(line, ':'); idx > 0 {
