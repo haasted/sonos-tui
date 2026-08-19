@@ -3,6 +3,8 @@
 package panes
 
 import (
+	"strings"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -14,16 +16,26 @@ type Tab struct {
 	Content tea.Model
 }
 
+// Position controls whether the header row renders above or below the
+// active tab's content.
+type Position int
+
+const (
+	Top Position = iota
+	Bottom
+)
+
 // Tabs is a hand-rolled tabbed pane, like browser tabs: a row of headers
-// above whichever tab's content is currently active. Left/right and
-// tab/shift+tab step through tabs; digit keys 1-9 jump straight to a tab,
-// and 0 jumps to the right-most tab (mirroring the usual browser/terminal
-// tab-shortcut convention). Every other message is forwarded to the active
-// tab's Content, so a tab's own content can't itself use left/right or
-// digit keys as input for now.
+// alongside whichever tab's content is currently active (see Position for
+// which side). Left/right and tab/shift+tab step through tabs; digit keys
+// 1-9 jump straight to a tab, and 0 jumps to the right-most tab (mirroring
+// the usual browser/terminal tab-shortcut convention). Every other message
+// is forwarded to the active tab's Content, so a tab's own content can't
+// itself use left/right or digit keys as input for now.
 type Tabs struct {
-	Tabs   []Tab
-	Active int
+	Tabs     []Tab
+	Active   int
+	Position Position // zero value (Top) renders headers above the content
 }
 
 // NewTabs builds a Tabs component, starting on the first tab.
@@ -82,33 +94,56 @@ func (t Tabs) View() string {
 		return ""
 	}
 
-	headers := make([]string, len(t.Tabs))
+	// Inactive tabs are plain dimmed text; the active tab is rendered as a
+	// solid pill so it reads as a button, not just colored text.
+	parts := make([]string, len(t.Tabs))
 	for i, tab := range t.Tabs {
 		style := inactiveTabStyle
 		if i == t.Active {
 			style = activeTabStyle
 		}
-		headers[i] = style.Render(tab.Title)
+		parts[i] = style.Render(tab.Title)
 	}
 
-	row := lipgloss.JoinHorizontal(lipgloss.Top, headers...)
-	content := contentStyle.Render(t.Tabs[t.Active].Content.View())
-	return lipgloss.JoinVertical(lipgloss.Left, row, content)
+	row := lipgloss.JoinHorizontal(lipgloss.Top, parts...)
+
+	// Drop the border edge facing the tab row — a plain rule stands in for
+	// it instead, so the tabs and content read as one connected panel
+	// rather than two separate boxes with a gap between them.
+	box := contentStyle
+	if t.Position == Bottom {
+		box = box.BorderBottom(false)
+	} else {
+		box = box.BorderTop(false)
+	}
+	content := box.Render(t.Tabs[t.Active].Content.View())
+
+	divider := separatorStyle.Render(strings.Repeat("─", max(lipgloss.Width(row), lipgloss.Width(content))))
+
+	if t.Position == Bottom {
+		return lipgloss.JoinVertical(lipgloss.Left, content, divider, row)
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, row, divider, content)
 }
 
+// Colors are AdaptiveColor so the palette stays legible whether the user's
+// terminal background is light or dark, rather than assuming one or the other.
 var (
 	activeTabStyle = lipgloss.NewStyle().
 			Bold(true).
-			Underline(true).
-			Foreground(lipgloss.Color("212")).
-			Padding(0, 2)
+			Padding(0, 1).
+			Foreground(lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#FFFFFF"}).
+			Background(lipgloss.AdaptiveColor{Light: "#6B46C1", Dark: "#A855F7"})
 
 	inactiveTabStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("240")).
-				Padding(0, 2)
+				Padding(0, 1).
+				Foreground(lipgloss.AdaptiveColor{Light: "#4A4A4A", Dark: "#9B9B9B"})
+
+	separatorStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.AdaptiveColor{Light: "#D0D0D0", Dark: "#4A4A4A"})
 
 	contentStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			Padding(1, 2).
-			MarginTop(1)
+			BorderForeground(lipgloss.AdaptiveColor{Light: "#D0D0D0", Dark: "#4A4A4A"}).
+			Padding(1, 2)
 )

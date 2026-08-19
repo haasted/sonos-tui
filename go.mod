@@ -5,6 +5,7 @@ go 1.26.3
 require (
 	github.com/BourgeoisBear/rasterm v1.1.2
 	github.com/blacktop/go-termimg v0.1.26
+	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/koron/go-ssdp v0.9.1
