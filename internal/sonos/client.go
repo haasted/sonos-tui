@@ -9,15 +9,15 @@ import (
 	"time"
 )
 
-// Client sends SOAP commands to a single Sonos speaker over the local network.
-type Client struct {
-	BaseURL    string       // e.g. "http://192.168.1.50:1400"
+// SonosClient sends SOAP commands to a single Sonos speaker over the local network.
+type SonosClient struct {
+	BaseURL    string // e.g. "http://192.168.1.50:1400"
 	HTTPClient *http.Client
 }
 
 // NewClient creates a Client targeting the given speaker IP.
-func NewClient(ip string) *Client {
-	return &Client{
+func NewClient(ip string) *SonosClient {
+	return &SonosClient{
 		BaseURL: fmt.Sprintf("http://%s:1400", ip),
 		HTTPClient: &http.Client{
 			Timeout: 5 * time.Second,
@@ -33,7 +33,7 @@ const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
 </s:Envelope>`
 
 // Do sends a raw SOAP request and returns the response body.
-func (c *Client) Do(path, serviceURN, action, body string) ([]byte, error) {
+func (c *SonosClient) Do(path, serviceURN, action, body string) ([]byte, error) {
 	envelope := fmt.Sprintf(soapEnvelope, body)
 	soapAction := fmt.Sprintf(`"%s#%s"`, serviceURN, action)
 

@@ -31,7 +31,7 @@ func TestClient_Do_Success(t *testing.T) {
 	defer srv.Close()
 
 	// Point the client at the test server (strip "http://" and ":port" to get the host).
-	c := &sonos.Client{
+	c := &sonos.SonosClient{
 		BaseURL:    srv.URL,
 		HTTPClient: srv.Client(),
 	}
@@ -55,7 +55,7 @@ func TestClient_Do_HTTPError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := &sonos.Client{BaseURL: srv.URL, HTTPClient: srv.Client()}
+	c := &sonos.SonosClient{BaseURL: srv.URL, HTTPClient: srv.Client()}
 	_, err := c.Do("/some/path", "urn:fake:service:1", "FakeAction", "<body/>")
 
 	require.Error(t, err)

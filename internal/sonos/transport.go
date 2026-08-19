@@ -6,60 +6,52 @@ import (
 	"html"
 )
 
-// --- AVTransport (playback control) ------------------------------------------
-
+// serviceURNs are the UPnP service XML namespaces used both as SOAPAction
+// URNs and as the xmlns:u attribute on every SOAP body in this file.
 const (
-	avtransportPath    = "/MediaRenderer/AVTransport/Control"
 	avtransportService = "urn:schemas-upnp-org:service:AVTransport:1"
+	renderingService   = "urn:schemas-upnp-org:service:RenderingControl:1"
 )
 
-func (c *Client) avTransport(action, body string) ([]byte, error) {
+// --- AVTransport (playback control) ------------------------------------------
+
+const avtransportPath = "/MediaRenderer/AVTransport/Control"
+
+func (c *SonosClient) avTransport(action, body string) ([]byte, error) {
 	return c.Do(avtransportPath, avtransportService, action, body)
 }
 
 // Play starts or resumes playback.
-func (c *Client) Play() error {
-	_, err := c.avTransport("Play",
-		`<u:Play xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+func (c *SonosClient) Play() error {
+	_, err := c.avTransport("Play", fmt.Sprintf(
+		`<u:Play xmlns:u="%s">
       <InstanceID>0</InstanceID>
       <Speed>1</Speed>
-    </u:Play>`)
+    </u:Play>`, avtransportService))
 	return err
 }
 
 // Pause pauses playback.
-func (c *Client) Pause() error {
-	_, err := c.avTransport("Pause",
-		`<u:Pause xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
-      <InstanceID>0</InstanceID>
-    </u:Pause>`)
+func (c *SonosClient) Pause() error {
+	_, err := c.avTransport("Pause", simplePayload(avtransportService, "Pause"))
 	return err
 }
 
 // Stop stops playback.
-func (c *Client) Stop() error {
-	_, err := c.avTransport("Stop",
-		`<u:Stop xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
-      <InstanceID>0</InstanceID>
-    </u:Stop>`)
+func (c *SonosClient) Stop() error {
+	_, err := c.avTransport("Stop", simplePayload(avtransportService, "Stop"))
 	return err
 }
 
 // Next skips to the next track.
-func (c *Client) Next() error {
-	_, err := c.avTransport("Next",
-		`<u:Next xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
-      <InstanceID>0</InstanceID>
-    </u:Next>`)
+func (c *SonosClient) Next() error {
+	_, err := c.avTransport("Next", simplePayload(avtransportService, "Next"))
 	return err
 }
 
 // Previous goes back to the previous track.
-func (c *Client) Previous() error {
-	_, err := c.avTransport("Previous",
-		`<u:Previous xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
-      <InstanceID>0</InstanceID>
-    </u:Previous>`)
+func (c *SonosClient) Previous() error {
+	_, err := c.avTransport("Previous", simplePayload(avtransportService, "Previous"))
 	return err
 }
 
@@ -70,21 +62,26 @@ type TransportInfo struct {
 	Speed  string // "1"
 }
 
+// simplePayload builds a SOAP body for actions whose only argument is
+// InstanceID, e.g. <u:Pause xmlns:u="service"><InstanceID>0</InstanceID></u:Pause>.
+func simplePayload(service, action string) string {
+	return fmt.Sprintf(`<u:%[2]s xmlns:u="%[1]s"><InstanceID>0</InstanceID></u:%[2]s>`, service, action)
+}
+
 // GetTransportInfo returns the current playback state of the speaker.
-func (c *Client) GetTransportInfo() (*TransportInfo, error) {
-	data, err := c.avTransport("GetTransportInfo",
-		`<u:GetTransportInfo xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
-      <InstanceID>0</InstanceID>
-    </u:GetTransportInfo>`)
+func (c *SonosClient) GetTransportInfo() (*TransportInfo, error) {
+	data, err := c.avTransport("GetTransportInfo", simplePayload(avtransportService, "GetTransportInfo"))
 	if err != nil {
 		return nil, err
 	}
 
+	// A dotted path on XMLName only matches the document's actual root
+	// element, not a descent path — put the path on plain fields instead,
+	// like GetVolume/GetMute do below.
 	var resp struct {
-		XMLName xml.Name `xml:"Envelope>Body>GetTransportInfoResponse"`
-		State   string   `xml:"CurrentTransportState"`
-		Status  string   `xml:"CurrentTransportStatus"`
-		Speed   string   `xml:"CurrentSpeed"`
+		State  string `xml:"Body>GetTransportInfoResponse>CurrentTransportState"`
+		Status string `xml:"Body>GetTransportInfoResponse>CurrentTransportStatus"`
+		Speed  string `xml:"Body>GetTransportInfoResponse>CurrentSpeed"`
 	}
 	if err := xml.Unmarshal(data, &resp); err != nil {
 		return nil, fmt.Errorf("parsing GetTransportInfo response: %w", err)
@@ -109,11 +106,8 @@ type TrackInfo struct {
 }
 
 // GetPositionInfo returns the current track position and metadata.
-func (c *Client) GetPositionInfo() (*TrackInfo, error) {
-	data, err := c.avTransport("GetPositionInfo",
-		`<u:GetPositionInfo xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
-      <InstanceID>0</InstanceID>
-    </u:GetPositionInfo>`)
+func (c *SonosClient) GetPositionInfo() (*TrackInfo, error) {
+	data, err := c.avTransport("GetPositionInfo", simplePayload(avtransportService, "GetPositionInfo"))
 	if err != nil {
 		return nil, err
 	}
@@ -174,22 +168,19 @@ func (c *Client) GetPositionInfo() (*TrackInfo, error) {
 
 // --- RenderingControl (volume & mute) ----------------------------------------
 
-const (
-	renderingPath    = "/MediaRenderer/RenderingControl/Control"
-	renderingService = "urn:schemas-upnp-org:service:RenderingControl:1"
-)
+const renderingPath = "/MediaRenderer/RenderingControl/Control"
 
-func (c *Client) rendering(action, body string) ([]byte, error) {
+func (c *SonosClient) rendering(action, body string) ([]byte, error) {
 	return c.Do(renderingPath, renderingService, action, body)
 }
 
 // GetVolume returns the current Master volume (0–100).
-func (c *Client) GetVolume() (int, error) {
-	data, err := c.rendering("GetVolume",
-		`<u:GetVolume xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
+func (c *SonosClient) GetVolume() (int, error) {
+	data, err := c.rendering("GetVolume", fmt.Sprintf(
+		`<u:GetVolume xmlns:u="%s">
       <InstanceID>0</InstanceID>
       <Channel>Master</Channel>
-    </u:GetVolume>`)
+    </u:GetVolume>`, renderingService))
 	if err != nil {
 		return 0, err
 	}
@@ -204,26 +195,26 @@ func (c *Client) GetVolume() (int, error) {
 }
 
 // SetVolume sets the Master volume (0–100).
-func (c *Client) SetVolume(level int) error {
+func (c *SonosClient) SetVolume(level int) error {
 	if level < 0 || level > 100 {
 		return fmt.Errorf("volume must be between 0 and 100, got %d", level)
 	}
 	_, err := c.rendering("SetVolume", fmt.Sprintf(
-		`<u:SetVolume xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
+		`<u:SetVolume xmlns:u="%s">
       <InstanceID>0</InstanceID>
       <Channel>Master</Channel>
       <DesiredVolume>%d</DesiredVolume>
-    </u:SetVolume>`, level))
+    </u:SetVolume>`, renderingService, level))
 	return err
 }
 
 // GetMute returns true if the speaker is muted.
-func (c *Client) GetMute() (bool, error) {
-	data, err := c.rendering("GetMute",
-		`<u:GetMute xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
+func (c *SonosClient) GetMute() (bool, error) {
+	data, err := c.rendering("GetMute", fmt.Sprintf(
+		`<u:GetMute xmlns:u="%s">
       <InstanceID>0</InstanceID>
       <Channel>Master</Channel>
-    </u:GetMute>`)
+    </u:GetMute>`, renderingService))
 	if err != nil {
 		return false, err
 	}
@@ -238,16 +229,16 @@ func (c *Client) GetMute() (bool, error) {
 }
 
 // SetMute mutes or unmutes the speaker.
-func (c *Client) SetMute(muted bool) error {
+func (c *SonosClient) SetMute(muted bool) error {
 	val := 0
 	if muted {
 		val = 1
 	}
 	_, err := c.rendering("SetMute", fmt.Sprintf(
-		`<u:SetMute xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
+		`<u:SetMute xmlns:u="%s">
       <InstanceID>0</InstanceID>
       <Channel>Master</Channel>
       <DesiredMute>%d</DesiredMute>
-    </u:SetMute>`, val))
+    </u:SetMute>`, renderingService, val))
 	return err
 }
