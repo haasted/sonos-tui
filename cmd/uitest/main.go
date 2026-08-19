@@ -14,8 +14,8 @@ type layout func()
 
 // layouts are the named UI variants selectable via the first CLI argument.
 var layouts = map[string]layout{
-	"blank":     layoutBlank,
-	"bubbletea": layoutBubbletea,
+	"blank": layoutBlank,
+	"tabs":  layoutTabs,
 }
 
 func main() {

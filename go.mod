@@ -6,6 +6,7 @@ require (
 	github.com/BourgeoisBear/rasterm v1.1.2
 	github.com/blacktop/go-termimg v0.1.26
 	github.com/charmbracelet/bubbletea v1.3.10
+	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/koron/go-ssdp v0.9.1
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
 	github.com/stretchr/testify v1.11.1
@@ -14,7 +15,6 @@ require (
 require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/charmbracelet/colorprofile v0.4.1 // indirect
-	github.com/charmbracelet/lipgloss v1.1.0 // indirect
 	github.com/charmbracelet/x/ansi v0.11.6 // indirect
 	github.com/charmbracelet/x/cellbuf v0.0.15 // indirect
 	github.com/charmbracelet/x/mosaic v0.0.0-20260216111343-536eb63c1f4c // indirect
