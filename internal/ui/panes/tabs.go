@@ -36,6 +36,7 @@ type Tabs struct {
 	Tabs     []Tab
 	Active   int
 	Position Position // zero value (Top) renders headers above the content
+	Width    int      // 0 = unconstrained; otherwise headers scroll to fit, see headerRow
 }
 
 // NewTabs builds a Tabs component, starting on the first tab.
@@ -94,18 +95,7 @@ func (t Tabs) View() string {
 		return ""
 	}
 
-	// Inactive tabs are plain dimmed text; the active tab is rendered as a
-	// solid pill so it reads as a button, not just colored text.
-	parts := make([]string, len(t.Tabs))
-	for i, tab := range t.Tabs {
-		style := inactiveTabStyle
-		if i == t.Active {
-			style = activeTabStyle
-		}
-		parts[i] = style.Render(tab.Title)
-	}
-
-	row := lipgloss.JoinHorizontal(lipgloss.Top, parts...)
+	row := t.headerRow()
 
 	// Drop the border edge facing the tab row — a plain rule stands in for
 	// it instead, so the tabs and content read as one connected panel
@@ -124,6 +114,77 @@ func (t Tabs) View() string {
 		return lipgloss.JoinVertical(lipgloss.Left, content, divider, row)
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, row, divider, content)
+}
+
+// headerRow renders the tab labels, windowed around Active with ‹/›
+// scroll indicators when they don't all fit within Width. Width <= 0 means
+// unconstrained: every tab renders, as before Width existed.
+func (t Tabs) headerRow() string {
+	labels := make([]string, len(t.Tabs))
+	widths := make([]int, len(t.Tabs))
+	for i, tab := range t.Tabs {
+		style := inactiveTabStyle
+		if i == t.Active {
+			style = activeTabStyle
+		}
+		labels[i] = style.Render(tab.Title)
+		widths[i] = lipgloss.Width(labels[i])
+	}
+
+	full := lipgloss.JoinHorizontal(lipgloss.Top, labels...)
+	if t.Width <= 0 || lipgloss.Width(full) <= t.Width {
+		return full
+	}
+
+	// Doesn't fit: reserve room for both indicators up front (simpler than
+	// discovering after the fact that only one side ended up clipped, at
+	// the cost of occasionally not using a sliver of space we didn't need
+	// to reserve), then grow a window outward from Active, alternating
+	// sides, until neither side has room left to add its next tab.
+	indicatorWidth := lipgloss.Width(inactiveTabStyle.Render("‹"))
+	budget := t.Width - 2*indicatorWidth
+	if budget < widths[t.Active] {
+		budget = widths[t.Active] // always show at least the active tab
+	}
+
+	lo, hi := t.Active, t.Active
+	width := widths[t.Active]
+	tryRight := true
+	for lo > 0 || hi < len(t.Tabs)-1 {
+		grew := false
+		if tryRight && hi < len(t.Tabs)-1 && width+widths[hi+1] <= budget {
+			hi++
+			width += widths[hi]
+			grew = true
+		} else if !tryRight && lo > 0 && width+widths[lo-1] <= budget {
+			lo--
+			width += widths[lo]
+			grew = true
+		}
+		if !grew {
+			// Preferred side was out of room or exhausted — fall back to
+			// whichever side still has room, if either does.
+			if hi < len(t.Tabs)-1 && width+widths[hi+1] <= budget {
+				hi++
+				width += widths[hi]
+			} else if lo > 0 && width+widths[lo-1] <= budget {
+				lo--
+				width += widths[lo]
+			} else {
+				break
+			}
+		}
+		tryRight = !tryRight
+	}
+
+	row := lipgloss.JoinHorizontal(lipgloss.Top, labels[lo:hi+1]...)
+	if lo > 0 {
+		row = inactiveTabStyle.Render("‹") + row
+	}
+	if hi < len(t.Tabs)-1 {
+		row += inactiveTabStyle.Render("›")
+	}
+	return row
 }
 
 // Colors are AdaptiveColor so the palette stays legible whether the user's

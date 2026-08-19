@@ -87,6 +87,13 @@ func (m tabsRootModel) Init() tea.Cmd {
 }
 
 func (m tabsRootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if sizeMsg, ok := msg.(tea.WindowSizeMsg); ok {
+		// Sent once at startup and again on every terminal resize —
+		// Tabs windows its header row to fit once it knows this.
+		m.tabs.Width = sizeMsg.Width
+		return m, nil
+	}
+
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		switch keyMsg.String() {
 		case "q", "ctrl+c":
