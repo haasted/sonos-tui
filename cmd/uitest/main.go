@@ -18,6 +18,7 @@ var layouts = map[string]layout{
 	"blank":       layoutBlank,
 	"tabs":        layoutTabs,
 	"tabs-bottom": layoutTabsBottom,
+	"effects":     layoutEffects,
 }
 
 func main() {

@@ -31,7 +31,9 @@ const (
 // 1-9 jump straight to a tab, and 0 jumps to the right-most tab (mirroring
 // the usual browser/terminal tab-shortcut convention). Every other message
 // is forwarded to the active tab's Content, so a tab's own content can't
-// itself use left/right or digit keys as input for now.
+// itself use left/right or digit keys as input for now. Switching tabs
+// re-runs the newly active tab's Content.Init(), so a self-ticking model
+// (e.g. an animation) restarts cleanly each time its tab regains focus.
 type Tabs struct {
 	Tabs     []Tab
 	Active   int
@@ -62,17 +64,17 @@ func (t Tabs) Update(msg tea.Msg) (Tabs, tea.Cmd) {
 		switch key := keyMsg.String(); key {
 		case "right", "tab":
 			t.Active = (t.Active + 1) % len(t.Tabs)
-			return t, nil
+			return t, t.Tabs[t.Active].Content.Init()
 		case "left", "shift+tab":
 			t.Active = (t.Active - 1 + len(t.Tabs)) % len(t.Tabs)
-			return t, nil
+			return t, t.Tabs[t.Active].Content.Init()
 		case "0":
 			t.Active = len(t.Tabs) - 1
-			return t, nil
+			return t, t.Tabs[t.Active].Content.Init()
 		default:
 			if idx, ok := tabIndexFromKey(key); ok && idx < len(t.Tabs) {
 				t.Active = idx
-				return t, nil
+				return t, t.Tabs[t.Active].Content.Init()
 			}
 		}
 	}
