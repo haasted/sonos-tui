@@ -24,6 +24,8 @@ func newEffectsRootModel(bg colorful.Color) effectsRootModel {
 	t := panes.NewTabs([]panes.Tab{
 		{Title: "Pulse", Content: newPulseEffect()},
 		{Title: "Fade Out", Content: newFadeEffect(bg)},
+		{Title: "Blink", Content: newBlinkEffect()},
+		{Title: "Blink Text", Content: newTextBlinkEffect()},
 	})
 	return effectsRootModel{tabs: t}
 }
