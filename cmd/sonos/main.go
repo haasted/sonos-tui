@@ -69,4 +69,3 @@ func main() {
 	}
 	fmt.Printf("Volume: %d\n", vol)
 }
-

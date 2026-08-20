@@ -1,9 +1,12 @@
-.PHONY: build vet test test-verbose test-race test-live run tidy adr-html help
+.PHONY: build fmt vet test test-verbose test-race test-live run tidy adr-html help
 
 .DEFAULT_GOAL := help
 
 build: ## Build the binary
 	CGO_ENABLED=0 go build ./...
+
+fmt: ## Format all Go files in place (gofmt -w), listing any it touched
+	gofmt -l -w .
 
 vet: ## Run go vet
 	go vet ./...

@@ -21,6 +21,12 @@ type tabsRootModel struct {
 	spinnerTab   int  // always 0 (the first tab), kept as a field rather than a literal so it stays in one place
 	spinnerStyle int  // index into spinnerStyles, cycled with "d"
 	quitting     bool // View renders nothing once true, so the inline UI erases itself instead of leaving its last frame behind
+
+	// forcedWidth > 0 when -ui-size (debug builds only, see uisize_debug.go)
+	// pins the layout size, overriding real terminal resizes. forcedHeight
+	// isn't consumed by anything yet — Tabs has no vertical layout logic to
+	// apply it to — but it's parsed and carried along for when that changes.
+	forcedWidth, forcedHeight int
 }
 
 // spinnerStyles are every named spinner style to cycle through with "d":
@@ -70,6 +76,10 @@ func newTabsRootModel(pos panes.Position) tabsRootModel {
 	s.Spinner = spinnerStyles[0].spin
 
 	m := tabsRootModel{tabs: t, spinner: s, spinnerTab: 0}
+	if w, h, ok := debugUISize(); ok {
+		m.forcedWidth, m.forcedHeight = w, h
+		m.tabs.Width = w // covers the first frame, before any WindowSizeMsg arrives
+	}
 	m.updateSpinnerTabTitle()
 	return m
 }
@@ -88,9 +98,15 @@ func (m tabsRootModel) Init() tea.Cmd {
 
 func (m tabsRootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if sizeMsg, ok := msg.(tea.WindowSizeMsg); ok {
-		// Sent once at startup and again on every terminal resize —
-		// Tabs windows its header row to fit once it knows this.
-		m.tabs.Width = sizeMsg.Width
+		// Sent once at startup and again on every terminal resize — Tabs
+		// windows its header row to fit once it knows this. A forced size
+		// (-ui-size, debug builds only) wins over the real terminal size,
+		// so actually resizing your terminal doesn't undo the override.
+		if m.forcedWidth > 0 {
+			m.tabs.Width = m.forcedWidth
+		} else {
+			m.tabs.Width = sizeMsg.Width
+		}
 		return m, nil
 	}
 
@@ -123,7 +139,12 @@ func (m tabsRootModel) View() string {
 	if m.quitting {
 		return ""
 	}
-	return m.tabs.View() + "\n\ntab/shift+tab or ←/→ to switch tabs · 1-8 to jump, 0 for last · d to cycle spinner style · q to quit\n"
+
+	hint := "\n\ntab/shift+tab or ←/→ to switch tabs · 1-8 to jump, 0 for last · d to cycle spinner style · q to quit\n"
+	if m.forcedWidth > 0 {
+		hint = fmt.Sprintf(" [ui-size: %dx%d]", m.forcedWidth, m.forcedHeight) + hint
+	}
+	return m.tabs.View() + hint
 }
 
 func layoutTabs() {

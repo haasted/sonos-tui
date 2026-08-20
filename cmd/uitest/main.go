@@ -4,6 +4,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"sort"
@@ -20,12 +21,14 @@ var layouts = map[string]layout{
 }
 
 func main() {
-	if len(os.Args) < 2 {
+	flag.Parse() // in debug builds, registers -ui-size (see uisize_debug.go); a no-op flag set otherwise
+
+	if flag.NArg() < 1 {
 		usage()
 		os.Exit(1)
 	}
 
-	name := os.Args[1]
+	name := flag.Arg(0)
 	l, ok := layouts[name]
 	if !ok {
 		fmt.Fprintf(os.Stderr, "unknown layout %q\n\n", name)
@@ -43,7 +46,7 @@ func usage() {
 	}
 	sort.Strings(names)
 
-	fmt.Fprintln(os.Stderr, "usage: uitest <layout>")
+	fmt.Fprintln(os.Stderr, "usage: uitest [flags] <layout>")
 	fmt.Fprintln(os.Stderr, "available layouts:")
 	for _, name := range names {
 		fmt.Fprintf(os.Stderr, "  %s\n", name)
