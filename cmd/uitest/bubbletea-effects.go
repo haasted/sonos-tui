@@ -26,6 +26,7 @@ func newEffectsRootModel(bg colorful.Color) effectsRootModel {
 		{Title: "Fade Out", Content: newFadeEffect(bg)},
 		{Title: "Blink", Content: newBlinkEffect()},
 		{Title: "Blink Text", Content: newTextBlinkEffect()},
+		{Title: "Marquee", Content: newMarqueeEffect()},
 	})
 	return effectsRootModel{tabs: t}
 }
