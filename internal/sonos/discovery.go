@@ -47,7 +47,7 @@ func Discover(ctx context.Context) (<-chan Speaker, error) {
 		return nil, errors.New("sonos: Discover requires a context with a deadline")
 	}
 
-	localIP, err := getLocalIP()
+	localIP, err := GetLocalIP()
 	if err != nil {
 		return nil, fmt.Errorf("detecting local IP: %w", err)
 	}
@@ -148,9 +148,11 @@ func extractHeader(response, header string) string {
 
 }
 
-// getLocalIP finds the IP of the active LAN interface by attempting a
-// non-sending UDP connection to a public address.
-func getLocalIP() (string, error) {
+// GetLocalIP finds the IP of the active LAN interface by attempting a
+// non-sending UDP connection to a public address. Exported since anything
+// opening its own LAN-reachable listener (e.g. a GENA callback server)
+// needs the same answer Discover already relies on.
+func GetLocalIP() (string, error) {
 	conn, err := net.Dial("udp4", "8.8.8.8:80")
 	if err != nil {
 		return "", err

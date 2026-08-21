@@ -1,5 +1,6 @@
 {
   "enabledPlugins": {
-    "cc-skills-golang@samber": true
+    "cc-skills-golang@samber": true,
+    "mattpocock-skills@claude-plugins-official": true
   }
 }
