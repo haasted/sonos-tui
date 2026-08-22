@@ -1,2 +1,5 @@
 # Rendered ADR pages — regenerate via `make adr-html`
 ADRs/html/
+
+# Raw GENA event bodies captured by `cmd/listening -capture`
+/captured-data/

@@ -3,7 +3,6 @@ package sonos
 import (
 	"encoding/xml"
 	"fmt"
-	"html"
 )
 
 // serviceURNs are the UPnP service XML namespaces used both as SOAPAction
@@ -137,33 +136,20 @@ func (c *SonosClient) GetPositionInfo() (*TrackInfo, error) {
 	}
 	resp = envelope.Body.Response
 
-	info := &TrackInfo{
+	// TrackMetaData is XML-escaped DIDL-Lite XML, same shape events.go's
+	// AVTransportEvent parses out of LastChange — shared via parseDIDLTrack.
+	meta := parseDIDLTrack(resp.TrackMetaData)
+
+	return &TrackInfo{
 		Track:         resp.Track,
 		TrackDuration: resp.TrackDuration,
 		TrackURI:      resp.TrackURI,
 		RelTime:       resp.RelTime,
-	}
-
-	// TrackMetaData is XML-escaped DIDL-Lite XML — decode and parse it.
-	if resp.TrackMetaData != "" && resp.TrackMetaData != "NOT_IMPLEMENTED" {
-		didl := html.UnescapeString(resp.TrackMetaData)
-		var didlDoc struct {
-			Item struct {
-				Title       string `xml:"title"`
-				Creator     string `xml:"creator"`
-				Album       string `xml:"album"`
-				AlbumArtURI string `xml:"albumArtURI"`
-			} `xml:"item"`
-		}
-		if err := xml.Unmarshal([]byte(didl), &didlDoc); err == nil {
-			info.Title = html.UnescapeString(didlDoc.Item.Title)
-			info.Artist = html.UnescapeString(didlDoc.Item.Creator)
-			info.Album = html.UnescapeString(didlDoc.Item.Album)
-			info.AlbumArtURI = didlDoc.Item.AlbumArtURI
-		}
-	}
-
-	return info, nil
+		Title:         meta.Title,
+		Artist:        meta.Artist,
+		Album:         meta.Album,
+		AlbumArtURI:   meta.AlbumArtURI,
+	}, nil
 }
 
 // --- RenderingControl (volume & mute) ----------------------------------------

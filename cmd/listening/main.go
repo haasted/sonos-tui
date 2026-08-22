@@ -8,6 +8,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"html"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"syscall"
@@ -29,11 +31,14 @@ import (
 const (
 	avTransportEventPath = "/MediaRenderer/AVTransport/Event"
 	notifyPath           = "/notify"
+	captureDir           = "captured-data"
 
 	discoverTimeout     = 4 * time.Second
 	subscriptionTimeout = 5 * time.Minute
 	renewInterval       = 4 * time.Minute // comfortably inside subscriptionTimeout
 )
+
+var captureFlag = flag.Bool("capture", false, "write every raw NOTIFY body to its own file under "+captureDir+"/")
 
 // subscription is one active GENA subscription, for logging and for
 // unsubscribing cleanly on shutdown.
@@ -47,8 +52,9 @@ type subscription struct {
 // for — no per-device callback path needed). Safe for concurrent use by
 // the discovery goroutine, the renewal loop, and the NOTIFY handler.
 type subscriptions struct {
-	mu   sync.Mutex
-	byID map[string]subscription
+	mu      sync.Mutex
+	byID    map[string]subscription
+	capture bool // write every raw NOTIFY body to captureDir, see -capture
 }
 
 func (s *subscriptions) add(sub subscription) {
@@ -74,11 +80,10 @@ func (s *subscriptions) lookup(sid string) (subscription, bool) {
 	return sub, ok
 }
 
-// handleNotify logs every NOTIFY body it receives, unescaped for readability
-// (LastChange is HTML-entity-escaped XML, same as the DIDL-Lite metadata
-// GetPositionInfo already unescapes). No structural parsing yet — that's
-// this prototype's whole point: see what real events actually look like
-// before designing a parser for them.
+// handleNotify parses every NOTIFY body into a sonos.AVTransportEvent and
+// logs the fields that matter. Falls back to logging the raw (unescaped)
+// body if parsing fails, so an unexpected payload shape is still visible
+// rather than silently dropped.
 func (s *subscriptions) handleNotify(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
@@ -93,9 +98,48 @@ func (s *subscriptions) handleNotify(w http.ResponseWriter, r *http.Request) {
 	if sub, ok := s.lookup(sid); ok {
 		speaker = sub.speaker.IP
 	}
-	slog.Info("event received", "speaker", speaker, "sid", sid, "body", html.UnescapeString(string(body)))
+
+	var captured string
+	if s.capture {
+		path, err := captureEvent(speaker, body)
+		if err != nil {
+			slog.Warn("failed to capture event", "speaker", speaker, "err", err)
+		}
+		captured = path
+	}
+
+	event, err := sonos.ParseAVTransportEvent(body)
+	if err != nil {
+		slog.Warn("failed to parse event — logging raw body",
+			"speaker", speaker, "sid", sid, "err", err, "body", html.UnescapeString(string(body)), "captured", captured)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	slog.Info("event received",
+		"speaker", speaker,
+		"state", event.TransportState,
+		"track", fmt.Sprintf("%d/%d", event.Track, event.NumberOfTracks),
+		"title", event.Current.Title,
+		"artist", event.Current.Artist,
+		"album", event.Current.Album,
+		"nextTitle", event.Next.Title,
+		"queue", event.QueueSource,
+		"captured", captured,
+	)
 
 	w.WriteHeader(http.StatusOK)
+}
+
+// captureEvent writes a raw NOTIFY body to its own file under captureDir,
+// named so files sort chronologically and stay attributable to a speaker.
+func captureEvent(speaker string, body []byte) (string, error) {
+	name := time.Now().Format("20060102-150405.000000000") + "-" + speaker + ".xml"
+	path := filepath.Join(captureDir, name)
+	if err := os.WriteFile(path, body, 0o644); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 func (s *subscriptions) unsubscribeAll(ctx context.Context, client *http.Client) {
@@ -110,6 +154,15 @@ func (s *subscriptions) unsubscribeAll(ctx context.Context, client *http.Client)
 
 func main() {
 	slog.SetDefault(slog.New(tint.NewTextHandler(os.Stdout, &tint.Options{TimeFormat: time.TimeOnly})))
+	flag.Parse()
+
+	if *captureFlag {
+		if err := os.MkdirAll(captureDir, 0o755); err != nil {
+			slog.Error("creating capture directory", "dir", captureDir, "err", err)
+			os.Exit(1)
+		}
+		slog.Info("capturing every event", "dir", captureDir)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -128,7 +181,7 @@ func main() {
 	}
 	callbackURL := fmt.Sprintf("http://%s:%d%s", localIP, port, notifyPath)
 
-	subs := &subscriptions{byID: map[string]subscription{}}
+	subs := &subscriptions{byID: map[string]subscription{}, capture: *captureFlag}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc(notifyPath, subs.handleNotify)
