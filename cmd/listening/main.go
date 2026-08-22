@@ -18,7 +18,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -33,8 +32,8 @@ const (
 	notifyPath           = "/notify"
 	captureDir           = "captured-data"
 
-	discoverTimeout     = 4 * time.Second
-	subscriptionTimeout = 5 * time.Minute
+	discoverTimeout     = 5 * time.Second
+	subscriptionTimeout = 300             // Subscription timeout in seconds
 	renewInterval       = 4 * time.Minute // comfortably inside subscriptionTimeout
 )
 
@@ -219,8 +218,10 @@ func discoverAndSubscribe(ctx context.Context, client *http.Client, callbackURL 
 		return
 	}
 
+	speakerCount := 0
 	for speaker := range found {
 		slog.Info("speaker found", "ip", speaker.IP, "usn", speaker.USN)
+		speakerCount++
 
 		sid, err := subscribe(ctx, client, speaker, callbackURL)
 		if err != nil {
@@ -229,6 +230,12 @@ func discoverAndSubscribe(ctx context.Context, client *http.Client, callbackURL 
 		}
 		subs.add(subscription{speaker: speaker, sid: sid})
 		slog.Info("subscribed", "speaker", speaker.IP, "sid", sid)
+	}
+
+	if speakerCount > 0 {
+		slog.Info("Searching complete", "speakers", speakerCount)
+	} else {
+		slog.Warn("Searching complete. No speakers found.")
 	}
 }
 
@@ -325,5 +332,5 @@ func eventRequest(ctx context.Context, speaker sonos.Speaker, method string) (*h
 }
 
 func timeoutHeader() string {
-	return "Second-" + strconv.Itoa(int(subscriptionTimeout.Seconds()))
+	return fmt.Sprintf("Second-%d", subscriptionTimeout)
 }
