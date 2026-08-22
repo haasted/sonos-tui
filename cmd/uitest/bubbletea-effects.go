@@ -27,6 +27,11 @@ func newEffectsRootModel(bg colorful.Color) effectsRootModel {
 		{Title: "Blink", Content: newBlinkEffect()},
 		{Title: "Blink Text", Content: newTextBlinkEffect()},
 		{Title: "Marquee", Content: newMarqueeEffect()},
+		{Title: "Typewriter", Content: newTypewriterEffect()},
+		{Title: "Wave", Content: newWaveEffect()},
+		{Title: "Shake", Content: newShakeEffect()},
+		{Title: "Progress", Content: newProgressEffect()},
+		{Title: "Countdown", Content: newCountdownEffect()},
 	})
 	return effectsRootModel{tabs: t}
 }
