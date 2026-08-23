@@ -185,10 +185,30 @@ func main() {
 
 	client := &http.Client{Timeout: 5 * time.Second}
 
-	go discoverAndSubscribe(ctx, client, callbackURL, subs)
+	discoveryDone := make(chan struct{})
+	go func() {
+		defer close(discoveryDone)
+		discoverAndSubscribe(ctx, client, callbackURL, subs)
+	}()
 	go renewLoop(ctx, client, subs)
 
-	<-ctx.Done()
+	// Wait for discovery to close before building the menu — the numbering
+	// would otherwise still be growing while someone's trying to read it.
+	var entries []menuEntry
+	select {
+	case <-discoveryDone:
+		waitForDescriptions(ctx, subs, descriptionGrace)
+		entries = buildMenu(subs)
+	case <-ctx.Done():
+	}
+
+	if len(entries) > 0 {
+		printMenu(entries)
+		runPrompt(ctx, entries)
+	} else {
+		<-ctx.Done()
+	}
+
 	slog.Info("shutting down — unsubscribing from every speaker")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

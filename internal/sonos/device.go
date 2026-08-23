@@ -72,3 +72,23 @@ func (d *Device) Pause() error {
 	d.mu.Unlock()
 	return nil
 }
+
+func (d *Device) Next() error {
+	if err := d.client.Next(); err != nil {
+		return err
+	}
+	d.mu.Lock()
+	d.state.Transport.State = "PLAYING"
+	d.mu.Unlock()
+	return nil
+}
+
+func (d *Device) Previous() error {
+	if err := d.client.Previous(); err != nil {
+		return err
+	}
+	d.mu.Lock()
+	d.state.Transport.State = "PLAYING"
+	d.mu.Unlock()
+	return nil
+}

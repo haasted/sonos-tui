@@ -6,6 +6,7 @@ import (
 	"html"
 	"log/slog"
 	"strconv"
+	"strings"
 )
 
 // AVTransportEvent is a parsed snapshot of AVTransport's LastChange payload.
@@ -76,23 +77,45 @@ type val struct {
 }
 
 // ParseAVTransportEvent parses a GENA NOTIFY body from AVTransport's event
-// service. The wire format nests two layers of escaped XML: the outer
-// <e:propertyset> envelope carries <LastChange> as XML-escaped text (one
-// xml.Unmarshal pass unescapes that automatically), and several fields
-// inside *that* — the track metadata ones — are themselves escaped
-// DIDL-Lite, needing the same extra html.UnescapeString + second
-// xml.Unmarshal pattern GetPositionInfo already uses in transport.go.
+// service.
+//
+// <LastChange>'s content is nominally XML-escaped text per the GENA/UPnP
+// convention (<LastChange>&lt;Event ...&gt;...</LastChange>), but real
+// Sonos hardware has been observed sending it as literal, unescaped nested
+// XML instead (<LastChange><Event>...</Event></LastChange>) — apparently
+// depending on circumstances, since the same speaker sends both forms at
+// different times. A plain string field only captures text content, so it
+// silently dropped the entire payload for the unescaped form (only
+// whitespace text nodes got captured, and everything downstream came back
+// empty). ,innerxml captures the raw bytes verbatim either way.
+//
+// That raw XML must NOT be blindly unescaped before parsing, though: valid
+// XML legitimately contains entities like &amp; (e.g. inside URLs) that
+// have to stay escaped for the document to remain well-formed — the parser
+// itself correctly resolves them while reading attribute/text values.
+// Unescaping the whole document up front corrupts those into bare,
+// invalid &s. So: try parsing the raw bytes as-is first (succeeds
+// immediately for the real-nested-XML form); only fall back to exactly one
+// html.UnescapeString pass + a retry if that fails, meaning the content
+// was actually the escaped-as-text form instead. One pass, not a loop —
+// looping past that point would strip the same legitimate entities
+// (&amp; inside a URL, say) that the now-freed inner XML still needs.
 func ParseAVTransportEvent(body []byte) (AVTransportEvent, error) {
 	var envelope struct {
-		LastChange string `xml:"property>LastChange"`
+		Property struct {
+			LastChange struct {
+				InnerXML string `xml:",innerxml"`
+			} `xml:"LastChange"`
+		} `xml:"property"`
 	}
 	if err := xml.Unmarshal(body, &envelope); err != nil {
 		return AVTransportEvent{}, fmt.Errorf("parsing propertyset envelope: %w", err)
 	}
+	lastChange := envelope.Property.LastChange.InnerXML
 
-	// envelope.LastChange's root element is itself <Event> — xml.Unmarshal
-	// matches doc against whatever that root is, so the path tag below only
-	// names Event's *children*, not "Event" again.
+	// lastChange's root element is itself <Event> — xml.Unmarshal matches
+	// doc against whatever that root is, so the path tag below only names
+	// Event's *children*, not "Event" again.
 	var doc struct {
 		Instance struct {
 			TransportState               val `xml:"TransportState"`
@@ -108,8 +131,10 @@ func ParseAVTransportEvent(body []byte) (AVTransportEvent, error) {
 			EnqueuedTransportURIMetaData val `xml:"EnqueuedTransportURIMetaData"`
 		} `xml:"InstanceID"`
 	}
-	if err := xml.Unmarshal([]byte(envelope.LastChange), &doc); err != nil {
-		return AVTransportEvent{}, fmt.Errorf("parsing LastChange: %w", err)
+	if err := xml.Unmarshal([]byte(lastChange), &doc); err != nil {
+		if err := xml.Unmarshal([]byte(html.UnescapeString(lastChange)), &doc); err != nil {
+			return AVTransportEvent{}, fmt.Errorf("parsing LastChange: %w", err)
+		}
 	}
 	instance := doc.Instance
 
@@ -134,13 +159,17 @@ func ParseAVTransportEvent(body []byte) (AVTransportEvent, error) {
 	}, nil
 }
 
-// parseDIDLTrack parses an escaped DIDL-Lite <item> blob — used for both
-// track metadata (CurrentTrackMetaData/NextTrackMetaData) and queue source
+// parseDIDLTrack parses a DIDL-Lite <item> blob — used for both track
+// metadata (CurrentTrackMetaData/NextTrackMetaData) and queue source
 // metadata (EnqueuedTransportURIMetaData), which share the same <item>
 // shape even though the latter actually describes a playlist container.
 // Also used by GetPositionInfo in transport.go for the same TrackMetaData field.
-func parseDIDLTrack(escaped string) TrackMetadata {
-	if escaped == "" || escaped == "NOT_IMPLEMENTED" {
+//
+// raw's escaping depth varies by caller (see ParseAVTransportEvent's
+// LastChange handling for the same issue one level up), so the same
+// try-raw-then-one-unescape-pass approach applies here too.
+func parseDIDLTrack(raw string) TrackMetadata {
+	if raw == "" || raw == "NOT_IMPLEMENTED" {
 		return TrackMetadata{}
 	}
 
@@ -152,16 +181,26 @@ func parseDIDLTrack(escaped string) TrackMetadata {
 			AlbumArtURI string `xml:"albumArtURI"`
 		} `xml:"item"`
 	}
-	if err := xml.Unmarshal([]byte(unescapeUntilStable(escaped)), &doc); err != nil {
-		return TrackMetadata{}
+	if err := xml.Unmarshal([]byte(raw), &doc); err != nil {
+		if err := xml.Unmarshal([]byte(html.UnescapeString(raw)), &doc); err != nil {
+			return TrackMetadata{}
+		}
 	}
 
 	return TrackMetadata{
-		Title:       unescapeUntilStable(doc.Item.Title),
-		Artist:      unescapeUntilStable(doc.Item.Creator),
-		Album:       unescapeUntilStable(doc.Item.Album),
-		AlbumArtURI: doc.Item.AlbumArtURI,
+		Title:       normalizeText(doc.Item.Title),
+		Artist:      normalizeText(doc.Item.Creator),
+		Album:       normalizeText(doc.Item.Album),
+		AlbumArtURI: doc.Item.AlbumArtURI, // a URL — never whitespace-wrapped, and Fields/Join would corrupt one that used '+' spacing
 	}
+}
+
+// normalizeText collapses whitespace runs (including newlines) into single
+// spaces. Real Sonos hardware has been observed word-wrapping long text
+// fields at some column width, inserting literal newlines/indentation
+// *into* the text itself, e.g. "<dc:title>Frankie\n            Sinatra".
+func normalizeText(s string) string {
+	return strings.Join(strings.Fields(s), " ")
 }
 
 // atoiOrZero parses a UPnP integer field, defaulting to 0 rather than
@@ -172,20 +211,4 @@ func atoiOrZero(s string) int {
 		return 0
 	}
 	return n
-}
-
-// unescapeUntilStable repeatedly HTML-unescapes s until it stops changing
-// (bounded, to avoid a pathological loop). DIDL-Lite metadata ends up
-// escaped a vendor-specific number of times depending on which response it
-// came from — unescaping to a fixed point is more robust than assuming a
-// fixed pass count, and a no-op on already-clean text.
-func unescapeUntilStable(s string) string {
-	for range 4 {
-		next := html.UnescapeString(s)
-		if next == s {
-			return s
-		}
-		s = next
-	}
-	return s
 }
