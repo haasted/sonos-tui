@@ -4,6 +4,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"html"
+	"log/slog"
 	"strconv"
 )
 
@@ -26,6 +27,26 @@ type AVTransportEvent struct {
 	QueueSource string // title of the playlist/container playback started from, if any
 }
 
+var _ slog.LogValuer = AVTransportEvent{}
+
+// LogValue reports the fields most worth seeing in a log line — the same
+// set handleNotify (cmd/listening) used to assemble by hand at the call
+// site before this existed.
+func (e AVTransportEvent) LogValue() slog.Value {
+	attrs := []slog.Attr{
+		slog.String("state", e.TransportState),
+		slog.String("track", fmt.Sprintf("%d/%d", e.Track, e.NumberOfTracks)),
+		slog.Any("current", e.Current),
+	}
+	if e.Next.Title != "" {
+		attrs = append(attrs, slog.String("nextTitle", e.Next.Title))
+	}
+	if e.QueueSource != "" {
+		attrs = append(attrs, slog.String("queue", e.QueueSource))
+	}
+	return slog.GroupValue(attrs...)
+}
+
 // TrackMetadata is a track's URI plus its parsed DIDL-Lite fields — the same
 // shape LastChange uses for both the current and next track.
 type TrackMetadata struct {
@@ -35,6 +56,16 @@ type TrackMetadata struct {
 	Artist      string
 	Album       string
 	AlbumArtURI string
+}
+
+var _ slog.LogValuer = TrackMetadata{}
+
+func (m TrackMetadata) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("title", m.Title),
+		slog.String("artist", m.Artist),
+		slog.String("album", m.Album),
+	)
 }
 
 // val unwraps the UPnP eventing convention of representing every state

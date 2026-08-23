@@ -115,17 +115,7 @@ func (s *subscriptions) handleNotify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slog.Info("event received",
-		"speaker", speaker,
-		"state", event.TransportState,
-		"track", fmt.Sprintf("%d/%d", event.Track, event.NumberOfTracks),
-		"title", event.Current.Title,
-		"artist", event.Current.Artist,
-		"album", event.Current.Album,
-		"nextTitle", event.Next.Title,
-		"queue", event.QueueSource,
-		"captured", captured,
-	)
+	slog.Info("event received", "speaker", speaker, "event", event, "captured", captured)
 
 	w.WriteHeader(http.StatusOK)
 }
@@ -144,12 +134,11 @@ func captureEvent(speaker string, body []byte) (string, error) {
 func (s *subscriptions) unsubscribeAll(ctx context.Context, client *http.Client) {
 	for _, sub := range s.all() {
 		if err := unsubscribe(ctx, client, sub.speaker, sub.sid); err != nil {
-			slog.Warn("unsubscribe failed", "speaker", sub.speaker.IP, "err", err)
+			slog.Warn("unsubscribe failed", "speaker", sub.speaker, "err", err)
 			continue
 		}
 
-		descr, _ := sub.speaker.Description()
-		slog.Info("unsubscribed", slog.String("IP", sub.speaker.IP), "speaker", descr)
+		slog.Info("unsubscribed", "speaker", sub.speaker)
 	}
 }
 
@@ -222,16 +211,16 @@ func discoverAndSubscribe(ctx context.Context, client *http.Client, callbackURL 
 
 	speakerCount := 0
 	for speaker := range found {
-		slog.Info("speaker found", "ip", speaker.IP, "usn", speaker.USN)
+		slog.Info("speaker found", "speaker", speaker)
 		speakerCount++
 
 		sid, err := subscribe(ctx, client, speaker, callbackURL)
 		if err != nil {
-			slog.Warn("subscribe failed", "speaker", speaker.IP, "err", err)
+			slog.Warn("subscribe failed", "speaker", speaker, "err", err)
 			continue
 		}
 		subs.add(subscription{speaker: speaker, sid: sid})
-		slog.Info("subscribed", "speaker", speaker.IP, "sid", sid)
+		slog.Info("subscribed", "speaker", speaker, "sid", sid)
 	}
 
 	if speakerCount > 0 {
@@ -254,10 +243,10 @@ func renewLoop(ctx context.Context, client *http.Client, subs *subscriptions) {
 		case <-ticker.C:
 			for _, sub := range subs.all() {
 				if err := renew(ctx, client, sub.speaker, sub.sid); err != nil {
-					slog.Warn("renew failed", "speaker", sub.speaker.IP, "err", err)
+					slog.Warn("renew failed", "speaker", sub.speaker, "err", err)
 					continue
 				}
-				slog.Debug("renewed", "speaker", sub.speaker.IP, "sid", sub.sid)
+				slog.Debug("renewed", "speaker", sub.speaker, "sid", sub.sid)
 			}
 		}
 	}

@@ -55,6 +55,18 @@ func (s Speaker) Description() (desc DeviceDescription, ok bool) {
 	return *d, true
 }
 
+var _ slog.LogValuer = Speaker{}
+
+// LogValue includes Description() when it's ready, nested via slog's
+// automatic LogValuer composition — nothing extra needed here for that.
+func (s Speaker) LogValue() slog.Value {
+	attrs := []slog.Attr{slog.String("ip", s.IP), slog.String("usn", s.USN)}
+	if desc, ok := s.Description(); ok {
+		attrs = append(attrs, slog.Any("description", desc))
+	}
+	return slog.GroupValue(attrs...)
+}
+
 // discoverChanBuffer bounds how many Speakers can queue on the channel
 // Discover returns before its background goroutine blocks on send. Small on
 // purpose — this streams a handful of physical devices on a LAN, not a
