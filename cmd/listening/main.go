@@ -147,7 +147,9 @@ func (s *subscriptions) unsubscribeAll(ctx context.Context, client *http.Client)
 			slog.Warn("unsubscribe failed", "speaker", sub.speaker.IP, "err", err)
 			continue
 		}
-		slog.Info("unsubscribed", "speaker", sub.speaker.IP)
+
+		descr, _ := sub.speaker.Description()
+		slog.Info("unsubscribed", slog.String("IP", sub.speaker.IP), "speaker", descr)
 	}
 }
 
