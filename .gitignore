@@ -3,3 +3,6 @@ ADRs/html/
 
 # Raw GENA event bodies captured by `cmd/listening -capture`
 /captured-data/
+
+# Speaker cache written by `cmd/listening -cache-file` (example default name)
+/speaker-cache.json

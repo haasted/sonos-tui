@@ -55,6 +55,12 @@ func (s Speaker) Description() (desc DeviceDescription, ok bool) {
 	return *d, true
 }
 
+func NewSpeaker(ip, location, usn string, desc DeviceDescription) Speaker {
+	s := Speaker{IP: ip, Location: location, USN: usn, description: &atomic.Pointer[DeviceDescription]{}}
+	s.description.Store(&desc)
+	return s
+}
+
 var _ slog.LogValuer = Speaker{}
 
 // LogValue includes Description() when it's ready, nested via slog's

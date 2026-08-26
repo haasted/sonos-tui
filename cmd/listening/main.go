@@ -1,8 +1,3 @@
-// Command listening is a prototype for ADR-0002: discover speakers,
-// subscribe to their AVTransport events via GENA, and print every event
-// received — for manually driving a speaker and watching what arrives.
-// Deliberately simple: no interactive input, one file, raw NOTIFY bodies
-// logged as-is rather than fully parsed (see the ADR's open questions).
 package main
 
 import (
@@ -18,12 +13,16 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/lmittmann/tint"
 
+	"github.com/haasted/sonos-sandbox/internal/log"
 	"github.com/haasted/sonos-sandbox/internal/sonos"
 )
 
@@ -33,33 +32,47 @@ const (
 	captureDir           = "captured-data"
 
 	discoverTimeout     = 5 * time.Second
-	subscriptionTimeout = 300             // Subscription timeout in seconds
-	renewInterval       = 4 * time.Minute // comfortably inside subscriptionTimeout
+	subscriptionTimeout = 300
+	renewInterval       = 4 * time.Minute
 )
 
 var captureFlag = flag.Bool("capture", false, "write every raw NOTIFY body to its own file under "+captureDir+"/")
 
-// subscription is one active GENA subscription, for logging and for
-// unsubscribing cleanly on shutdown.
+var cacheFileFlag = flag.String("cache-file", "",
+	"path to a speaker cache JSON file; if it exists, load speakers from it instead of "+
+		"running discovery, and (re)write it once startup completes")
+
 type subscription struct {
 	speaker sonos.Speaker
 	sid     string
 }
 
-// subscriptions is the set of currently active subscriptions, keyed by SID
-// (which is how an incoming NOTIFY identifies which subscription it's
-// for — no per-device callback path needed). Safe for concurrent use by
-// the discovery goroutine, the renewal loop, and the NOTIFY handler.
 type subscriptions struct {
 	mu      sync.Mutex
 	byID    map[string]subscription
-	capture bool // write every raw NOTIFY body to captureDir, see -capture
+	order   []string
+	capture bool
+
+	revealed bool
+
+	firstEventOnce sync.Once
 }
 
 func (s *subscriptions) add(sub subscription) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.byID[sub.sid] = sub
+	s.order = append(s.order, sub.sid)
+}
+
+func (s *subscriptions) addAndAnnounce(sub subscription) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.byID[sub.sid] = sub
+	s.order = append(s.order, sub.sid)
+	if s.revealed {
+		fmt.Printf("  %d  %s\n", len(s.order), menuLabel(sub.speaker))
+	}
 }
 
 func (s *subscriptions) all() []subscription {
@@ -79,10 +92,37 @@ func (s *subscriptions) lookup(sid string) (subscription, bool) {
 	return sub, ok
 }
 
-// handleNotify parses every NOTIFY body into a sonos.AVTransportEvent and
-// logs the fields that matter. Falls back to logging the raw (unescaped)
-// body if parsing fails, so an unexpected payload shape is still visible
-// rather than silently dropped.
+func (s *subscriptions) find(selector string) (subscription, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if n, err := strconv.Atoi(selector); err == nil {
+		if n < 1 || n > len(s.order) {
+			return subscription{}, false
+		}
+		return s.byID[s.order[n-1]], true
+	}
+
+	for _, sid := range s.order {
+		sub := s.byID[sid]
+		desc, _ := sub.speaker.Description()
+		if strings.EqualFold(desc.RoomName, selector) || strings.EqualFold(desc.DisplayName, selector) {
+			return sub, true
+		}
+	}
+	return subscription{}, false
+}
+
+func (s *subscriptions) speakers() []sonos.Speaker {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]sonos.Speaker, len(s.order))
+	for i, sid := range s.order {
+		out[i] = s.byID[sid].speaker
+	}
+	return out
+}
+
 func (s *subscriptions) handleNotify(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
@@ -97,6 +137,10 @@ func (s *subscriptions) handleNotify(w http.ResponseWriter, r *http.Request) {
 	if sub, ok := s.lookup(sid); ok {
 		speaker = sub.speaker.IP
 	}
+
+	s.firstEventOnce.Do(func() {
+		slog.Info("first event received", "speaker", speaker)
+	})
 
 	var captured string
 	if s.capture {
@@ -120,8 +164,6 @@ func (s *subscriptions) handleNotify(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// captureEvent writes a raw NOTIFY body to its own file under captureDir,
-// named so files sort chronologically and stay attributable to a speaker.
 func captureEvent(speaker string, body []byte) (string, error) {
 	name := time.Now().Format("20060102-150405.000000000") + "-" + speaker + ".xml"
 	path := filepath.Join(captureDir, name)
@@ -143,7 +185,12 @@ func (s *subscriptions) unsubscribeAll(ctx context.Context, client *http.Client)
 }
 
 func main() {
-	slog.SetDefault(slog.New(tint.NewTextHandler(os.Stdout, &tint.Options{TimeFormat: time.TimeOnly})))
+	start := time.Now()
+
+	slog.SetDefault(slog.New(log.NewElapsedHandler(
+		tint.NewTextHandler(os.Stdout, &tint.Options{TimeFormat: time.TimeOnly}),
+		start,
+	)))
 	flag.Parse()
 
 	if *captureFlag {
@@ -185,29 +232,18 @@ func main() {
 
 	client := &http.Client{Timeout: 5 * time.Second}
 
-	discoveryDone := make(chan struct{})
-	go func() {
-		defer close(discoveryDone)
-		discoverAndSubscribe(ctx, client, callbackURL, subs)
-	}()
+	go startupSpeakers(ctx, client, callbackURL, subs, *cacheFileFlag)
 	go renewLoop(ctx, client, subs)
 
-	// Wait for discovery to close before building the menu — the numbering
-	// would otherwise still be growing while someone's trying to read it.
-	var entries []menuEntry
-	select {
-	case <-discoveryDone:
-		waitForDescriptions(ctx, subs, descriptionGrace)
-		entries = buildMenu(subs)
-	case <-ctx.Done():
-	}
+	go func() {
+		select {
+		case <-time.After(menuRevealDelay):
+			subs.revealMenu()
+		case <-ctx.Done():
+		}
+	}()
 
-	if len(entries) > 0 {
-		printMenu(entries)
-		runPrompt(ctx, entries)
-	} else {
-		<-ctx.Done()
-	}
+	runPrompt(ctx, subs)
 
 	slog.Info("shutting down — unsubscribing from every speaker")
 
@@ -217,8 +253,65 @@ func main() {
 	srv.Shutdown(shutdownCtx)
 }
 
-// discoverAndSubscribe finds speakers and subscribes to each as it's found,
-// rather than waiting for the full discovery window to finish.
+func startupSpeakers(ctx context.Context, client *http.Client, callbackURL string, subs *subscriptions, cachePath string) {
+	if cachePath != "" {
+		cache, ok, err := loadSpeakerCache(cachePath)
+		switch {
+		case err != nil:
+			slog.Warn("reading speaker cache — falling back to discovery", "path", cachePath, "err", err)
+		case ok:
+			slog.Info("using speaker cache", "path", cachePath, "speakers", len(cache.Speakers), "savedAt", cache.SavedAt)
+			if subscribeFromCache(ctx, client, callbackURL, subs, cache.Speakers) > 0 {
+				writeCacheAsync(cachePath, subs)
+				return
+			}
+			slog.Warn("no cached speakers reachable — falling back to discovery")
+		}
+	}
+	discoverAndSubscribe(ctx, client, callbackURL, subs)
+	if cachePath != "" {
+		writeCacheAsync(cachePath, subs)
+	}
+}
+
+func writeCacheAsync(path string, subs *subscriptions) {
+	go func() {
+		if err := writeSpeakerCache(path, subs.speakers()); err != nil {
+			slog.Warn("writing speaker cache", "path", path, "err", err)
+			return
+		}
+		slog.Info("speaker cache written", "path", path)
+	}()
+}
+
+func subscribeFromCache(ctx context.Context, client *http.Client, callbackURL string, subs *subscriptions, cached []cachedSpeaker) int {
+	var (
+		wg    sync.WaitGroup
+		count atomic.Int32
+	)
+	for _, c := range cached {
+		wg.Add(1)
+		go func(c cachedSpeaker) {
+			defer wg.Done()
+
+			speaker := sonos.NewSpeaker(c.IP, c.Location, c.USN, c.Description)
+			sid, err := subscribe(ctx, client, speaker, callbackURL)
+			if err != nil {
+				slog.Warn("cached speaker unreachable — skipping", "speaker", speaker, "err", err)
+				return
+			}
+			subs.addAndAnnounce(subscription{speaker: speaker, sid: sid})
+			count.Add(1)
+			slog.Info("subscribed (from cache)", "speaker", speaker, "sid", sid)
+		}(c)
+	}
+	wg.Wait()
+
+	n := int(count.Load())
+	slog.Info("cache subscribe complete", "speakers", n, "of", len(cached))
+	return n
+}
+
 func discoverAndSubscribe(ctx context.Context, client *http.Client, callbackURL string, subs *subscriptions) {
 	discoverCtx, cancel := context.WithTimeout(ctx, discoverTimeout)
 	defer cancel()
@@ -239,7 +332,7 @@ func discoverAndSubscribe(ctx context.Context, client *http.Client, callbackURL 
 			slog.Warn("subscribe failed", "speaker", speaker, "err", err)
 			continue
 		}
-		subs.add(subscription{speaker: speaker, sid: sid})
+		subs.addAndAnnounce(subscription{speaker: speaker, sid: sid})
 		slog.Info("subscribed", "speaker", speaker, "sid", sid)
 	}
 
@@ -250,8 +343,6 @@ func discoverAndSubscribe(ctx context.Context, client *http.Client, callbackURL 
 	}
 }
 
-// renewLoop periodically re-subscribes every active subscription so events
-// keep flowing past the initial TIMEOUT.
 func renewLoop(ctx context.Context, client *http.Client, subs *subscriptions) {
 	ticker := time.NewTicker(renewInterval)
 	defer ticker.Stop()
@@ -272,8 +363,6 @@ func renewLoop(ctx context.Context, client *http.Client, subs *subscriptions) {
 	}
 }
 
-// subscribe sends a GENA SUBSCRIBE for a speaker's AVTransport events and
-// returns the SID the speaker assigns.
 func subscribe(ctx context.Context, client *http.Client, speaker sonos.Speaker, callbackURL string) (string, error) {
 	req, err := eventRequest(ctx, speaker, "SUBSCRIBE")
 	if err != nil {
@@ -295,8 +384,6 @@ func subscribe(ctx context.Context, client *http.Client, speaker sonos.Speaker, 
 	return resp.Header.Get("SID"), nil
 }
 
-// renew extends an existing subscription before its TIMEOUT expires,
-// reusing the same SID rather than starting a new subscription.
 func renew(ctx context.Context, client *http.Client, speaker sonos.Speaker, sid string) error {
 	req, err := eventRequest(ctx, speaker, "SUBSCRIBE")
 	if err != nil {
@@ -317,7 +404,6 @@ func renew(ctx context.Context, client *http.Client, speaker sonos.Speaker, sid 
 	return nil
 }
 
-// unsubscribe tells a speaker to stop sending events for sid.
 func unsubscribe(ctx context.Context, client *http.Client, speaker sonos.Speaker, sid string) error {
 	req, err := eventRequest(ctx, speaker, "UNSUBSCRIBE")
 	if err != nil {

@@ -83,6 +83,15 @@ func TestDiscover_Integration(t *testing.T) {
 	}
 }
 
+func TestNewSpeaker_DescriptionAvailableImmediately(t *testing.T) {
+	desc := sonos.DeviceDescription{RoomName: "Kitchen", DisplayName: "Amp"}
+	speaker := sonos.NewSpeaker("192.168.68.56", "http://192.168.68.56:1400/xml/device_description.xml", "uuid:RINCON_804AF293EC4C01400", desc)
+
+	got, ok := speaker.Description()
+	require.True(t, ok, "expected Description() to be immediately available")
+	assert.Equal(t, desc, got)
+}
+
 // TestDiscover_RequiresDeadline confirms Discover rejects an undeadlined context rather than blocking forever.
 func TestDiscover_RequiresDeadline(t *testing.T) {
 	_, err := sonos.Discover(context.Background())

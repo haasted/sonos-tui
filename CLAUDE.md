@@ -12,7 +12,7 @@ Do not run git commits, pushes, or remote sync unless explicitly asked. At hando
 
 ## Comments
 
-Comment the generated code lightly. If something is in desperate need of a longer explanation, ask for permission.
+Do not leave comments in the code.
 
 ## Architecture
 
