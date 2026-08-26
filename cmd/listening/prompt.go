@@ -157,7 +157,7 @@ func handleCommand(entries []menuEntry, line string) {
 
 	cmd, ok := commands[strings.ToLower(fields[1])]
 	if !ok {
-		fmt.Printf("unknown command %q (try: play, pause)\n", fields[1])
+		fmt.Printf("unknown command %q (try: play, pause, prev, next etc)\n", fields[1])
 		return
 	}
 

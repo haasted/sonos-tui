@@ -35,10 +35,11 @@ const (
 // re-runs the newly active tab's Content.Init(), so a self-ticking model
 // (e.g. an animation) restarts cleanly each time its tab regains focus.
 type Tabs struct {
-	Tabs     []Tab
-	Active   int
-	Position Position // zero value (Top) renders headers above the content
-	Width    int      // 0 = unconstrained; otherwise headers scroll to fit, see headerRow
+	Tabs       []Tab
+	Active     int
+	Position   Position // zero value (Top) renders headers above the content
+	Width      int      // 0 = unconstrained; otherwise headers scroll to fit, see headerRow
+	HideBorder bool     // zero value (false) keeps the rounded border; true leaves only the divider bar between tabs and content
 }
 
 // NewTabs builds a Tabs component, starting on the first tab.
@@ -101,9 +102,19 @@ func (t Tabs) View() string {
 
 	// Drop the border edge facing the tab row — a plain rule stands in for
 	// it instead, so the tabs and content read as one connected panel
-	// rather than two separate boxes with a gap between them.
+	// rather than two separate boxes with a gap between them. HideBorder
+	// drops the other three edges too, leaving just that divider bar, and
+	// also trims the padding on that same divider-facing side, so content
+	// sits flush against the divider instead of leaving a blank line.
 	box := contentStyle
-	if t.Position == Bottom {
+	if t.HideBorder {
+		box = box.BorderTop(false).BorderRight(false).BorderBottom(false).BorderLeft(false)
+		if t.Position == Bottom {
+			box = box.PaddingBottom(0)
+		} else {
+			box = box.PaddingTop(0)
+		}
+	} else if t.Position == Bottom {
 		box = box.BorderBottom(false)
 	} else {
 		box = box.BorderTop(false)
