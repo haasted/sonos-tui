@@ -65,3 +65,7 @@ entirely on the local network.
 Speaker discovery uses **SSDP** (Simple Service Discovery Protocol) — a UDP
 multicast to `239.255.255.250:1900` with the Sonos-specific service type
 `urn:schemas-upnp-org:device:ZonePlayer:1`.
+
+# Acknowledgements
+
+Bubbletea skill from https://github.com/GGPrompts/my-plugins/blob/main/plugins/specialized/bubbletea/skills/bubbletea/SKILL.md
