@@ -238,15 +238,9 @@ Test all view modes:
 
 ---
 
-## Code Location Reference
+## Origin
 
-From TFE project (reference implementation):
-- **file_operations.go:936-968** - `visualWidth()` function
-- **file_operations.go:969-983** - `visualWidthCompensated()` function
-- **file_operations.go:1237-1246** - `padIconToWidth()` function
-- **model.go:187-197** - Terminal type detection
-
-Full debugging session: `TFE/docs/EMOJI_DEBUG_SESSION_2.md`
+This fix was discovered and debugged in an external project (TFE, not part of this repo), where the reference implementation lived in `file_operations.go` (`visualWidth()`, `visualWidthCompensated()`, `padIconToWidth()`) and `model.go` (terminal type detection). Those files aren't available here — the snippet below is the complete, self-contained version of the fix.
 
 ---
 

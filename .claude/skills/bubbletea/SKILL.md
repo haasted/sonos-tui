@@ -190,7 +190,7 @@ See `references/troubleshooting.md` for the complete debugging decision tree.
 
 ## Configuration System
 
-All projects support YAML configuration with hot-reload:
+For projects that need it, YAML configuration with hot-reload is a common pattern:
 
 ```yaml
 theme: "dark"

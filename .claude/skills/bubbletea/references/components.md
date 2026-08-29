@@ -644,4 +644,4 @@ github.com/evertras/bubble-table      # Interactive tables
 github.com/koki-develop/go-fzf        # Fuzzy finder
 ```
 
-See `go.mod` in template for complete list of optional dependencies.
+Add these to `go.mod` as needed for the components above.
