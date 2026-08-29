@@ -1,6 +1,6 @@
 ---
 name: bubbletea
-description: Build terminal user interfaces with Go and Bubbletea framework. Use for creating TUI apps with the Elm architecture, dual-pane layouts, accordion modes, mouse/keyboard handling, Lipgloss styling, and reusable components. Includes production-ready templates, effects library, and battle-tested layout patterns from real projects.
+description: Build terminal user interfaces with Go and Bubbletea framework. Use for creating TUI apps with the Elm architecture, dual-pane layouts, accordion modes, mouse/keyboard handling, Lipgloss styling, and reusable components. Includes battle-tested layout patterns from real projects.
 license: MIT
 ---
 
@@ -16,7 +16,6 @@ Use this skill when:
 - Fixing layout/rendering issues (borders, alignment, overflow)
 - Implementing mouse/keyboard interactions
 - Building dual-pane or multi-panel layouts
-- Adding visual effects (metaballs, waves, rainbow text)
 - Troubleshooting TUI rendering problems
 
 ## Core Principles
@@ -32,16 +31,12 @@ Use this skill when:
 
 Full details and examples in `references/golden-rules.md`.
 
-## Creating New Projects
+## Suggested Project Structure
 
-This project includes a production-ready template system. When this skill is bundled with a new project (via `new_project.sh`), use the existing template structure as the starting point.
-
-### Project Structure
-
-All new projects follow this architecture:
+For new TUI projects, a file layout like this keeps concerns separated and files small:
 ```
 your-app/
-├── main.go              # Entry point (minimal, ~21 lines)
+├── main.go              # Entry point (minimal)
 ├── types.go             # Type definitions, structs, enums
 ├── model.go             # Model initialization & layout calculation
 ├── update.go            # Message dispatcher
@@ -49,13 +44,12 @@ your-app/
 ├── update_mouse.go      # Mouse handling
 ├── view.go              # View rendering & layouts
 ├── styles.go            # Lipgloss style definitions
-├── config.go            # Configuration management
-└── .claude/skills/bubbletea/  # This skill (bundled)
+└── config.go            # Configuration management
 ```
 
 ### Architecture Guidelines
 
-- Keep `main.go` minimal (entry point only, ~21 lines)
+- Keep `main.go` minimal (entry point only)
 - All types in `types.go` (structs, enums, constants)
 - Separate keyboard and mouse handling into dedicated files
 - One file, one responsibility
@@ -74,17 +68,6 @@ See `references/components.md` for the complete catalog of reusable components:
 - **Status**: Status bar, title bar, breadcrumbs
 - **Preview**: Text, markdown, syntax highlighting, images, hex
 - **Tables**: Simple and interactive tables
-
-## Effects Library
-
-Beautiful physics-based animations available in the template:
-
-- 🔮 **Metaballs** - Lava lamp-style floating blobs
-- 🌊 **Wave Effects** - Sine wave distortions
-- 🌈 **Rainbow Cycling** - Animated color gradients
-- 🎭 **Layer Compositor** - ANSI-aware multi-layer rendering
-
-See `references/effects.md` for usage examples and integration patterns.
 
 ## Layout Implementation Pattern
 
