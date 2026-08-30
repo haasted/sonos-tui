@@ -128,7 +128,7 @@ func run(t *testing.T, root sandboxRoot) tea.Model {
 	return final
 }
 
-func TestLoop_ACommandsReturnValueBecomesTheNextMessage(t *testing.T) {
+func TestCmdResultBecomesNextMsg(t *testing.T) {
 	var leaf tea.Model = sandboxLeaf{name: "left", remaining: 3}
 
 	leaf, cmd := leaf.Update(tickMsg{target: "left"})
@@ -144,7 +144,7 @@ func TestLoop_ACommandsReturnValueBecomesTheNextMessage(t *testing.T) {
 		"feeding it back is the whole cycle: Update -> Cmd -> Msg -> Update")
 }
 
-func TestLoop_NoCommandMeansTheModelStopsMoving(t *testing.T) {
+func TestNoCmdStopsTheChain(t *testing.T) {
 	var leaf tea.Model = sandboxLeaf{name: "left", remaining: 1}
 
 	leaf, cmd := leaf.Update(tickMsg{target: "left"})
@@ -153,14 +153,14 @@ func TestLoop_NoCommandMeansTheModelStopsMoving(t *testing.T) {
 	assert.Nil(t, cmd, "returning no command ends this chain; nothing else will ever call Update")
 }
 
-func TestLoop_ProgramDrivesTheWholeTreeToCompletion(t *testing.T) {
+func TestProgramDrivesTreeToCompletion(t *testing.T) {
 	final := run(t, newSandboxRoot(3))
 
 	assert.Equal(t, "[left:3 right:3]", final.View().Content)
 	assert.True(t, final.(sandboxRoot).done())
 }
 
-func TestLoop_ParentDecidesWhichChildrenSeeAMessage(t *testing.T) {
+func TestParentRoutesMsgToChildren(t *testing.T) {
 	var branch tea.Model = sandboxBranch{
 		left:  sandboxLeaf{name: "left", remaining: 5},
 		right: sandboxLeaf{name: "right", remaining: 5},
@@ -173,14 +173,14 @@ func TestLoop_ParentDecidesWhichChildrenSeeAMessage(t *testing.T) {
 		"the branch hands the message to both, but only the addressee acts on it")
 }
 
-func TestLoop_ViewIsDerivedOnlyFromModelState(t *testing.T) {
+func TestViewReflectsState(t *testing.T) {
 	root := newSandboxRoot(8)
 	assert.Equal(t, "[left:0 right:0]", root.View().Content)
 
 	assert.Equal(t, "[left:8 right:8]", run(t, root).View().Content)
 }
 
-func TestLoop_ContextCancellationTerminatesTheProgram(t *testing.T) {
+func TestContextCancelEndsProgram(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
