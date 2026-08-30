@@ -71,7 +71,7 @@ func (s *subscriptions) addAndAnnounce(sub subscription) {
 	s.byID[sub.sid] = sub
 	s.order = append(s.order, sub.sid)
 	if s.revealed {
-		fmt.Printf("  %d  %s\n", len(s.order), menuLabel(sub.speaker))
+		fmt.Printf("  %d  %s\n", len(s.order), sub.speaker.DisplayName())
 	}
 }
 

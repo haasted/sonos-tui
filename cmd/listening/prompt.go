@@ -22,13 +22,6 @@ var commands = map[string]func(*sonos.Device) error{
 	"prev":  (*sonos.Device).Previous,
 }
 
-func menuLabel(speaker sonos.Speaker) string {
-	if desc, ok := speaker.Description(); ok && desc.RoomName != "" {
-		return desc.RoomName
-	}
-	return speaker.IP
-}
-
 func (s *subscriptions) revealMenu() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -37,7 +30,7 @@ func (s *subscriptions) revealMenu() {
 	fmt.Println("Available commands:", strings.Join(slices.Sorted(maps.Keys(commands)), " "))
 	fmt.Println("Speakers:")
 	for i, sid := range s.order {
-		fmt.Printf("  %d  %s\n", i+1, menuLabel(s.byID[sid].speaker))
+		fmt.Printf("  %d  %s\n", i+1, s.byID[sid].speaker.DisplayName())
 	}
 	s.revealed = true
 }
@@ -84,7 +77,7 @@ func handleCommand(subs *subscriptions, line string) {
 		return
 	}
 
-	label := menuLabel(sub.speaker)
+	label := sub.speaker.DisplayName()
 	if err := cmd(sonos.NewDevice(sub.speaker)); err != nil {
 		fmt.Printf("%s: %v\n", label, err)
 		return

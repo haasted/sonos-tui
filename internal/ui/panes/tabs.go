@@ -47,6 +47,11 @@ func NewTabs(tabs []Tab) Tabs {
 	return Tabs{Tabs: tabs}
 }
 
+func (t Tabs) AddTab(tab Tab) Tabs {
+	t.Tabs = append(t.Tabs, tab)
+	return t
+}
+
 // Init forwards to the initially active tab's content.
 func (t Tabs) Init() tea.Cmd {
 	if len(t.Tabs) == 0 {

@@ -55,6 +55,13 @@ func (s Speaker) Description() (desc DeviceDescription, ok bool) {
 	return *d, true
 }
 
+func (s Speaker) DisplayName() string {
+	if desc, ok := s.Description(); ok && desc.RoomName != "" {
+		return desc.RoomName
+	}
+	return s.IP
+}
+
 func NewSpeaker(ip, location, usn string, desc DeviceDescription) Speaker {
 	s := Speaker{IP: ip, Location: location, USN: usn, description: &atomic.Pointer[DeviceDescription]{}}
 	s.description.Store(&desc)

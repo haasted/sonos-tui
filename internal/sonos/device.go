@@ -18,6 +18,8 @@ type Device struct {
 // speaker, without going to the network.
 type DeviceState struct {
 	Transport TransportInfo
+	Current   TrackMetadata
+	RelTime   string
 }
 
 // NewDevice creates a Device for the given discovered speaker.
@@ -47,6 +49,25 @@ func (d *Device) Refresh() error {
 	}
 	d.mu.Lock()
 	d.state.Transport = *info
+	d.mu.Unlock()
+	return nil
+}
+
+func (d *Device) RefreshTrack() error {
+	info, err := d.client.GetPositionInfo()
+	if err != nil {
+		return err
+	}
+	d.mu.Lock()
+	d.state.Current = TrackMetadata{
+		URI:         info.TrackURI,
+		Duration:    info.TrackDuration,
+		Title:       info.Title,
+		Artist:      info.Artist,
+		Album:       info.Album,
+		AlbumArtURI: info.AlbumArtURI,
+	}
+	d.state.RelTime = info.RelTime
 	d.mu.Unlock()
 	return nil
 }

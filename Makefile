@@ -3,7 +3,7 @@
 .DEFAULT_GOAL := help
 
 build: ## Build the binary
-	CGO_ENABLED=0 go build ./...
+	CGO_ENABLED=0 go build ./cmd/sonos
 
 fmt: ## Format all Go files in place (gofmt -w), listing any it touched
 	gofmt -l -w .
