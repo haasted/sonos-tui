@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted — implemented in `internal/sonos` (`subscribe.go`, `eventlistener.go`, `eventmanager.go`, `Device.HandleEvent`/`Events`) and wired into `cmd/sonos`.
 
 ## Context
 
@@ -66,7 +66,7 @@ flowchart TD
     Listen -->|NOTIFY arrives| Parse[Unescape + parse LastChange XML]
     Parse --> UpdateState[Update Device's cached DeviceState]
     Parse --> Emit[Send sonos.Event on channel]
-    Emit -.->|"program.Send(event) — tea.Msg is any"| UI[Any Bubbletea model's Update]
+    Emit -.->|"tea.Cmd waits on the channel — tea.Msg is any"| UI[Any Bubbletea model's Update]
     SID --> Renew[Renewal timer]
     Renew -->|before TIMEOUT| Resubscribe[Re-SUBSCRIBE with same SID]
     Resubscribe --> Renew
@@ -78,13 +78,18 @@ flowchart TD
 
 A new, deliberately simple command: discover every speaker on the LAN, subscribe to all of them, log every event to the console as it arrives (`log/slog` with [`lmittmann/tint`](https://github.com/lmittmann/tint) for human-readable, colorized output rather than raw JSON), and unsubscribe from everything on `Ctrl+C` before exiting. No interactive input in this first version — purely observational, run it and watch. This doubles as both the day-to-day development tool for building this feature and the natural shape for the `-live`-gated integration test (mirroring `discovery_test.go`/`ssdp_eval_test.go`), alongside `httptest`-based unit tests for the outbound `SUBSCRIBE`/renewal flow and the inbound listener (synthetic `NOTIFY` POSTs, no real speaker needed).
 
-### Open questions before implementation
+### Questions resolved during implementation
 
-- **`sonos.Event` shape**: what fields does it actually carry — speaker identity, which fields changed, parsed values, raw XML too? Worth inspecting a real `LastChange` payload from an actual speaker (even just logging the raw NOTIFY body via `cmd/listening` before the parser exists) before settling the struct.
-- **Per-device path/key for the shared listener's demuxing**: keyed by `Speaker.USN` (already unique, already on hand) or a freshly generated ID? Leaning `USN` — no new identifier needed.
-- **Subscribe timing relative to discovery**: subscribe to each speaker as it streams in from `Discover`'s channel, or wait for the full discovery window and subscribe to all at once? Leaning "as each streams in" — matches this project's existing preference (from the streaming `Discover` redesign) for acting on results as they arrive rather than draining first.
-- **Shared listener bind address/port**: fixed vs OS-assigned ephemeral port. Ephemeral avoids port conflicts, but the `CALLBACK` URL needs the resolved port before any `SUBSCRIBE` goes out, so listener startup has to be sequenced ahead of the first subscription.
-- **Signal handling**: `cmd/listening`'s unsubscribe-on-exit needs to catch `SIGINT`/`SIGTERM` and run `UNSUBSCRIBE` for every active subscription before the process actually exits — a cleanup pattern, not a bare `os.Exit`.
+- **`sonos.Event` shape**: `{ Speaker, Transport TransportInfo, Current TrackMetadata, Raw AVTransportEvent }`. The two fields a UI almost always wants are lifted out; `Raw` keeps everything else the speaker sent (next track, queue source, play mode) so nothing parsed is thrown away.
+- **Per-device path/key for the shared listener's demuxing**: per-device path, derived from a hash of `Speaker.USN` (raw USNs are long `uuid:RINCON_...::urn:...` strings, so they're hashed to keep callback URLs short and path-safe). Routing on path rather than the `SID` header means a renewal that changes the SID, or a late NOTIFY from a dropped subscription, can't be misattributed to another speaker.
+- **Subscribe timing relative to discovery**: as each speaker streams in, confirming the leaning. Subscription happens in the same command that does a room's initial state fetch.
+- **Shared listener bind address/port**: OS-assigned ephemeral port, bound in `newEventListener` before any `SUBSCRIBE` goes out, so the `CALLBACK` URL always names a resolved port.
+- **Signal handling**: no bespoke handler was needed. Bubbletea installs its own `SIGINT`/`SIGTERM` handlers and returns from `Run()` on either, so `EventManager.Close` runs after `Run()` returns and covers `q`, `Ctrl+C` and `kill` alike.
+
+Two decisions were revised against what this ADR originally sketched, both for shutdown safety:
+
+- **Event delivery is a non-blocking send, not a blocking one.** `HandleEvent` runs on the listener's own request goroutine; a consumer that has stopped receiving (the UI shutting down) would wedge that goroutine and in turn stall `Shutdown`. State is applied before the send, so a dropped event costs a redraw, not correctness.
+- **The bridge to Bubbletea is a `tea.Cmd` that waits on the channel, not a goroutine calling `program.Send`.** Equivalent in effect, but it avoids handing a `*tea.Program` to code that constructs the model, which is awkward given the program needs the model to exist first.
 
 ## Consequences
 

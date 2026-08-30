@@ -2,9 +2,12 @@ package sonos_test
 
 import (
 	"fmt"
+	"html"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/haasted/sonos-sandbox/internal/sonos"
 	"github.com/stretchr/testify/assert"
@@ -108,6 +111,157 @@ func TestDevice_RefreshTrack(t *testing.T) {
 	assert.Equal(t, "Test Album", state.Current.Album)
 	assert.Equal(t, "0:03:30", state.Current.Duration)
 	assert.Equal(t, "0:01:15", state.RelTime)
+}
+
+// notifyBody builds a GENA NOTIFY payload in the escaped-LastChange form
+// real speakers send, wrapping whatever InstanceID children are given.
+func notifyBody(inner string) []byte {
+	return []byte(`<?xml version="1.0"?>
+<e:propertyset xmlns:e="urn:schemas-upnp-org:event-1-0">
+  <e:property><LastChange>` +
+		html.EscapeString(`<Event xmlns="urn:schemas-upnp-org:metadata-1-0/AVT/"><InstanceID val="0">`+inner+`</InstanceID></Event>`) +
+		`</LastChange></e:property>
+</e:propertyset>`)
+}
+
+func didlItem(title, artist, album string) string {
+	return html.EscapeString(`<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/">` +
+		`<item><dc:title>` + title + `</dc:title><dc:creator>` + artist + `</dc:creator>` +
+		`<upnp:album>` + album + `</upnp:album></item></DIDL-Lite>`)
+}
+
+func TestDevice_HandleEvent_UpdatesStateAndPublishes(t *testing.T) {
+	srv := avTransportServer(t, "PLAYING")
+	defer srv.Close()
+
+	d := newTestDevice(t, srv)
+
+	body := notifyBody(
+		`<TransportState val="PLAYING"/>` +
+			`<CurrentTrackDuration val="0:04:00"/>` +
+			`<RelativeTimePosition val="0:01:30"/>` +
+			`<CurrentTrackURI val="x-sonos-http:live"/>` +
+			`<CurrentTrackMetaData val="` + didlItem("Live Track", "Live Artist", "Live Album") + `"/>`)
+
+	require.NoError(t, d.HandleEvent(body))
+
+	state := d.State()
+	assert.Equal(t, "PLAYING", state.Transport.State)
+	assert.Equal(t, "Live Track", state.Current.Title)
+	assert.Equal(t, "Live Artist", state.Current.Artist)
+	assert.Equal(t, "0:01:30", state.RelTime, "a position present in the event should be used as-is")
+
+	select {
+	case event := <-d.Events():
+		assert.Equal(t, "PLAYING", event.Transport.State)
+		assert.Equal(t, "Live Track", event.Current.Title)
+	default:
+		t.Fatal("expected an event to be published on Events()")
+	}
+}
+
+func TestDevice_HandleEvent_FetchesPositionWhenEventOmitsIt(t *testing.T) {
+	// LastChange usually omits RelativeTimePosition; without the fallback
+	// fetch the displayed position would snap back to zero on every event.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/xml")
+		fmt.Fprint(w, `<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+  <s:Body><u:GetPositionInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+    <TrackDuration>0:04:00</TrackDuration>
+    <TrackMetaData>NOT_IMPLEMENTED</TrackMetaData>
+    <TrackURI>x-sonos-http:live</TrackURI>
+    <RelTime>0:02:45</RelTime>
+  </u:GetPositionInfoResponse></s:Body>
+</s:Envelope>`)
+	}))
+	defer srv.Close()
+
+	d := newTestDevice(t, srv)
+
+	require.NoError(t, d.HandleEvent(notifyBody(`<TransportState val="PAUSED_PLAYBACK"/>`)))
+
+	assert.Equal(t, "PAUSED_PLAYBACK", d.State().Transport.State)
+	assert.Equal(t, "0:02:45", d.State().RelTime, "position should come from GetPositionInfo when the event omits it")
+}
+
+func TestDevice_HandleEvent_MalformedBodyIsAnError(t *testing.T) {
+	srv := avTransportServer(t, "PLAYING")
+	defer srv.Close()
+
+	d := newTestDevice(t, srv)
+
+	require.Error(t, d.HandleEvent([]byte("not xml at all")))
+}
+
+func TestDevice_HandleEvent_DropsRatherThanBlockingWhenNobodyReceives(t *testing.T) {
+	srv := avTransportServer(t, "PLAYING")
+	defer srv.Close()
+
+	d := newTestDevice(t, srv)
+
+	body := notifyBody(`<TransportState val="PLAYING"/><RelativeTimePosition val="0:00:10"/>`)
+
+	// Far more events than the channel buffer, with nothing draining it.
+	// A blocking send would wedge here and stall the HTTP listener that
+	// calls this in production.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range sonos.EventChanBuffer * 3 {
+			require.NoError(t, d.HandleEvent(body))
+		}
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("HandleEvent blocked when the event channel filled up")
+	}
+
+	assert.Equal(t, "PLAYING", d.State().Transport.State, "state must still be applied even when events are dropped")
+}
+
+func TestDevice_HandleEvent_ConcurrentWithCommands(t *testing.T) {
+	// Playback commands optimistically write the same state HandleEvent
+	// writes, and in production both run concurrently: a live event can
+	// land while a p/j/k/l command is still in flight. Meaningful under
+	// -race in particular.
+	srv := avTransportServer(t, "PLAYING")
+	defer srv.Close()
+
+	d := newTestDevice(t, srv)
+	body := notifyBody(`<TransportState val="PLAYING"/><RelativeTimePosition val="0:00:10"/>`)
+
+	drained := make(chan struct{})
+	go func() {
+		defer close(drained)
+		for range d.Events() {
+		}
+	}()
+
+	var wg sync.WaitGroup
+	for range 20 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			require.NoError(t, d.HandleEvent(body))
+		}()
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			require.NoError(t, d.Play())
+		}()
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = d.State()
+		}()
+	}
+	wg.Wait()
+
+	assert.NotEmpty(t, d.State().Transport.State)
 }
 
 func TestDevice_State_ReturnsCopy(t *testing.T) {
