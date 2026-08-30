@@ -8,6 +8,7 @@ import (
 
 type model struct {
 	tabs          panes.Tabs
+	ips           []string
 	width         int
 	height        int
 	discoveryDone bool

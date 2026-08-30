@@ -52,6 +52,25 @@ func (t Tabs) AddTab(tab Tab) Tabs {
 	return t
 }
 
+func (t Tabs) InsertTabAt(index int, tab Tab) Tabs {
+	if index < 0 {
+		index = 0
+	}
+	if index > len(t.Tabs) {
+		index = len(t.Tabs)
+	}
+	hadTabs := len(t.Tabs) > 0
+
+	t.Tabs = append(t.Tabs, Tab{})
+	copy(t.Tabs[index+1:], t.Tabs[index:])
+	t.Tabs[index] = tab
+
+	if hadTabs && index <= t.Active {
+		t.Active++
+	}
+	return t
+}
+
 // Init forwards to the initially active tab's content.
 func (t Tabs) Init() tea.Cmd {
 	if len(t.Tabs) == 0 {

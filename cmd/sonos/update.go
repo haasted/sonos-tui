@@ -1,6 +1,8 @@
 package main
 
 import (
+	"sort"
+
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/haasted/sonos-sandbox/internal/ui/panes"
@@ -21,7 +23,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, loadRoom(msg.speaker)
 	case roomReadyMsg:
 		wasEmpty := len(m.tabs.Tabs) == 0
-		m.tabs = m.tabs.AddTab(panes.Tab{Title: msg.title, Content: msg.room})
+		idx := sort.SearchStrings(m.ips, msg.ip)
+		m.ips = append(m.ips, "")
+		copy(m.ips[idx+1:], m.ips[idx:])
+		m.ips[idx] = msg.ip
+		m.tabs = m.tabs.InsertTabAt(idx, panes.Tab{Title: msg.title, Content: msg.room})
 		if wasEmpty {
 			return m, msg.room.Init()
 		}
