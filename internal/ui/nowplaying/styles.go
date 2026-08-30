@@ -33,4 +33,7 @@ var (
 	timeStyle = lipgloss.NewStyle().
 			Faint(true).
 			Foreground(lipgloss.AdaptiveColor{Light: "#4A4A4A", Dark: "#9B9B9B"})
+
+	errorStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.AdaptiveColor{Light: "#B00020", Dark: "#FF6B6B"})
 )

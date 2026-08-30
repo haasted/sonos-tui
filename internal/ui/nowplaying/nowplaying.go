@@ -26,6 +26,10 @@ type TrackMsg struct {
 	Track Track
 }
 
+type ErrorMsg struct {
+	Err error
+}
+
 type scrollTickMsg struct {
 	gen int
 }
@@ -63,6 +67,8 @@ type Model struct {
 	ticksWaited int
 	scrollGen   *int
 	posGen      *int
+
+	err error
 }
 
 func New(t Track) Model {
@@ -84,6 +90,7 @@ func (m Model) applyTrack(t Track) Model {
 	m.receivedAt = time.Now()
 	m.duration = t.Duration
 	m.ticksWaited = 0
+	m.err = nil
 	return m
 }
 
@@ -117,6 +124,8 @@ func (m Model) startCmds() tea.Cmd {
 }
 
 func (m Model) Init() tea.Cmd {
+	*m.scrollGen++
+	*m.posGen++
 	return m.startCmds()
 }
 
@@ -127,6 +136,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		*m.scrollGen++
 		*m.posGen++
 		return m, m.startCmds()
+	case ErrorMsg:
+		m.err = msg.Err
+		return m, nil
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
@@ -173,11 +185,15 @@ func (m Model) View() string {
 	titleLine := left + strings.Repeat(" ", gap) + position
 
 	indent := strings.Repeat(" ", lipgloss.Width(spinnerGlyph)+1)
-	return lipgloss.JoinVertical(lipgloss.Left,
+	lines := []string{
 		titleLine,
-		indent+m.artist.Render(artistStyle),
-		indent+m.album.Render(albumStyle),
-	)
+		indent + m.artist.Render(artistStyle),
+		indent + m.album.Render(albumStyle),
+	}
+	if m.err != nil {
+		lines = append(lines, errorStyle.Render("⚠ "+m.err.Error()))
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
 
 func formatPosition(elapsed, duration time.Duration) string {
