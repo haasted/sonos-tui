@@ -16,6 +16,8 @@ type model struct {
 	discoveryDone bool
 }
 
+var _ tea.Model = &model{}
+
 func newModel(events *sonos.EventManager) model {
 	tabs := panes.NewTabs(nil)
 	tabs.Position = panes.Bottom
