@@ -1,12 +1,16 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/haasted/sonos-sandbox/internal/ui/panes"
 )
 
 var (
@@ -174,4 +178,23 @@ func TestLoop_ViewIsDerivedOnlyFromModelState(t *testing.T) {
 	assert.Equal(t, "[left:0 right:0]", root.View().Content)
 
 	assert.Equal(t, "[left:8 right:8]", run(t, root).View().Content)
+}
+
+func TestLoop_ContextCancellationTerminatesTheProgram(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	program :=
+		tea.NewProgram(panes.StaticContent("idle"),
+			tea.WithContext(ctx),
+			tea.WithoutRenderer(),
+			tea.WithInput(nil),
+		)
+
+	_, err := program.Run()
+
+	require.ErrorIs(t, err, tea.ErrProgramKilled,
+		"StaticContent issues no commands, so nothing but the context can end this program")
+	require.ErrorIs(t, err, context.DeadlineExceeded,
+		"the context's own error is wrapped too, so a deliberate shutdown is distinguishable from a crash")
 }
