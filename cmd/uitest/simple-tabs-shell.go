@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/haasted/sonos-sandbox/internal/ui/panes"
 )
@@ -47,11 +47,11 @@ func (m simpleTabsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m simpleTabsModel) View() string {
+func (m simpleTabsModel) View() tea.View {
 	if m.quitting {
-		return ""
+		return tea.NewView("")
 	}
-	return m.tabs.View() + "\n\ntab/shift+tab or ←/→ to switch tabs · q to quit\n"
+	return tea.NewView(m.tabs.View() + "\n\ntab/shift+tab or ←/→ to switch tabs · q to quit\n")
 }
 
 func runSimpleTabs(tabs panes.Tabs) {

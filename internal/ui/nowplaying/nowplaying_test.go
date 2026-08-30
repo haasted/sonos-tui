@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/haasted/sonos-sandbox/internal/ui/nowplaying"
 	"github.com/stretchr/testify/assert"

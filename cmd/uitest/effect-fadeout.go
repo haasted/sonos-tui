@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/lucasb-eyer/go-colorful"
 )
 
@@ -70,7 +70,7 @@ func (f fadeEffect) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return f, fadeTick()
 }
 
-func (f fadeEffect) View() string {
+func (f fadeEffect) View() tea.View {
 	t := float64(f.step) / float64(fadeSteps)
 	current := f.from.BlendLuv(f.bg, t) // CIE-Luv blend: smoother than a raw RGB lerp
 
@@ -93,5 +93,5 @@ func (f fadeEffect) View() string {
 	if f.pausing {
 		label = "Fade Out (faded)"
 	}
-	return style.Render(fmt.Sprintf("%s  %.0f%%  %s", label, t*100, current.Hex()))
+	return tea.NewView(style.Render(fmt.Sprintf("%s  %.0f%%  %s", label, t*100, current.Hex())))
 }

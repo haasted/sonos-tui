@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"sort"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/haasted/sonos-sandbox/internal/sonos"
 	"github.com/haasted/sonos-sandbox/internal/ui/nowplaying"
@@ -101,13 +101,18 @@ func isSpeaker(device *sonos.Device, speaker sonos.Speaker) bool {
 	return device.IP == speaker.IP
 }
 
-func (m appModel) View() string {
+func (m appModel) View() tea.View {
+	var content string
 	switch {
 	case len(m.tabs.Tabs) == 0 && m.discoveryDone:
-		return "No Sonos speakers found on the local network."
+		content = "No Sonos speakers found on the local network."
 	case len(m.tabs.Tabs) == 0:
-		return "Discovering Sonos speakers..."
+		content = "Discovering Sonos speakers..."
 	default:
-		return m.tabs.View()
+		content = m.tabs.View()
 	}
+
+	view := tea.NewView(content)
+	view.AltScreen = true
+	return view
 }

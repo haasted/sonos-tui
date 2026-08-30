@@ -1,4 +1,4 @@
-// Package spinners holds extra github.com/charmbracelet/bubbles/spinner
+// Package spinners holds extra charm.land/bubbles/v2/spinner
 // styles built from Braille Pattern characters, since bubbles/spinner only
 // ships a fixed set. Exported the same way bubbles itself exports spinner.Dot,
 // spinner.Line, etc., so they drop straight into spinner.Model.Spinner.
@@ -7,7 +7,7 @@ package spinners
 import (
 	"time"
 
-	"github.com/charmbracelet/bubbles/spinner"
+	"charm.land/bubbles/v2/spinner"
 )
 
 // Braille reference for hand-building bar-style spinner frames (used by

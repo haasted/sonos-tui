@@ -3,7 +3,9 @@ package nowplaying
 import (
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
+
+	"github.com/haasted/sonos-sandbox/internal/ui/theme"
 )
 
 const (
@@ -24,16 +26,16 @@ var (
 	trackStyle = lipgloss.NewStyle().Bold(true)
 
 	artistStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.AdaptiveColor{Light: "#4A4A4A", Dark: "#9B9B9B"})
+			Foreground(theme.LightDark(lipgloss.Color("#4A4A4A"), lipgloss.Color("#9B9B9B")))
 
 	albumStyle = lipgloss.NewStyle().
 			Faint(true).
-			Foreground(lipgloss.AdaptiveColor{Light: "#4A4A4A", Dark: "#9B9B9B"})
+			Foreground(theme.LightDark(lipgloss.Color("#4A4A4A"), lipgloss.Color("#9B9B9B")))
 
 	timeStyle = lipgloss.NewStyle().
 			Faint(true).
-			Foreground(lipgloss.AdaptiveColor{Light: "#4A4A4A", Dark: "#9B9B9B"})
+			Foreground(theme.LightDark(lipgloss.Color("#4A4A4A"), lipgloss.Color("#9B9B9B")))
 
 	errorStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.AdaptiveColor{Light: "#B00020", Dark: "#FF6B6B"})
+			Foreground(theme.LightDark(lipgloss.Color("#B00020"), lipgloss.Color("#FF6B6B")))
 )

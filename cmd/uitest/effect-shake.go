@@ -4,8 +4,8 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 const (
@@ -41,9 +41,9 @@ func (m shakeEffect) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, shakeTick()
 }
 
-func (m shakeEffect) View() string {
+func (m shakeEffect) View() tea.View {
 	pad := strings.Repeat(" ", shakeOffsets[m.frame])
-	return shakeStyle.Render(pad + shakeText)
+	return tea.NewView(shakeStyle.Render(pad + shakeText))
 }
 
 var shakeStyle = lipgloss.NewStyle().

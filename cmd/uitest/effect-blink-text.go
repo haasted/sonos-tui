@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+
+	"github.com/haasted/sonos-sandbox/internal/ui/theme"
 )
 
 // textBlinkEffect is a variant of blinkEffect where the text itself
@@ -40,7 +42,7 @@ func (b textBlinkEffect) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return b, blinkTick()
 }
 
-func (b textBlinkEffect) View() string {
+func (b textBlinkEffect) View() tea.View {
 	style := textBlinkRestStyle
 	if !b.resting {
 		style = textBlinkOnStyle
@@ -53,7 +55,7 @@ func (b textBlinkEffect) View() string {
 		// so the text disappearing doesn't shift the layout.
 		content = strings.Repeat(" ", lipgloss.Width(label))
 	}
-	return style.Render(content)
+	return tea.NewView(style.Render(content))
 }
 
 var (
@@ -64,5 +66,5 @@ var (
 
 	textBlinkRestStyle = lipgloss.NewStyle().
 				Padding(1, 3).
-				Foreground(lipgloss.AdaptiveColor{Light: "#4A4A4A", Dark: "#9B9B9B"})
+				Foreground(theme.LightDark(lipgloss.Color("#4A4A4A"), lipgloss.Color("#9B9B9B")))
 )

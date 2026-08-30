@@ -5,9 +5,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+
+	"github.com/haasted/sonos-sandbox/internal/ui/theme"
 
 	"github.com/haasted/sonos-sandbox/internal/ui/panes"
 	"github.com/haasted/sonos-sandbox/pkg/ui/spinners"
@@ -39,7 +41,7 @@ var mockProgressTracks = []mockTrackProgress{
 
 var progressTimeStyle = lipgloss.NewStyle().
 	Faint(true).
-	Foreground(lipgloss.AdaptiveColor{Light: "#4A4A4A", Dark: "#9B9B9B"})
+	Foreground(theme.LightDark(lipgloss.Color("#4A4A4A"), lipgloss.Color("#9B9B9B")))
 
 const titleRowWidth = 50
 
@@ -160,7 +162,7 @@ func (m progressContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m progressContent) View() string {
+func (m progressContent) View() tea.View {
 	spinnerGlyph := m.spinner.View()
 	left := lipgloss.JoinHorizontal(lipgloss.Top, spinnerGlyph, " ", m.title.render(trackStyle))
 	position := formatPosition(m.track.elapsed, m.track.duration)
@@ -172,11 +174,11 @@ func (m progressContent) View() string {
 	titleLine := left + strings.Repeat(" ", gap) + position
 
 	indent := strings.Repeat(" ", lipgloss.Width(spinnerGlyph)+1)
-	return lipgloss.JoinVertical(lipgloss.Left,
+	return tea.NewView(lipgloss.JoinVertical(lipgloss.Left,
 		titleLine,
 		indent+m.artist.render(artistStyle),
 		indent+m.album.render(albumStyle),
-	)
+	))
 }
 
 func formatPosition(elapsed, duration time.Duration) string {

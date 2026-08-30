@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/haasted/sonos-sandbox/internal/log"
 	"github.com/haasted/sonos-sandbox/internal/sonos"
@@ -32,7 +32,7 @@ func main() {
 		slog.Error("starting event listener — continuing without live updates", "err", err)
 	}
 
-	program := tea.NewProgram(newAppModel(events), tea.WithAltScreen())
+	program := tea.NewProgram(newAppModel(events))
 
 	go discoverSpeakers(program)
 

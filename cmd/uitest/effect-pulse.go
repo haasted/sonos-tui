@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/lucasb-eyer/go-colorful"
 )
 
@@ -44,7 +44,7 @@ func (p pulseEffect) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return p, nil
 }
 
-func (p pulseEffect) View() string {
+func (p pulseEffect) View() tea.View {
 	bg := colorful.Hsv(p.hue, 0.85, 0.85)
 
 	// Flip text color by background luminance so it stays readable across
@@ -61,5 +61,5 @@ func (p pulseEffect) View() string {
 		Background(lipgloss.Color(bg.Hex())).
 		Foreground(fg)
 
-	return style.Render(fmt.Sprintf("Pulse  hue=%.0f°  %s", p.hue, bg.Hex()))
+	return tea.NewView(style.Render(fmt.Sprintf("Pulse  hue=%.0f°  %s", p.hue, bg.Hex())))
 }

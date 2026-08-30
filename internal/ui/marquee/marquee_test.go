@@ -3,7 +3,7 @@ package marquee_test
 import (
 	"testing"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/haasted/sonos-sandbox/internal/ui/marquee"
 	"github.com/stretchr/testify/assert"
 )

@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+
+	"github.com/haasted/sonos-sandbox/internal/ui/theme"
 )
 
 const (
@@ -54,11 +56,11 @@ func (m countdownEffect) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, countdownTick()
 }
 
-func (m countdownEffect) View() string {
+func (m countdownEffect) View() tea.View {
 	if m.done {
-		return countdownGoStyle.Render("Go!")
+		return tea.NewView(countdownGoStyle.Render("Go!"))
 	}
-	return countdownStyle.Render(fmt.Sprintf("%d", m.remaining))
+	return tea.NewView(countdownStyle.Render(fmt.Sprintf("%d", m.remaining)))
 }
 
 var (
@@ -66,7 +68,7 @@ var (
 			Bold(true).
 			Padding(1, 4).
 			Foreground(lipgloss.Color("#FFFFFF")).
-			Background(lipgloss.AdaptiveColor{Light: "#6B46C1", Dark: "#A855F7"})
+			Background(theme.LightDark(lipgloss.Color("#6B46C1"), lipgloss.Color("#A855F7")))
 
 	countdownGoStyle = lipgloss.NewStyle().
 				Bold(true).

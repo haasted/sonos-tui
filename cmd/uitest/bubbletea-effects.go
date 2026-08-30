@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/lucasb-eyer/go-colorful"
 	"github.com/muesli/termenv"
 
@@ -59,16 +59,16 @@ func (m effectsRootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m effectsRootModel) View() string {
+func (m effectsRootModel) View() tea.View {
 	if m.quitting {
-		return ""
+		return tea.NewView("")
 	}
-	return m.tabs.View() + "\n\ntab/shift+tab or ←/→ to switch tabs · q to quit\n"
+	return tea.NewView(m.tabs.View() + "\n\ntab/shift+tab or ←/→ to switch tabs · q to quit\n")
 }
 
 func layoutEffects() {
 	// Query the terminal's real background color (OSC 11, via termenv —
-	// the same mechanism Lipgloss's AdaptiveColor uses) before starting
+	// the same mechanism Lipgloss's light/dark detection uses) before starting
 	// the Bubbletea program, not inside Init(). Once Run() starts,
 	// Bubbletea owns raw-mode reads from stdin for its own key-event loop;
 	// querying afterward would race it for the OSC 11 reply and likely

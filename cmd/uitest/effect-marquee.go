@@ -3,8 +3,8 @@ package main
 import (
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // marqueeText is scrolled across marqueeWidth — deliberately longer than
@@ -52,13 +52,13 @@ func (m marqueeEffect) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, marqueeTick()
 }
 
-func (m marqueeEffect) View() string {
+func (m marqueeEffect) View() tea.View {
 	// Doubling the text and sliding a window across it wraps around for
 	// free — no special-casing the point where the window would otherwise
 	// run past the end of the string.
 	doubled := append(append([]rune{}, m.runes...), m.runes...)
 	visible := string(doubled[m.offset : m.offset+marqueeWidth])
-	return marqueeStyle.Render(visible)
+	return tea.NewView(marqueeStyle.Render(visible))
 }
 
 var marqueeStyle = lipgloss.NewStyle().

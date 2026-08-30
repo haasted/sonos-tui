@@ -5,8 +5,10 @@ package panes
 import (
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+
+	"github.com/haasted/sonos-sandbox/internal/ui/theme"
 )
 
 // Tab is one entry in a Tabs component: a header label plus the model
@@ -143,7 +145,7 @@ func (t Tabs) View() string {
 	} else {
 		box = box.BorderTop(false)
 	}
-	content := box.Render(t.Tabs[t.Active].Content.View())
+	content := box.Render(t.Tabs[t.Active].Content.View().Content)
 
 	divider := separatorStyle.Render(strings.Repeat("─", max(lipgloss.Width(row), lipgloss.Width(content))))
 
@@ -224,24 +226,24 @@ func (t Tabs) headerRow() string {
 	return row
 }
 
-// Colors are AdaptiveColor so the palette stays legible whether the user's
-// terminal background is light or dark, rather than assuming one or the other.
+// Colors go through theme.LightDark so the palette stays legible whether the
+// user's terminal background is light or dark, rather than assuming one or the other.
 var (
 	activeTabStyle = lipgloss.NewStyle().
 			Bold(true).
 			Padding(0, 1).
-			Foreground(lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#FFFFFF"}).
-			Background(lipgloss.AdaptiveColor{Light: "#6B46C1", Dark: "#A855F7"})
+			Foreground(theme.LightDark(lipgloss.Color("#FFFFFF"), lipgloss.Color("#FFFFFF"))).
+			Background(theme.LightDark(lipgloss.Color("#6B46C1"), lipgloss.Color("#A855F7")))
 
 	inactiveTabStyle = lipgloss.NewStyle().
 				Padding(0, 1).
-				Foreground(lipgloss.AdaptiveColor{Light: "#4A4A4A", Dark: "#9B9B9B"})
+				Foreground(theme.LightDark(lipgloss.Color("#4A4A4A"), lipgloss.Color("#9B9B9B")))
 
 	separatorStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.AdaptiveColor{Light: "#D0D0D0", Dark: "#4A4A4A"})
+			Foreground(theme.LightDark(lipgloss.Color("#D0D0D0"), lipgloss.Color("#4A4A4A")))
 
 	contentStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.AdaptiveColor{Light: "#D0D0D0", Dark: "#4A4A4A"}).
+			BorderForeground(theme.LightDark(lipgloss.Color("#D0D0D0"), lipgloss.Color("#4A4A4A"))).
 			Padding(1, 2)
 )

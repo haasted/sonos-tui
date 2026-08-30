@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/haasted/sonos-sandbox/internal/ui/panes"
 	"github.com/haasted/sonos-sandbox/pkg/ui/spinners"
@@ -135,16 +135,16 @@ func (m tabsRootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m tabsRootModel) View() string {
+func (m tabsRootModel) View() tea.View {
 	if m.quitting {
-		return ""
+		return tea.NewView("")
 	}
 
 	hint := "\n\ntab/shift+tab or ←/→ to switch tabs · 1-8 to jump, 0 for last · d to cycle spinner style · q to quit\n"
 	if m.forcedWidth > 0 {
 		hint = fmt.Sprintf(" [ui-size: %dx%d]", m.forcedWidth, m.forcedHeight) + hint
 	}
-	return m.tabs.View() + hint
+	return tea.NewView(m.tabs.View() + hint)
 }
 
 func layoutTabs() {

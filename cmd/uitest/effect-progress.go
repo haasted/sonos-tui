@@ -5,8 +5,10 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+
+	"github.com/haasted/sonos-sandbox/internal/ui/theme"
 )
 
 const (
@@ -56,15 +58,15 @@ func (m progressEffect) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, progressTick()
 }
 
-func (m progressEffect) View() string {
+func (m progressEffect) View() tea.View {
 	filled := progressFilledStyle.Render(strings.Repeat("█", m.step))
 	empty := progressEmptyStyle.Render(strings.Repeat("░", progressWidth-m.step))
 	pct := m.step * 100 / progressWidth
-	return progressBoxStyle.Render(fmt.Sprintf("%s%s %3d%%", filled, empty, pct))
+	return tea.NewView(progressBoxStyle.Render(fmt.Sprintf("%s%s %3d%%", filled, empty, pct)))
 }
 
 var (
-	progressFilledStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#0B6E4F", Dark: "#3DDC97"})
-	progressEmptyStyle  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#D0D0D0", Dark: "#4A4A4A"})
+	progressFilledStyle = lipgloss.NewStyle().Foreground(theme.LightDark(lipgloss.Color("#0B6E4F"), lipgloss.Color("#3DDC97")))
+	progressEmptyStyle  = lipgloss.NewStyle().Foreground(theme.LightDark(lipgloss.Color("#D0D0D0"), lipgloss.Color("#4A4A4A")))
 	progressBoxStyle    = lipgloss.NewStyle().Bold(true).Padding(1, 3)
 )

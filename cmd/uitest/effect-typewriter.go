@@ -3,8 +3,10 @@ package main
 import (
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+
+	"github.com/haasted/sonos-sandbox/internal/ui/theme"
 )
 
 const (
@@ -54,16 +56,16 @@ func (m typewriterEffect) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, typewriterTick()
 }
 
-func (m typewriterEffect) View() string {
+func (m typewriterEffect) View() tea.View {
 	visible := string([]rune(typewriterText)[:m.shown])
 	cursor := "▌"
 	if m.pausing {
 		cursor = "" // hide the cursor once fully typed, reads as "done"
 	}
-	return typewriterStyle.Render(visible + cursor)
+	return tea.NewView(typewriterStyle.Render(visible + cursor))
 }
 
 var typewriterStyle = lipgloss.NewStyle().
 	Bold(true).
 	Padding(1, 3).
-	Foreground(lipgloss.AdaptiveColor{Light: "#1A1A1A", Dark: "#E5E5E5"})
+	Foreground(theme.LightDark(lipgloss.Color("#1A1A1A"), lipgloss.Color("#E5E5E5")))

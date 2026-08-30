@@ -5,9 +5,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+
+	"github.com/haasted/sonos-sandbox/internal/ui/theme"
 
 	"github.com/haasted/sonos-sandbox/pkg/ui/spinners"
 )
@@ -40,13 +42,13 @@ var mockOverview = []overviewSpeaker{
 var (
 	headerStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.AdaptiveColor{Light: "#6B46C1", Dark: "#A855F7"})
+			Foreground(theme.LightDark(lipgloss.Color("#6B46C1"), lipgloss.Color("#A855F7")))
 
 	roomStyle = lipgloss.NewStyle().Bold(true)
 
 	idleStyle = lipgloss.NewStyle().
 			Faint(true).
-			Foreground(lipgloss.AdaptiveColor{Light: "#4A4A4A", Dark: "#9B9B9B"})
+			Foreground(theme.LightDark(lipgloss.Color("#4A4A4A"), lipgloss.Color("#9B9B9B")))
 )
 
 // overviewRootModel is the "Overview" mockup: every speaker shown at once,
@@ -109,9 +111,9 @@ func (m overviewRootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m overviewRootModel) View() string {
+func (m overviewRootModel) View() tea.View {
 	if m.quitting {
-		return ""
+		return tea.NewView("")
 	}
 
 	roomWidth := 0
@@ -140,7 +142,7 @@ func (m overviewRootModel) View() string {
 	}
 
 	b.WriteString("q to quit\n")
-	return b.String()
+	return tea.NewView(b.String())
 }
 
 // overviewIcon is the per-row state indicator: an animated spinner while

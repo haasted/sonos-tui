@@ -3,8 +3,8 @@ package main
 import (
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/lucasb-eyer/go-colorful"
 )
 
@@ -44,7 +44,7 @@ func (m waveEffect) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, waveTick()
 }
 
-func (m waveEffect) View() string {
+func (m waveEffect) View() tea.View {
 	var out string
 	for i, r := range []rune(waveText) {
 		hue := m.offset + float64(i)*waveHueStep
@@ -54,7 +54,7 @@ func (m waveEffect) View() string {
 		color := colorful.Hsv(hue, 0.85, 0.9)
 		out += lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(color.Hex())).Render(string(r))
 	}
-	return waveBoxStyle.Render(out)
+	return tea.NewView(waveBoxStyle.Render(out))
 }
 
 var waveBoxStyle = lipgloss.NewStyle().Padding(1, 3)

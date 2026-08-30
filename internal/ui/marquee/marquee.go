@@ -1,6 +1,6 @@
 package marquee
 
-import "github.com/charmbracelet/lipgloss"
+import "charm.land/lipgloss/v2"
 
 type Line struct {
 	text        string

@@ -3,7 +3,7 @@ package main
 import (
 	"log/slog"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/haasted/sonos-sandbox/internal/sonos"
 	"github.com/haasted/sonos-sandbox/internal/ui/nowplaying"
@@ -78,6 +78,6 @@ func runDeviceAction(device *sonos.Device, name string, action func(*sonos.Devic
 	return nowplaying.TrackMsg{Track: trackFromState(device.State())}
 }
 
-func (m roomModel) View() string {
-	return m.widget.View()
+func (m roomModel) View() tea.View {
+	return tea.NewView(m.widget.View())
 }
