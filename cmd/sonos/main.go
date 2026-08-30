@@ -32,7 +32,7 @@ func main() {
 		slog.Error("starting event listener — continuing without live updates", "err", err)
 	}
 
-	program := tea.NewProgram(newModel(events), tea.WithAltScreen())
+	program := tea.NewProgram(newAppModel(events), tea.WithAltScreen())
 
 	go discoverSpeakers(program)
 

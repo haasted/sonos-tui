@@ -9,6 +9,8 @@ import (
 	"github.com/haasted/sonos-sandbox/internal/ui/nowplaying"
 )
 
+var _ tea.Model = &roomModel{}
+
 type roomModel struct {
 	device *sonos.Device
 	widget nowplaying.Model

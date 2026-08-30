@@ -11,7 +11,29 @@ import (
 	"github.com/haasted/sonos-sandbox/internal/ui/panes"
 )
 
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+var _ tea.Model = &appModel{}
+
+type appModel struct {
+	tabs          panes.Tabs
+	ips           []string
+	events        *sonos.EventManager
+	width         int
+	height        int
+	discoveryDone bool
+}
+
+func newAppModel(events *sonos.EventManager) appModel {
+	tabs := panes.NewTabs(nil)
+	tabs.Position = panes.Bottom
+	tabs.HideBorder = true
+	return appModel{tabs: tabs, events: events}
+}
+
+func (m appModel) Init() tea.Cmd {
+	return m.tabs.Init()
+}
+
+func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -52,7 +74,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m model) applyEvent(event sonos.Event) (tea.Model, tea.Cmd) {
+func (m appModel) applyEvent(event sonos.Event) (tea.Model, tea.Cmd) {
 	for i, tab := range m.tabs.Tabs {
 		room, ok := tab.Content.(roomModel)
 		if !ok || !isSpeaker(room.device, event.Speaker) {
@@ -77,4 +99,15 @@ func isSpeaker(device *sonos.Device, speaker sonos.Speaker) bool {
 		return device.USN == speaker.USN
 	}
 	return device.IP == speaker.IP
+}
+
+func (m appModel) View() string {
+	switch {
+	case len(m.tabs.Tabs) == 0 && m.discoveryDone:
+		return "No Sonos speakers found on the local network."
+	case len(m.tabs.Tabs) == 0:
+		return "Discovering Sonos speakers..."
+	default:
+		return m.tabs.View()
+	}
 }
