@@ -37,8 +37,12 @@ func (m roomModel) Init() tea.Cmd {
 func (m roomModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		switch keyMsg.String() {
-		case "p", "P":
+		case "p", "P", "k", "K":
 			return m, togglePlayback(m.device)
+		case "j", "J":
+			return m, deviceCommand(m.device, (*sonos.Device).Previous)
+		case "l", "L":
+			return m, deviceCommand(m.device, (*sonos.Device).Next)
 		}
 	}
 
@@ -56,6 +60,15 @@ func togglePlayback(device *sonos.Device) tea.Cmd {
 			err = device.Play()
 		}
 		if err != nil {
+			return nowplaying.ErrorMsg{Err: err}
+		}
+		return nowplaying.TrackMsg{Track: trackFromState(device.State())}
+	}
+}
+
+func deviceCommand(device *sonos.Device, action func(*sonos.Device) error) tea.Cmd {
+	return func() tea.Msg {
+		if err := action(device); err != nil {
 			return nowplaying.ErrorMsg{Err: err}
 		}
 		return nowplaying.TrackMsg{Track: trackFromState(device.State())}
