@@ -113,8 +113,6 @@ func TestDevice_RefreshTrack(t *testing.T) {
 	assert.Equal(t, "0:01:15", state.RelTime)
 }
 
-// notifyBody builds a GENA NOTIFY payload in the escaped-LastChange form
-// real speakers send, wrapping whatever InstanceID children are given.
 func notifyBody(inner string) []byte {
 	return []byte(`<?xml version="1.0"?>
 <e:propertyset xmlns:e="urn:schemas-upnp-org:event-1-0">
@@ -161,8 +159,6 @@ func TestDevice_HandleEvent_UpdatesStateAndPublishes(t *testing.T) {
 }
 
 func TestDevice_HandleEvent_FetchesPositionWhenEventOmitsIt(t *testing.T) {
-	// LastChange usually omits RelativeTimePosition; without the fallback
-	// fetch the displayed position would snap back to zero on every event.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/xml")
 		fmt.Fprint(w, `<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
@@ -201,9 +197,6 @@ func TestDevice_HandleEvent_DropsRatherThanBlockingWhenNobodyReceives(t *testing
 
 	body := notifyBody(`<TransportState val="PLAYING"/><RelativeTimePosition val="0:00:10"/>`)
 
-	// Far more events than the channel buffer, with nothing draining it.
-	// A blocking send would wedge here and stall the HTTP listener that
-	// calls this in production.
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -222,10 +215,6 @@ func TestDevice_HandleEvent_DropsRatherThanBlockingWhenNobodyReceives(t *testing
 }
 
 func TestDevice_HandleEvent_ConcurrentWithCommands(t *testing.T) {
-	// Playback commands optimistically write the same state HandleEvent
-	// writes, and in production both run concurrently: a live event can
-	// land while a p/j/k/l command is still in flight. Meaningful under
-	// -race in particular.
 	srv := avTransportServer(t, "PLAYING")
 	defer srv.Close()
 

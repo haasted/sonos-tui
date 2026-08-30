@@ -27,9 +27,6 @@ func main() {
 	dumpLogs := log.CaptureLogs(*logsFlag)
 	defer dumpLogs()
 
-	// Live updates are a bonus, not a prerequisite: if the callback
-	// listener can't start, carry on with poll-only state rather than
-	// refusing to run at all.
 	events, err := sonos.NewEventManager()
 	if err != nil {
 		slog.Error("starting event listener — continuing without live updates", "err", err)
@@ -41,8 +38,6 @@ func main() {
 
 	_, runErr := program.Run()
 
-	// Bubbletea installs its own SIGINT/SIGTERM handlers and returns from
-	// Run on either, so this covers q, ctrl+c and kill alike.
 	if events != nil {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		if err := events.Close(shutdownCtx); err != nil {
@@ -86,9 +81,6 @@ func loadRoom(events *sonos.EventManager, speaker sonos.Speaker) tea.Cmd {
 			slog.Warn("refreshing track info", "speaker", speaker, "err", err)
 		}
 
-		// A speaker that won't accept a subscription still gets a room —
-		// it just shows the state we polled above rather than tracking
-		// changes live.
 		if events != nil {
 			if err := events.Subscribe(context.Background(), device); err != nil {
 				slog.Warn("subscribing to speaker events", "speaker", speaker, "err", err)
@@ -99,10 +91,6 @@ func loadRoom(events *sonos.EventManager, speaker sonos.Speaker) tea.Cmd {
 	}
 }
 
-// waitForEvent blocks on device's event stream and delivers the next event
-// as a message. Bubbletea runs each command on its own goroutine, so this
-// parks harmlessly until the speaker reports something; Update re-issues it
-// to keep listening.
 func waitForEvent(device *sonos.Device) tea.Cmd {
 	return func() tea.Msg {
 		event, ok := <-device.Events()

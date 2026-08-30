@@ -3,6 +3,7 @@ package nowplaying
 import (
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -28,6 +29,12 @@ type TrackMsg struct {
 
 type ErrorMsg struct {
 	Err error
+}
+
+var generations atomic.Int64
+
+func nextGeneration() int {
+	return int(generations.Add(1))
 }
 
 type scrollTickMsg struct {
@@ -124,17 +131,20 @@ func (m Model) startCmds() tea.Cmd {
 }
 
 func (m Model) Init() tea.Cmd {
-	*m.scrollGen++
-	*m.posGen++
+	m.restartTicks()
 	return m.startCmds()
+}
+
+func (m Model) restartTicks() {
+	*m.scrollGen = nextGeneration()
+	*m.posGen = nextGeneration()
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case TrackMsg:
 		m = m.applyTrack(msg.Track)
-		*m.scrollGen++
-		*m.posGen++
+		m.restartTicks()
 		return m, m.startCmds()
 	case ErrorMsg:
 		m.err = msg.Err

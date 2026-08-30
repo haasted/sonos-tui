@@ -6,16 +6,10 @@ import (
 	"net/http"
 )
 
-// avTransportEventPath is the GENA event endpoint for AVTransport, the
-// service that reports transport state and track changes.
 const avTransportEventPath = "/MediaRenderer/AVTransport/Event"
 
-// subscriptionSeconds is the lease length requested from the speaker. The
-// speaker may grant less, so renewal runs well inside this window.
 const subscriptionSeconds = 300
 
-// subscribe registers callbackURL to receive NOTIFYs for eventPath on the
-// speaker at baseURL, returning the subscription ID the speaker assigns.
 func subscribe(ctx context.Context, client *http.Client, baseURL, eventPath, callbackURL string) (string, error) {
 	req, err := eventRequest(ctx, baseURL, eventPath, "SUBSCRIBE")
 	if err != nil {
@@ -42,8 +36,6 @@ func subscribe(ctx context.Context, client *http.Client, baseURL, eventPath, cal
 	return sid, nil
 }
 
-// renew extends an existing subscription. Unlike subscribe it identifies
-// the subscription by SID rather than supplying a callback URL again.
 func renew(ctx context.Context, client *http.Client, baseURL, eventPath, sid string) error {
 	req, err := eventRequest(ctx, baseURL, eventPath, "SUBSCRIBE")
 	if err != nil {
@@ -64,8 +56,6 @@ func renew(ctx context.Context, client *http.Client, baseURL, eventPath, sid str
 	return nil
 }
 
-// unsubscribe cancels a subscription so the speaker stops sending NOTIFYs
-// to a callback URL that is about to disappear.
 func unsubscribe(ctx context.Context, client *http.Client, baseURL, eventPath, sid string) error {
 	req, err := eventRequest(ctx, baseURL, eventPath, "UNSUBSCRIBE")
 	if err != nil {

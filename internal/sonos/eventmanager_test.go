@@ -14,8 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeSpeaker stands in for a real speaker's event endpoint, recording the
-// callback URL it was handed so a test can post a NOTIFY back to it.
 type fakeSpeaker struct {
 	server *httptest.Server
 
@@ -82,8 +80,6 @@ func TestEventManager_DeliversNotifyToSubscribedDevice(t *testing.T) {
 	callback := fs.callback()
 	require.NotEmpty(t, callback, "the speaker should have been handed a callback URL to post events to")
 
-	// Post a NOTIFY exactly as a real speaker would, to the URL it was
-	// given — exercising the listener's routing, not just HandleEvent.
 	body := `<?xml version="1.0"?>
 <e:propertyset xmlns:e="urn:schemas-upnp-org:event-1-0">
   <e:property><LastChange>&lt;Event xmlns="urn:schemas-upnp-org:metadata-1-0/AVT/"&gt;&lt;InstanceID val="0"&gt;&lt;TransportState val="PLAYING"/&gt;&lt;RelativeTimePosition val="0:00:42"/&gt;&lt;/InstanceID&gt;&lt;/Event&gt;</LastChange></e:property>
@@ -119,8 +115,6 @@ func TestEventManager_NotifyToUnknownPathIsAcknowledged(t *testing.T) {
 		em.Close(ctx)
 	})
 
-	// A speaker whose subscription we already dropped can still have a
-	// NOTIFY in flight; it must not be treated as an error.
 	req, err := http.NewRequest("NOTIFY", em.listener.baseURL+notifyPrefix+"nosuchdevice", strings.NewReader("<propertyset/>"))
 	require.NoError(t, err)
 
@@ -168,7 +162,6 @@ func TestEventManager_SubscribeFailurePropagates(t *testing.T) {
 
 	require.Error(t, em.Subscribe(context.Background(), device))
 
-	// A failed subscribe must not leave a dangling route behind.
 	em.listener.mu.RLock()
 	routes := len(em.listener.routes)
 	em.listener.mu.RUnlock()

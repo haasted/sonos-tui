@@ -52,9 +52,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// applyEvent routes a speaker's event to that speaker's room. It can't go
-// through panes.Tabs, which only forwards to the active tab — an event for
-// a room the user isn't currently looking at has to reach it anyway.
 func (m model) applyEvent(event sonos.Event) (tea.Model, tea.Cmd) {
 	for i, tab := range m.tabs.Tabs {
 		room, ok := tab.Content.(roomModel)
@@ -65,9 +62,6 @@ func (m model) applyEvent(event sonos.Event) (tea.Model, tea.Cmd) {
 		updated, cmd := room.Update(nowplaying.TrackMsg{Track: trackFromState(room.device.State())})
 		m.tabs.Tabs[i].Content = updated
 
-		// Only the visible room should be animating. A background room's
-		// tick commands would run against a view nobody is looking at, and
-		// panes.Tabs re-runs Init on the tab the user switches to anyway.
 		if i != m.tabs.Active {
 			cmd = nil
 		}
@@ -78,9 +72,6 @@ func (m model) applyEvent(event sonos.Event) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// isSpeaker reports whether device is the speaker an event came from. USN
-// is the stable identity and survives a DHCP address change, but a Speaker
-// built by hand rather than by discovery may not have one, so IP stands in.
 func isSpeaker(device *sonos.Device, speaker sonos.Speaker) bool {
 	if device.USN != "" && speaker.USN != "" {
 		return device.USN == speaker.USN

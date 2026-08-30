@@ -13,19 +13,8 @@ import (
 	"sync"
 )
 
-// notifyPrefix is the path prefix every per-device callback URL sits
-// under. Registered on the mux as a subtree so each device can have its
-// own path below it.
 const notifyPrefix = "/notify/"
 
-// eventListener is the single HTTP server the whole process shares for
-// inbound GENA NOTIFYs. Speakers call back into it, so this is the one
-// place the program acts as a server rather than a client.
-//
-// NOTIFYs carry an SID header identifying the subscription, but routing on
-// a per-device path instead means a renewal that changes the SID, or a
-// stray NOTIFY from a subscription we already dropped, can't be
-// misattributed to the wrong speaker.
 type eventListener struct {
 	server  *http.Server
 	baseURL string
@@ -64,9 +53,6 @@ func newEventListener() (*eventListener, error) {
 	return el, nil
 }
 
-// register routes NOTIFYs for device to it, returning the callback URL the
-// speaker should be told to post to. Re-registering the same device
-// reuses its path rather than leaking a second route.
 func (el *eventListener) register(device *Device) string {
 	path := notifyPath(device)
 
@@ -96,9 +82,6 @@ func (el *eventListener) handleNotify(w http.ResponseWriter, r *http.Request) {
 	device := el.routes[r.URL.Path]
 	el.mu.RUnlock()
 
-	// A speaker whose subscription we already dropped can still have a
-	// NOTIFY in flight. Acknowledge it rather than erroring, so the
-	// speaker doesn't treat us as broken.
 	if device == nil {
 		slog.Debug("NOTIFY for unknown subscription", "path", r.URL.Path)
 		w.WriteHeader(http.StatusOK)
@@ -116,9 +99,6 @@ func (el *eventListener) close(ctx context.Context) error {
 	return el.server.Shutdown(ctx)
 }
 
-// notifyPath derives a device's callback path from its USN, hashed to keep
-// the URL short and path-safe (a raw USN is a long "uuid:RINCON_...::urn:..."
-// string). Deterministic, so re-registering a device is idempotent.
 func notifyPath(device *Device) string {
 	key := device.USN
 	if key == "" {

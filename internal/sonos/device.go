@@ -5,9 +5,6 @@ import (
 	"sync"
 )
 
-// eventChanBuffer bounds how many events can queue for a Device before
-// HandleEvent starts dropping them. Small on purpose: AVTransport events
-// fire on track/state changes, not continuously.
 const eventChanBuffer = 8
 
 // Device wraps a Client with the identity and last-known state of one
@@ -32,13 +29,6 @@ type DeviceState struct {
 	RelTime   string
 }
 
-// Event reports that a speaker's state changed. Transport and Current are
-// the freshly applied state, lifted out for cheap consumption; Raw carries
-// everything else the speaker sent (next track, queue source, play mode).
-//
-// Deliberately free of any UI framework types — a Bubbletea program can
-// forward these as tea.Msg values directly, without this package knowing
-// anything about Bubbletea.
 type Event struct {
 	Speaker   Speaker
 	Transport TransportInfo
@@ -61,21 +51,10 @@ func NewDeviceWithClient(speaker Speaker, client *SonosClient) *Device {
 	}
 }
 
-// Events returns the stream of state changes reported by the speaker,
-// populated once this Device is registered with an EventManager. Never
-// closed: a receiver can range over it for the lifetime of the process.
 func (d *Device) Events() <-chan Event {
 	return d.events
 }
 
-// HandleEvent applies a GENA NOTIFY body to this Device's state and
-// publishes the result on Events.
-//
-// LastChange usually omits RelativeTimePosition (see AVTransportEvent), so
-// taking the event at face value would snap the reported position back to
-// zero on every play/pause. One GetPositionInfo call fills it in instead —
-// which also picks up seeks performed from another controller, since those
-// arrive as an event with no position of their own.
 func (d *Device) HandleEvent(body []byte) error {
 	parsed, err := ParseAVTransportEvent(body)
 	if err != nil {
@@ -108,11 +87,6 @@ func (d *Device) HandleEvent(body []byte) error {
 		Raw:       parsed,
 	}
 
-	// Never block: this runs on the listener's request goroutine, and a
-	// consumer that has stopped receiving (the UI shutting down, say)
-	// would otherwise wedge it and stall the listener's own shutdown.
-	// State is already applied above, so a dropped event only costs a
-	// redraw, not correctness.
 	select {
 	case d.events <- event:
 	default:

@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/haasted/sonos-sandbox/internal/ui/nowplaying"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -87,6 +89,28 @@ func TestModel_Init_InvalidatesPreviousTickChain(t *testing.T) {
 	currentMsg := currentCmd()
 	_, cmdAfterCurrent := m.Update(currentMsg)
 	assert.NotNil(t, cmdAfterCurrent, "a tick from the chain started by the latest Init() must keep ticking")
+}
+
+const scrollingTitle = "This Title Is Definitely Long Enough To Need Scrolling"
+
+func TestModel_ScrollTicksDoNotCrossBetweenModels(t *testing.T) {
+	other := nowplaying.New(nowplaying.Track{Title: scrollingTitle})
+	m := nowplaying.New(nowplaying.Track{Title: scrollingTitle})
+
+	otherCmd := other.Init()
+	require.NotNil(t, otherCmd, "a title this long should start a scroll chain")
+	require.NotNil(t, m.Init())
+
+	foreignTick := otherCmd()
+	viewBefore := m.View()
+
+	for range nowplaying.ScrollDelayTicks * 2 {
+		var cmd tea.Cmd
+		m, cmd = m.Update(foreignTick)
+		assert.Nil(t, cmd, "a foreign model's tick must not re-arm this model's chain")
+	}
+
+	assert.Equal(t, viewBefore, m.View(), "a foreign model's ticks must not advance this model's marquee")
 }
 
 func TestModel_Elapsed_ClampsToDuration(t *testing.T) {

@@ -10,8 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// capturedRequest records what a fake speaker saw, so tests can assert on
-// the GENA headers rather than just the happy-path return value.
 type capturedRequest struct {
 	method   string
 	path     string
