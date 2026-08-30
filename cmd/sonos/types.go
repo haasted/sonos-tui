@@ -8,6 +8,7 @@ type speakerFoundMsg struct {
 
 type roomReadyMsg struct {
 	title string
+	ip    string
 	room  roomModel
 }
 
