@@ -1,6 +1,8 @@
 package main
 
 import (
+	"log/slog"
+
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/haasted/sonos-sandbox/internal/sonos"
@@ -40,9 +42,9 @@ func (m roomModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "p", "P", "k", "K":
 			return m, togglePlayback(m.device)
 		case "j", "J":
-			return m, deviceCommand(m.device, (*sonos.Device).Previous)
+			return m, deviceCommand(m.device, "previous", (*sonos.Device).Previous)
 		case "l", "L":
-			return m, deviceCommand(m.device, (*sonos.Device).Next)
+			return m, deviceCommand(m.device, "next", (*sonos.Device).Next)
 		}
 	}
 
@@ -53,26 +55,25 @@ func (m roomModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func togglePlayback(device *sonos.Device) tea.Cmd {
 	return func() tea.Msg {
-		var err error
 		if device.State().Transport.State == "PLAYING" {
-			err = device.Pause()
-		} else {
-			err = device.Play()
+			return runDeviceAction(device, "pause", (*sonos.Device).Pause)
 		}
-		if err != nil {
-			return nowplaying.ErrorMsg{Err: err}
-		}
-		return nowplaying.TrackMsg{Track: trackFromState(device.State())}
+		return runDeviceAction(device, "play", (*sonos.Device).Play)
 	}
 }
 
-func deviceCommand(device *sonos.Device, action func(*sonos.Device) error) tea.Cmd {
+func deviceCommand(device *sonos.Device, name string, action func(*sonos.Device) error) tea.Cmd {
 	return func() tea.Msg {
-		if err := action(device); err != nil {
-			return nowplaying.ErrorMsg{Err: err}
-		}
-		return nowplaying.TrackMsg{Track: trackFromState(device.State())}
+		return runDeviceAction(device, name, action)
 	}
+}
+
+func runDeviceAction(device *sonos.Device, name string, action func(*sonos.Device) error) tea.Msg {
+	if err := action(device); err != nil {
+		slog.Warn("playback command failed", "speaker", device.Speaker, "action", name, "err", err)
+		return nowplaying.ErrorMsg{Err: err}
+	}
+	return nowplaying.TrackMsg{Track: trackFromState(device.State())}
 }
 
 func (m roomModel) View() string {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -56,19 +57,85 @@ func (c *SonosClient) Do(path, serviceURN, action, body string) ([]byte, error) 
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		if fault := parseSOAPFault(data); fault != nil {
+			return nil, fault
+		}
 		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, data)
 	}
 
 	return data, nil
 }
 
-// soapFault is used to decode SOAP error responses.
 type soapFault struct {
-	XMLName xml.Name `xml:"Envelope>Body>Fault"`
-	Code    string   `xml:"faultcode"`
-	String  string   `xml:"faultstring"`
-	Detail  struct {
+	Code   string `xml:"Body>Fault>faultcode"`
+	String string `xml:"Body>Fault>faultstring"`
+	Detail struct {
 		ErrorCode string `xml:"UPnPError>errorCode"`
 		ErrorDesc string `xml:"UPnPError>errorDescription"`
-	} `xml:"detail"`
+	} `xml:"Body>Fault>detail"`
+}
+
+// UPnPError is the decoded contents of a SOAP fault. Sonos reports refused
+// actions as HTTP 500 with the reason in the body, so callers wanting to
+// react to a specific failure should match on Code with errors.As.
+type UPnPError struct {
+	Code        int
+	Description string
+	Fault       string
+}
+
+func (e *UPnPError) Error() string {
+	if e.Description == "" {
+		return fmt.Sprintf("UPnP error %d", e.Code)
+	}
+	return fmt.Sprintf("UPnP error %d: %s", e.Code, e.Description)
+}
+
+func parseSOAPFault(data []byte) *UPnPError {
+	var fault soapFault
+	if err := xml.Unmarshal(data, &fault); err != nil {
+		return nil
+	}
+
+	code, err := strconv.Atoi(strings.TrimSpace(fault.Detail.ErrorCode))
+	if err != nil {
+		return nil
+	}
+
+	// Speakers routinely send errorCode with no errorDescription, so fall
+	// back to the standard text for the code rather than reporting a bare
+	// number.
+	desc := strings.TrimSpace(fault.Detail.ErrorDesc)
+	if desc == "" {
+		desc = upnpErrorDescriptions[code]
+	}
+
+	return &UPnPError{Code: code, Description: desc, Fault: fault.String}
+}
+
+// upnpErrorDescriptions covers the generic UPnP codes plus the AVTransport
+// ones, per the UPnP AVTransport:1 service specification.
+var upnpErrorDescriptions = map[int]string{
+	401: "invalid action",
+	402: "invalid args",
+	501: "action failed",
+	600: "argument value invalid",
+	701: "transition not available",
+	702: "no contents",
+	703: "read error",
+	704: "format not supported for playback",
+	705: "transport is locked",
+	706: "write error",
+	707: "media is protected or not writable",
+	708: "format not supported for recording",
+	709: "media is full",
+	710: "seek mode not supported",
+	711: "illegal seek target",
+	712: "play mode not supported",
+	713: "record quality not supported",
+	714: "illegal MIME-type",
+	715: "content busy",
+	716: "resource not found",
+	717: "play speed not supported",
+	718: "invalid InstanceID",
 }
