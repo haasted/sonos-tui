@@ -160,6 +160,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 func (m Model) View() string {
 	spinnerGlyph := m.spinner.View()
+	if !m.playing {
+		spinnerGlyph = pausedGlyph
+	}
 	left := lipgloss.JoinHorizontal(lipgloss.Top, spinnerGlyph, " ", m.title.Render(trackStyle))
 	position := formatPosition(m.elapsed(), m.duration)
 

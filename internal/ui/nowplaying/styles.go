@@ -11,6 +11,8 @@ const (
 	longTitleWindowWidth = 35
 )
 
+const pausedGlyph = "⣿"
+
 const (
 	scrollInterval = 150 * time.Millisecond
 	scrollDelay    = 3 * time.Second

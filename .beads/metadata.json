@@ -1,7 +1,0 @@
-{
-  "database": "dolt",
-  "backend": "dolt",
-  "dolt_mode": "embedded",
-  "dolt_database": "sonos_sandbox",
-  "project_id": "3d4c2861-bacd-408b-b1e5-88083040278e"
-}
