@@ -47,7 +47,7 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case speakerFoundMsg:
 		return m, loadRoom(m.events, msg.speaker)
 	case roomReadyMsg:
-		wasEmpty := len(m.tabs.Tabs) == 0
+		wasEmpty := len(m.tabs.Items) == 0
 		idx := sort.SearchStrings(m.ips, msg.ip)
 		m.ips = append(m.ips, "")
 		copy(m.ips[idx+1:], m.ips[idx:])
@@ -75,14 +75,14 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m appModel) applyEvent(event sonos.Event) (tea.Model, tea.Cmd) {
-	for i, tab := range m.tabs.Tabs {
+	for i, tab := range m.tabs.Items {
 		room, ok := tab.Content.(roomModel)
-		if !ok || !isSpeaker(room.device, event.Speaker) {
+		if !ok || !isSameSpeaker(room.device, event.Speaker) {
 			continue
 		}
 
 		updated, cmd := room.Update(nowplaying.TrackMsg{Track: trackFromState(room.device.State())})
-		m.tabs.Tabs[i].Content = updated
+		m.tabs.Items[i].Content = updated
 
 		if i != m.tabs.Active {
 			cmd = nil
@@ -94,7 +94,7 @@ func (m appModel) applyEvent(event sonos.Event) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func isSpeaker(device *sonos.Device, speaker sonos.Speaker) bool {
+func isSameSpeaker(device *sonos.Device, speaker sonos.Speaker) bool {
 	if device.USN != "" && speaker.USN != "" {
 		return device.USN == speaker.USN
 	}
@@ -104,9 +104,9 @@ func isSpeaker(device *sonos.Device, speaker sonos.Speaker) bool {
 func (m appModel) View() tea.View {
 	var content string
 	switch {
-	case len(m.tabs.Tabs) == 0 && m.discoveryDone:
+	case len(m.tabs.Items) == 0 && m.discoveryDone:
 		content = "No Sonos speakers found on the local network."
-	case len(m.tabs.Tabs) == 0:
+	case len(m.tabs.Items) == 0:
 		content = "Discovering Sonos speakers..."
 	default:
 		content = m.tabs.View()

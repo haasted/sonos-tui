@@ -123,9 +123,9 @@ func (r sandboxRoot) View() tea.View {
 func run(t *testing.T, root sandboxRoot) tea.Model {
 	t.Helper()
 
-	final, err := tea.NewProgram(root, tea.WithoutRenderer(), tea.WithInput(nil)).Run()
+	finalModel, err := tea.NewProgram(root, tea.WithoutRenderer(), tea.WithInput(nil)).Run()
 	require.NoError(t, err)
-	return final
+	return finalModel
 }
 
 func TestCmdResultBecomesNextMsg(t *testing.T) {
@@ -154,10 +154,10 @@ func TestNoCmdStopsTheChain(t *testing.T) {
 }
 
 func TestProgramDrivesTreeToCompletion(t *testing.T) {
-	final := run(t, newSandboxRoot(3))
+	finalModel := run(t, newSandboxRoot(3))
 
-	assert.Equal(t, "[left:3 right:3]", final.View().Content)
-	assert.True(t, final.(sandboxRoot).done())
+	assert.Equal(t, "[left:3 right:3]", finalModel.View().Content)
+	assert.True(t, finalModel.(sandboxRoot).done())
 }
 
 func TestParentRoutesMsgToChildren(t *testing.T) {

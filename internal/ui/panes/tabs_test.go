@@ -13,8 +13,8 @@ func TestTabs_AddTab_AppendsWithoutChangingActive(t *testing.T) {
 
 	tabs = tabs.AddTab(panes.Tab{Title: "Second", Content: panes.StaticContent("b")})
 
-	assert.Len(t, tabs.Tabs, 2)
-	assert.Equal(t, "Second", tabs.Tabs[1].Title)
+	assert.Len(t, tabs.Items, 2)
+	assert.Equal(t, "Second", tabs.Items[1].Title)
 	assert.Equal(t, 0, tabs.Active)
 }
 
@@ -23,7 +23,7 @@ func TestTabs_AddTab_OnEmptyTabs(t *testing.T) {
 
 	tabs = tabs.AddTab(panes.Tab{Title: "Only", Content: panes.StaticContent("a")})
 
-	assert.Len(t, tabs.Tabs, 1)
+	assert.Len(t, tabs.Items, 1)
 	assert.Equal(t, 0, tabs.Active)
 }
 
@@ -32,7 +32,7 @@ func TestTabs_InsertTabAt_OnEmptyTabs(t *testing.T) {
 
 	tabs = tabs.InsertTabAt(0, panes.Tab{Title: "Only", Content: panes.StaticContent("a")})
 
-	assert.Len(t, tabs.Tabs, 1)
+	assert.Len(t, tabs.Items, 1)
 	assert.Equal(t, 0, tabs.Active, "the first tab ever inserted must become active, not skipped past")
 }
 
@@ -70,8 +70,8 @@ func TestTabs_InsertTabAt_InMiddle_ShiftsActiveAtBoundary(t *testing.T) {
 }
 
 func titles(tabs panes.Tabs) []string {
-	out := make([]string, len(tabs.Tabs))
-	for i, tab := range tabs.Tabs {
+	out := make([]string, len(tabs.Items))
+	for i, tab := range tabs.Items {
 		out[i] = tab.Title
 	}
 	return out

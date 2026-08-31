@@ -89,7 +89,7 @@ func newTabsRootModel(pos panes.Position) tabsRootModel {
 // and the style is identifiable while cycling with "d".
 func (m *tabsRootModel) updateSpinnerTabTitle() {
 	name := spinnerStyles[m.spinnerStyle].name
-	m.tabs.Tabs[m.spinnerTab].Title = fmt.Sprintf("%s %s (%s)", roomNames[m.spinnerTab], m.spinner.View(), name)
+	m.tabs.Items[m.spinnerTab].Title = fmt.Sprintf("%s %s (%s)", roomNames[m.spinnerTab], m.spinner.View(), name)
 }
 
 func (m tabsRootModel) Init() tea.Cmd {

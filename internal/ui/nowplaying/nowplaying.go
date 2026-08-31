@@ -78,24 +78,24 @@ type Model struct {
 	err error
 }
 
-func New(t Track) Model {
+func New(track Track) Model {
 	s := spinner.New()
 	s.Spinner = spinners.Equalizer
 
 	m := Model{spinner: s, scrollGen: new(int), posGen: new(int)}
-	return m.applyTrack(t)
+	return m.applyTrack(track)
 }
 
-func (m Model) applyTrack(t Track) Model {
+func (m Model) applyTrack(track Track) Model {
 	metaWindowWidth := titleRowWidth - lipgloss.Width(m.spinner.View()) - 1
 
-	m.playing = t.Playing
-	m.title = marquee.NewLine(t.Title, longTitleWindowWidth)
-	m.artist = marquee.NewLine(t.Artist, metaWindowWidth)
-	m.album = marquee.NewLine(t.Album, metaWindowWidth)
-	m.baseline = t.Elapsed
+	m.playing = track.Playing
+	m.title = marquee.NewLine(track.Title, longTitleWindowWidth)
+	m.artist = marquee.NewLine(track.Artist, metaWindowWidth)
+	m.album = marquee.NewLine(track.Album, metaWindowWidth)
+	m.baseline = track.Elapsed
 	m.receivedAt = time.Now()
-	m.duration = t.Duration
+	m.duration = track.Duration
 	m.ticksWaited = 0
 	m.err = nil
 	return m

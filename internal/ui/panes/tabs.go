@@ -37,7 +37,7 @@ const (
 // re-runs the newly active tab's Content.Init(), so a self-ticking model
 // (e.g. an animation) restarts cleanly each time its tab regains focus.
 type Tabs struct {
-	Tabs       []Tab
+	Items      []Tab
 	Active     int
 	Position   Position // zero value (Top) renders headers above the content
 	Width      int      // 0 = unconstrained; otherwise headers scroll to fit, see headerRow
@@ -46,11 +46,11 @@ type Tabs struct {
 
 // NewTabs builds a Tabs component, starting on the first tab.
 func NewTabs(tabs []Tab) Tabs {
-	return Tabs{Tabs: tabs}
+	return Tabs{Items: tabs}
 }
 
 func (t Tabs) AddTab(tab Tab) Tabs {
-	t.Tabs = append(t.Tabs, tab)
+	t.Items = append(t.Items, tab)
 	return t
 }
 
@@ -58,14 +58,14 @@ func (t Tabs) InsertTabAt(index int, tab Tab) Tabs {
 	if index < 0 {
 		index = 0
 	}
-	if index > len(t.Tabs) {
-		index = len(t.Tabs)
+	if index > len(t.Items) {
+		index = len(t.Items)
 	}
-	hadTabs := len(t.Tabs) > 0
+	hadTabs := len(t.Items) > 0
 
-	t.Tabs = append(t.Tabs, Tab{})
-	copy(t.Tabs[index+1:], t.Tabs[index:])
-	t.Tabs[index] = tab
+	t.Items = append(t.Items, Tab{})
+	copy(t.Items[index+1:], t.Items[index:])
+	t.Items[index] = tab
 
 	if hadTabs && index <= t.Active {
 		t.Active++
@@ -75,39 +75,39 @@ func (t Tabs) InsertTabAt(index int, tab Tab) Tabs {
 
 // Init forwards to the initially active tab's content.
 func (t Tabs) Init() tea.Cmd {
-	if len(t.Tabs) == 0 {
+	if len(t.Items) == 0 {
 		return nil
 	}
-	return t.Tabs[t.Active].Content.Init()
+	return t.Items[t.Active].Content.Init()
 }
 
 // Update switches tabs on navigation keys, otherwise forwards to the active tab's content.
 func (t Tabs) Update(msg tea.Msg) (Tabs, tea.Cmd) {
-	if len(t.Tabs) == 0 {
+	if len(t.Items) == 0 {
 		return t, nil
 	}
 
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		switch key := keyMsg.String(); key {
 		case "right", "tab":
-			t.Active = (t.Active + 1) % len(t.Tabs)
-			return t, t.Tabs[t.Active].Content.Init()
+			t.Active = (t.Active + 1) % len(t.Items)
+			return t, t.Items[t.Active].Content.Init()
 		case "left", "shift+tab":
-			t.Active = (t.Active - 1 + len(t.Tabs)) % len(t.Tabs)
-			return t, t.Tabs[t.Active].Content.Init()
+			t.Active = (t.Active - 1 + len(t.Items)) % len(t.Items)
+			return t, t.Items[t.Active].Content.Init()
 		case "0":
-			t.Active = len(t.Tabs) - 1
-			return t, t.Tabs[t.Active].Content.Init()
+			t.Active = len(t.Items) - 1
+			return t, t.Items[t.Active].Content.Init()
 		default:
-			if idx, ok := tabIndexFromKey(key); ok && idx < len(t.Tabs) {
+			if idx, ok := tabIndexFromKey(key); ok && idx < len(t.Items) {
 				t.Active = idx
-				return t, t.Tabs[t.Active].Content.Init()
+				return t, t.Items[t.Active].Content.Init()
 			}
 		}
 	}
 
-	content, cmd := t.Tabs[t.Active].Content.Update(msg)
-	t.Tabs[t.Active].Content = content
+	content, cmd := t.Items[t.Active].Content.Update(msg)
+	t.Items[t.Active].Content = content
 	return t, cmd
 }
 
@@ -120,7 +120,7 @@ func tabIndexFromKey(key string) (int, bool) {
 }
 
 func (t Tabs) View() string {
-	if len(t.Tabs) == 0 {
+	if len(t.Items) == 0 {
 		return ""
 	}
 
@@ -145,7 +145,7 @@ func (t Tabs) View() string {
 	} else {
 		box = box.BorderTop(false)
 	}
-	content := box.Render(t.Tabs[t.Active].Content.View().Content)
+	content := box.Render(t.Items[t.Active].Content.View().Content)
 
 	divider := separatorStyle.Render(strings.Repeat("─", max(lipgloss.Width(row), lipgloss.Width(content))))
 
@@ -159,9 +159,9 @@ func (t Tabs) View() string {
 // scroll indicators when they don't all fit within Width. Width <= 0 means
 // unconstrained: every tab renders, as before Width existed.
 func (t Tabs) headerRow() string {
-	labels := make([]string, len(t.Tabs))
-	widths := make([]int, len(t.Tabs))
-	for i, tab := range t.Tabs {
+	labels := make([]string, len(t.Items))
+	widths := make([]int, len(t.Items))
+	for i, tab := range t.Items {
 		style := inactiveTabStyle
 		if i == t.Active {
 			style = activeTabStyle
@@ -189,9 +189,9 @@ func (t Tabs) headerRow() string {
 	lo, hi := t.Active, t.Active
 	width := widths[t.Active]
 	tryRight := true
-	for lo > 0 || hi < len(t.Tabs)-1 {
+	for lo > 0 || hi < len(t.Items)-1 {
 		grew := false
-		if tryRight && hi < len(t.Tabs)-1 && width+widths[hi+1] <= budget {
+		if tryRight && hi < len(t.Items)-1 && width+widths[hi+1] <= budget {
 			hi++
 			width += widths[hi]
 			grew = true
@@ -203,7 +203,7 @@ func (t Tabs) headerRow() string {
 		if !grew {
 			// Preferred side was out of room or exhausted — fall back to
 			// whichever side still has room, if either does.
-			if hi < len(t.Tabs)-1 && width+widths[hi+1] <= budget {
+			if hi < len(t.Items)-1 && width+widths[hi+1] <= budget {
 				hi++
 				width += widths[hi]
 			} else if lo > 0 && width+widths[lo-1] <= budget {
@@ -220,7 +220,7 @@ func (t Tabs) headerRow() string {
 	if lo > 0 {
 		row = inactiveTabStyle.Render("‹") + row
 	}
-	if hi < len(t.Tabs)-1 {
+	if hi < len(t.Items)-1 {
 		row += inactiveTabStyle.Render("›")
 	}
 	return row
