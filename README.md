@@ -73,3 +73,5 @@ Bubbletea skill from https://github.com/GGPrompts/my-plugins/blob/main/plugins/s
 Bubbletea v2 skill from https://github.com/rigerc/bubbletea-v2-scaffold (Apache License 2.0), `.claude/skills/bubbletea-v2`
 
 Bubbles v2 skill from https://github.com/rigerc/bubbletea-v2-scaffold (Apache License 2.0), `.claude/skills/bubbles-v2`
+
+Terminal graphics core derived from https://github.com/M64GitHub/movy (MIT License, Copyright (c) 2025 M64), vendored via a Go port at `internal/ui/movy` — see `internal/ui/movy/LICENSE`
