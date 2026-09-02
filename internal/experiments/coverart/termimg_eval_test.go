@@ -1,6 +1,6 @@
-// Package coverart_test evaluates go-termimg for rendering Sonos cover art
-// (sonos-thx); no live speaker calls. It has no connection to production
-// code — nothing here is imported by anything outside this package.
+// Package coverart_test evaluates go-termimg for rendering Sonos cover art;
+// no live speaker calls. It has no connection to production code — nothing
+// here is imported by anything outside this package.
 package coverart_test
 
 import (

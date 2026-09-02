@@ -1,7 +1,7 @@
 // Package coverart_test evaluates BourgeoisBear/rasterm as an alternative to
-// go-termimg (sonos-9yf); test names mirror termimg_eval_test.go 1:1 for
-// comparison. It has no connection to production code — nothing here is
-// imported by anything outside this package.
+// go-termimg; test names mirror termimg_eval_test.go 1:1 for comparison. It
+// has no connection to production code — nothing here is imported by
+// anything outside this package.
 package coverart_test
 
 import (

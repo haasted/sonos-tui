@@ -1,7 +1,7 @@
 // Package ssdp_test evaluates github.com/koron/go-ssdp as a replacement for
-// the hand-rolled SSDP search in internal/sonos/discovery.go (sonos-5e1).
-// It has no connection to production code — nothing here is imported by
-// anything outside this package. Requires a live network with real Sonos
+// the hand-rolled SSDP search in internal/sonos/discovery.go. It has no
+// connection to production code — nothing here is imported by anything
+// outside this package. Requires a live network with real Sonos
 // speakers, gated behind the -live flag so `go test ./...` stays green
 // without one.
 package ssdp_test
