@@ -69,3 +69,7 @@ multicast to `239.255.255.250:1900` with the Sonos-specific service type
 # Acknowledgements
 
 Bubbletea skill from https://github.com/GGPrompts/my-plugins/blob/main/plugins/specialized/bubbletea/skills/bubbletea/SKILL.md
+
+Bubbletea v2 skill from https://github.com/rigerc/bubbletea-v2-scaffold (Apache License 2.0), `.claude/skills/bubbletea-v2`
+
+Bubbles v2 skill from https://github.com/rigerc/bubbletea-v2-scaffold (Apache License 2.0), `.claude/skills/bubbles-v2`

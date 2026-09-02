@@ -27,15 +27,6 @@ const (
 	Bottom
 )
 
-// Tabs is a hand-rolled tabbed pane, like browser tabs: a row of headers
-// alongside whichever tab's content is currently active (see Position for
-// which side). Left/right and tab/shift+tab step through tabs; digit keys
-// 1-9 jump straight to a tab, and 0 jumps to the right-most tab (mirroring
-// the usual browser/terminal tab-shortcut convention). Every other message
-// is forwarded to the active tab's Content, so a tab's own content can't
-// itself use left/right or digit keys as input for now. Switching tabs
-// re-runs the newly active tab's Content.Init(), so a self-ticking model
-// (e.g. an animation) restarts cleanly each time its tab regains focus.
 type Tabs struct {
 	Items      []Tab
 	Active     int

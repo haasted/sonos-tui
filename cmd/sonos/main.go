@@ -29,7 +29,8 @@ func main() {
 
 	events, err := sonos.NewEventManager()
 	if err != nil {
-		slog.Error("starting event listener — continuing without live updates", "err", err)
+		slog.Error("starting event listener", "err", err)
+		return
 	}
 
 	program := tea.NewProgram(newAppModel(events))
@@ -81,10 +82,8 @@ func loadRoom(events *sonos.EventManager, speaker sonos.Speaker) tea.Cmd {
 			slog.Warn("refreshing track info", "speaker", speaker, "err", err)
 		}
 
-		if events != nil {
-			if err := events.Subscribe(context.Background(), device); err != nil {
-				slog.Warn("subscribing to speaker events", "speaker", speaker, "err", err)
-			}
+		if err := events.Subscribe(context.Background(), device); err != nil {
+			slog.Warn("subscribing to speaker events", "speaker", speaker, "err", err)
 		}
 
 		return roomReadyMsg{title: speaker.DisplayName(), ip: speaker.IP, room: newRoomModel(device)}
