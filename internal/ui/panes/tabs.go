@@ -4,10 +4,13 @@ package panes
 
 import (
 	"strings"
+	"sync/atomic"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/haasted/sonos-sandbox/internal/ui/flashsweep"
 	"github.com/haasted/sonos-sandbox/internal/ui/theme"
 )
 
@@ -33,6 +36,48 @@ type Tabs struct {
 	Position   Position // zero value (Top) renders headers above the content
 	Width      int      // 0 = unconstrained; otherwise headers scroll to fit, see headerRow
 	HideBorder bool     // zero value (false) keeps the rounded border; true leaves only the divider bar between tabs and content
+
+	sweepGen   int
+	sweepStart time.Time
+}
+
+const (
+	tabSweepDuration = 620 * time.Millisecond
+	tabSweepInterval = 22 * time.Millisecond
+)
+
+var tabSweepGenerations atomic.Int64
+
+func nextTabSweepGen() int { return int(tabSweepGenerations.Add(1)) }
+
+type tabSweepTickMsg struct {
+	gen int
+}
+
+func tabSweepTick(gen int) tea.Cmd {
+	return tea.Tick(tabSweepInterval, func(time.Time) tea.Msg {
+		return tabSweepTickMsg{gen: gen}
+	})
+}
+
+func (t Tabs) activate() (Tabs, tea.Cmd) {
+	initCmd := t.Items[t.Active].Content.Init()
+
+	t.sweepGen = nextTabSweepGen()
+	t.sweepStart = time.Now()
+
+	return t, tea.Batch(initCmd, tabSweepTick(t.sweepGen))
+}
+
+func (t Tabs) sweepProgress() (float32, bool) {
+	if t.sweepStart.IsZero() {
+		return 0, false
+	}
+	elapsed := time.Since(t.sweepStart)
+	if elapsed >= tabSweepDuration {
+		return 0, false
+	}
+	return float32(elapsed) / float32(tabSweepDuration), true
 }
 
 // NewTabs builds a Tabs component, starting on the first tab.
@@ -78,21 +123,31 @@ func (t Tabs) Update(msg tea.Msg) (Tabs, tea.Cmd) {
 		return t, nil
 	}
 
+	if tick, ok := msg.(tabSweepTickMsg); ok {
+		if tick.gen != t.sweepGen {
+			return t, nil
+		}
+		if _, sweeping := t.sweepProgress(); sweeping {
+			return t, tabSweepTick(tick.gen)
+		}
+		return t, nil
+	}
+
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		switch key := keyMsg.String(); key {
 		case "right", "tab":
 			t.Active = (t.Active + 1) % len(t.Items)
-			return t, t.Items[t.Active].Content.Init()
+			return t.activate()
 		case "left", "shift+tab":
 			t.Active = (t.Active - 1 + len(t.Items)) % len(t.Items)
-			return t, t.Items[t.Active].Content.Init()
+			return t.activate()
 		case "0":
 			t.Active = len(t.Items) - 1
-			return t, t.Items[t.Active].Content.Init()
+			return t.activate()
 		default:
 			if idx, ok := tabIndexFromKey(key); ok && idx < len(t.Items) {
 				t.Active = idx
-				return t, t.Items[t.Active].Content.Init()
+				return t.activate()
 			}
 		}
 	}
@@ -154,10 +209,14 @@ func (t Tabs) headerRow() string {
 	widths := make([]int, len(t.Items))
 	for i, tab := range t.Items {
 		style := inactiveTabStyle
+		label := tab.Title
 		if i == t.Active {
 			style = activeTabStyle
+			if progress, sweeping := t.sweepProgress(); sweeping {
+				label = flashsweep.Glint(tab.Title, progress, tabSweepFg)
+			}
 		}
-		labels[i] = style.Render(tab.Title)
+		labels[i] = style.Render(label)
 		widths[i] = lipgloss.Width(labels[i])
 	}
 
@@ -220,11 +279,17 @@ func (t Tabs) headerRow() string {
 // Colors go through theme.LightDark so the palette stays legible whether the
 // user's terminal background is light or dark, rather than assuming one or the other.
 var (
+	activeTabAccent = theme.LightDark(lipgloss.Color("#B45309"), lipgloss.Color("#FBBF24"))
+
 	activeTabStyle = lipgloss.NewStyle().
 			Bold(true).
 			Padding(0, 1).
-			Foreground(theme.LightDark(lipgloss.Color("#FFFFFF"), lipgloss.Color("#FFFFFF"))).
-			Background(theme.LightDark(lipgloss.Color("#6B46C1"), lipgloss.Color("#A855F7")))
+			Foreground(activeTabAccent)
+
+	tabSweepFg = flashsweep.Ramp{
+		Base:  flashsweep.FromColor(activeTabAccent),
+		Flash: flashsweep.FromColor(theme.LightDark(lipgloss.Color("#F59E0B"), lipgloss.Color("#FFFFFF"))),
+	}
 
 	inactiveTabStyle = lipgloss.NewStyle().
 				Padding(0, 1).
