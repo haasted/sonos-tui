@@ -1,12 +1,14 @@
-package sonos_test
-
-// Evaluates github.com/koron/go-ssdp as a replacement for the hand-rolled
-// SSDP search in discovery.go (sonos-5e1). Requires a live network with
-// real Sonos speakers — gated behind the -live flag (see discovery_test.go)
-// so `go test ./...` stays green without one.
+// Package ssdp_test evaluates github.com/koron/go-ssdp as a replacement for
+// the hand-rolled SSDP search in internal/sonos/discovery.go (sonos-5e1).
+// It has no connection to production code — nothing here is imported by
+// anything outside this package. Requires a live network with real Sonos
+// speakers, gated behind the -live flag so `go test ./...` stays green
+// without one.
+package ssdp_test
 
 import (
 	"context"
+	"flag"
 	"net/url"
 	"sync"
 	"testing"
@@ -17,6 +19,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// live gates tests that require a real network with real Sonos speakers.
+// Run with: go test ./internal/experiments/ssdp/... -live -v (or make test-live).
+var live = flag.Bool("live", false, "run tests against real network devices")
 
 // sonosZonePlayerST is the SSDP search target for Sonos speakers, same as discovery.go's ssdpST.
 const sonosZonePlayerST = "urn:schemas-upnp-org:device:ZonePlayer:1"

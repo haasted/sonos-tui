@@ -21,7 +21,7 @@ test-race: ## Run tests with the race detector
 	go test ./... -race
 
 test-live: ## Run tests requiring a real network with real Sonos speakers
-	go test ./internal/sonos/... -live -v
+	go test ./internal/sonos/... ./internal/experiments/ssdp/... -live -v
 
 run: ## Run the CLI
 	go run ./cmd/sonos

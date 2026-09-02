@@ -1,4 +1,6 @@
-// Package coverart_test evaluates go-termimg for rendering Sonos cover art (sonos-thx); no live speaker calls.
+// Package coverart_test evaluates go-termimg for rendering Sonos cover art
+// (sonos-thx); no live speaker calls. It has no connection to production
+// code — nothing here is imported by anything outside this package.
 package coverart_test
 
 import (
@@ -28,7 +30,7 @@ var fixtureNames = []string{
 // fixturePath returns the path to a named cover art file in data/.
 func fixturePath(t *testing.T, name string) string {
 	t.Helper()
-	path := filepath.Join("..", "..", "data", name)
+	path := filepath.Join("..", "..", "..", "data", name)
 	_, err := os.Stat(path)
 	require.NoError(t, err, "test fixture missing: %s", path)
 	return path
