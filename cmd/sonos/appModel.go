@@ -3,6 +3,7 @@ package main
 import (
 	"log/slog"
 	"sort"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -13,6 +14,8 @@ import (
 
 var _ tea.Model = &appModel{}
 
+const maxPlayerHeightRows = 7
+
 type appModel struct {
 	tabs          panes.Tabs
 	ips           []string
@@ -20,6 +23,8 @@ type appModel struct {
 	width         int
 	height        int
 	discoveryDone bool
+	quitting      bool
+	roomReserved  bool
 }
 
 func newAppModel(events *sonos.EventManager) appModel {
@@ -36,13 +41,26 @@ func (m appModel) Init() tea.Cmd {
 func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
+		firstResize := m.height == 0
 		m.width = msg.Width
 		m.height = msg.Height
 		m.tabs.Width = msg.Width
+		if firstResize {
+			return m, tea.RequestCursorPosition
+		}
+	case tea.CursorPositionMsg:
+		if m.roomReserved {
+			return m, nil
+		}
+		m.roomReserved = true
+		if needed := maxPlayerHeightRows - (m.height - msg.Y); needed > 0 {
+			return m, tea.Println(strings.Repeat("\n", needed-1))
+		}
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
-			return m, tea.Quit
+			m.quitting = true
+			return m, tea.Sequence(tea.ClearScreen, tea.Quit)
 		}
 	case speakerFoundMsg:
 		return m, loadRoom(m.events, msg.speaker)
@@ -102,6 +120,10 @@ func isSameSpeaker(device *sonos.Device, speaker sonos.Speaker) bool {
 }
 
 func (m appModel) View() tea.View {
+	if m.quitting {
+		return tea.NewView("")
+	}
+
 	var content string
 	switch {
 	case len(m.tabs.Items) == 0 && m.discoveryDone:
@@ -112,7 +134,5 @@ func (m appModel) View() tea.View {
 		content = m.tabs.View()
 	}
 
-	view := tea.NewView(content)
-	view.AltScreen = true
-	return view
+	return tea.NewView(content)
 }
