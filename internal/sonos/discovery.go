@@ -19,7 +19,7 @@ var ssdpRequest = strings.Join([]string{
 	"M-SEARCH * HTTP/1.1",
 	"HOST: 239.255.255.250:1900",
 	`MAN: "ssdp:discover"`,
-	"MX: 3",
+	"MX: 1",
 	"ST: " + ssdpST,
 	"", "",
 }, "\r\n")
