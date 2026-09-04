@@ -17,7 +17,7 @@ const (
 	volumeDebounce  = 150 * time.Millisecond // how long one volume window stays open before committing
 	volumeStepUp    = 2                      // volume added per up press
 	volumeStepDown  = -2                     // volume removed per down press, negative by design
-	volumeUpMaxStep = 6                      // most one window may add, bounding a held up key
+	volumeUpMaxStep = 6                      // upper bound on how much volume can be increased in a time window
 )
 
 var volumeGenerations atomic.Int64 // globally unique window ids, so one speaker's tick cannot fire another's
@@ -86,19 +86,19 @@ func (m speakerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		delta := m.pendingVolume
 		m.pendingVolume = 0
-		return m, adjustVolume(m.device, delta)
+		return m, m.adjustVolume(delta)
 	}
 
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		switch keyMsg.String() {
 		case "p", "P", "k", "K":
-			return m, togglePlayback(m.device)
+			return m, m.togglePlayback()
 		case "j", "J":
-			return m, deviceCommand(m.device, "previous", (*sonos.Device).Previous)
+			return m, m.deviceCommand((*sonos.Device).Previous)
 		case "l", "L":
-			return m, deviceCommand(m.device, "next", (*sonos.Device).Next)
+			return m, m.deviceCommand((*sonos.Device).Next)
 		case "m", "M":
-			return m, toggleMute(m.device)
+			return m, m.toggleMute()
 		case "up":
 			return m.queueVolume(volumeStepUp)
 		case "down":
@@ -115,33 +115,33 @@ func (m speakerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // Only the upward direction is capped, so down stays a fast escape.
 func (m speakerModel) queueVolume(delta int) (tea.Model, tea.Cmd) {
 	m.pendingVolume += delta
-	if m.pendingVolume > volumeUpMaxStep {
-		m.pendingVolume = volumeUpMaxStep
-	}
+	m.pendingVolume = min(m.pendingVolume, volumeUpMaxStep)
+
 	if m.volumeWindowOpen {
-		return m, nil
+		return m, nil // a tick is already pending; this press just joins that window
 	}
+
 	m.volumeWindowOpen = true
 	m.volumeGen = nextVolumeGeneration()
 	return m, volumeCommitTick(m.volumeGen)
 }
 
 // togglePlayback pauses a playing speaker and starts a stopped one.
-func togglePlayback(device *sonos.Device) tea.Cmd {
+func (m speakerModel) togglePlayback() tea.Cmd {
 	return func() tea.Msg {
-		if device.State().Transport.State == "PLAYING" {
-			return runDeviceAction(device, "pause", (*sonos.Device).Pause)
+		if m.device.State().Transport.State == "PLAYING" {
+			return m.runDeviceAction((*sonos.Device).Pause)
 		}
-		return runDeviceAction(device, "play", (*sonos.Device).Play)
+		return m.runDeviceAction((*sonos.Device).Play)
 	}
 }
 
 // adjustVolume applies an accumulated delta, reporting nothing on success
 // because no UI shows volume yet.
-func adjustVolume(device *sonos.Device, delta int) tea.Cmd {
+func (m speakerModel) adjustVolume(delta int) tea.Cmd {
 	return func() tea.Msg {
-		if _, err := device.AdjustVolume(delta); err != nil {
-			slog.Warn("volume command failed", "speaker", device.Speaker, "delta", delta, "err", err)
+		if _, err := m.device.AdjustVolume(delta); err != nil {
+			slog.Warn("volume command failed", "speaker", m.device.Speaker, "delta", delta, "err", err)
 			return nowplaying.ErrorMsg{Err: err}
 		}
 		return nil
@@ -149,10 +149,10 @@ func adjustVolume(device *sonos.Device, delta int) tea.Cmd {
 }
 
 // toggleMute flips the speaker's mute state, reporting only failures.
-func toggleMute(device *sonos.Device) tea.Cmd {
+func (m speakerModel) toggleMute() tea.Cmd {
 	return func() tea.Msg {
-		if err := device.ToggleMute(); err != nil {
-			slog.Warn("mute command failed", "speaker", device.Speaker, "err", err)
+		if err := m.device.ToggleMute(); err != nil {
+			slog.Warn("mute command failed", "speaker", m.device.Speaker, "err", err)
 			return nowplaying.ErrorMsg{Err: err}
 		}
 		return nil
@@ -160,20 +160,20 @@ func toggleMute(device *sonos.Device) tea.Cmd {
 }
 
 // deviceCommand wraps a device action as a Bubbletea command.
-func deviceCommand(device *sonos.Device, name string, action func(*sonos.Device) error) tea.Cmd {
+func (m speakerModel) deviceCommand(action func(*sonos.Device) error) tea.Cmd {
 	return func() tea.Msg {
-		return runDeviceAction(device, name, action)
+		return m.runDeviceAction(action)
 	}
 }
 
 // runDeviceAction runs action, mapping failure to an error message and success
 // to a refreshed track.
-func runDeviceAction(device *sonos.Device, name string, action func(*sonos.Device) error) tea.Msg {
-	if err := action(device); err != nil {
-		slog.Warn("playback command failed", "speaker", device.Speaker, "action", name, "err", err)
+func (m speakerModel) runDeviceAction(action func(*sonos.Device) error) tea.Msg {
+	if err := action(m.device); err != nil {
+		slog.Warn("playback command failed", "speaker", m.device.Speaker, "err", err)
 		return nowplaying.ErrorMsg{Err: err}
 	}
-	return nowplaying.TrackMsg{Track: trackFromState(device.State())}
+	return nowplaying.TrackMsg{Track: trackFromState(m.device.State())}
 }
 
 // View renders the now-playing widget.

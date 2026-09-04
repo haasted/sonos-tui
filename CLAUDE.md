@@ -26,6 +26,10 @@ Comment functions for their purpose, structs for the conceptual meaning, variabl
 
 Variable comments must be placed after the variable declaration with //. If the purpose of a variable is obvious, eg. when used for interface checks, comments should be omitted.
 
+## Git
+
+Attempt to bundle related changes into the same commit. It is acceptable to create multiple commits in order to maintain this order. Keep commit messages brief. They MUST NOT excced 2 lines.
+
 ## Build & Test
 
 Prefer Makefile targets over raw command-line invocations for building and testing (e.g. `make test` over `go test ./...`). Only fall back to the command line when no target covers what's needed.

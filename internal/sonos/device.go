@@ -2,6 +2,7 @@ package sonos
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 )
@@ -194,13 +195,13 @@ func (d *Device) AdjustVolume(adjustment int) (int, error) {
 
 	if muted {
 		if err := d.SetMuted(false); err != nil {
-			return 0, err
+			return 0, fmt.Errorf("adjust volume: %w", err)
 		}
 	}
 
 	volume, err := d.client.SetRelativeVolume(adjustment)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("adjust volume: %w", err)
 	}
 
 	d.mu.Lock()
@@ -211,7 +212,7 @@ func (d *Device) AdjustVolume(adjustment int) (int, error) {
 
 func (d *Device) SetMuted(muted bool) error {
 	if err := d.client.SetMute(muted); err != nil {
-		return err
+		return fmt.Errorf("set mute: %w", err)
 	}
 	d.mu.Lock()
 	d.state.Muted = muted
@@ -229,7 +230,7 @@ func (d *Device) ToggleMute() error {
 // Play starts or resumes playback.
 func (d *Device) Play() error {
 	if err := d.client.Play(); err != nil {
-		return err
+		return fmt.Errorf("play: %w", err)
 	}
 	d.mu.Lock()
 	d.state.Transport.State = "PLAYING"
@@ -240,7 +241,7 @@ func (d *Device) Play() error {
 // Pause pauses playback.
 func (d *Device) Pause() error {
 	if err := d.client.Pause(); err != nil {
-		return err
+		return fmt.Errorf("pause: %w", err)
 	}
 	d.mu.Lock()
 	d.state.Transport.State = "PAUSED_PLAYBACK"
@@ -250,7 +251,7 @@ func (d *Device) Pause() error {
 
 func (d *Device) Next() error {
 	if err := d.client.Next(); err != nil {
-		return err
+		return fmt.Errorf("next track: %w", err)
 	}
 	d.mu.Lock()
 	d.state.Transport.State = "PLAYING"
@@ -260,7 +261,7 @@ func (d *Device) Next() error {
 
 func (d *Device) Previous() error {
 	if err := d.client.Previous(); err != nil {
-		return err
+		return fmt.Errorf("previous track: %w", err)
 	}
 	d.mu.Lock()
 	d.state.Transport.State = "PLAYING"
