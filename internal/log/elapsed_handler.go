@@ -16,7 +16,7 @@ func NewElapsedHandler(h slog.Handler, start time.Time) *ElapsedHandler {
 }
 
 func (h *ElapsedHandler) Handle(ctx context.Context, r slog.Record) error {
-	r.AddAttrs(slog.Duration("elapsed", time.Since(h.start).Round(time.Millisecond)))
+	r.AddAttrs(slog.Duration("elapsed", time.Since(h.start).Round(time.Microsecond)))
 	return h.Handler.Handle(ctx, r)
 }
 

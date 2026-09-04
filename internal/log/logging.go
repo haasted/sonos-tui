@@ -9,6 +9,8 @@ import (
 	"github.com/lmittmann/tint"
 )
 
+const timeFormat = "15:04:05.000"
+
 func CaptureLogs(enable bool, level slog.Leveler) func() {
 	if !enable {
 		slog.SetDefault(slog.New(slog.DiscardHandler))
@@ -18,7 +20,7 @@ func CaptureLogs(enable bool, level slog.Leveler) func() {
 	buf := NewBuffer()
 	slog.SetDefault(slog.New(NewElapsedHandler(
 		tint.NewTextHandler(buf, &tint.Options{
-			TimeFormat: time.TimeOnly,
+			TimeFormat: timeFormat,
 			Level:      level,
 		}),
 		time.Now(),
