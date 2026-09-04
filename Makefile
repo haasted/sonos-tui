@@ -11,8 +11,8 @@ fmt: ## Format all Go files in place (gofmt -w), listing any it touched
 vet: ## Run go vet
 	go vet ./...
 
-test: ## Run tests
-	go test ./...
+test: ## Run tests (never cached)
+	go test -count=1 ./...
 
 test-verbose: ## Run tests with output enabled
 	go test ./... -v
