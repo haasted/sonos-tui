@@ -22,9 +22,11 @@ const (
 var logsFlag = flag.Bool("logs", true, "capture and print log output once the program exits; set to false to discard all logs")
 
 func main() {
+	ctx := context.Background()
+
 	flag.Parse()
 
-	dumpLogs := log.CaptureLogs(*logsFlag)
+	dumpLogs := log.CaptureLogs(*logsFlag, slog.LevelDebug)
 	defer dumpLogs()
 
 	events, err := sonos.NewEventManager()
@@ -33,19 +35,17 @@ func main() {
 		return
 	}
 
-	program := tea.NewProgram(newAppModel(events))
+	program := tea.NewProgram(newAppModel(events), tea.WithContext(ctx))
 
 	go discoverSpeakers(program)
 
 	_, runErr := program.Run()
 
-	if events != nil {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-		if err := events.Close(shutdownCtx); err != nil {
-			slog.Warn("shutting down event listener", "err", err)
-		}
-		cancel()
+	shutdownCtx, cancel := context.WithTimeout(ctx, shutdownTimeout)
+	if err := events.Close(shutdownCtx); err != nil {
+		slog.Warn("shutting down event listener", "err", err)
 	}
+	cancel()
 
 	if runErr != nil {
 		fmt.Fprintln(os.Stderr, "bubbletea error:", runErr)

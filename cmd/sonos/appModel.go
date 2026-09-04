@@ -19,19 +19,20 @@ const maxPlayerHeightRows = 7
 type appModel struct {
 	tabs          panes.Tabs
 	ips           []string
-	events        *sonos.EventManager
+	eventManager  *sonos.EventManager
 	width         int
 	height        int
 	discoveryDone bool
 	quitting      bool
-	roomReserved  bool
+
+	verticalSpaceChecked bool
 }
 
 func newAppModel(events *sonos.EventManager) appModel {
 	tabs := panes.NewTabs(nil)
 	tabs.Position = panes.Bottom
 	tabs.HideBorder = true
-	return appModel{tabs: tabs, events: events}
+	return appModel{tabs: tabs, eventManager: events}
 }
 
 func (m appModel) Init() tea.Cmd {
@@ -49,10 +50,10 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.RequestCursorPosition
 		}
 	case tea.CursorPositionMsg:
-		if m.roomReserved {
+		if m.verticalSpaceChecked {
 			return m, nil
 		}
-		m.roomReserved = true
+		m.verticalSpaceChecked = true
 		if needed := maxPlayerHeightRows - (m.height - msg.Y); needed > 0 {
 			return m, tea.Println(strings.Repeat("\n", needed-1))
 		}
@@ -63,7 +64,7 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Sequence(tea.ClearScreen, tea.Quit)
 		}
 	case speakerFoundMsg:
-		return m, loadRoom(m.events, msg.speaker)
+		return m, loadRoom(m.eventManager, msg.speaker)
 	case roomReadyMsg:
 		wasEmpty := len(m.tabs.Items) == 0
 		idx := sort.SearchStrings(m.ips, msg.ip)
@@ -73,7 +74,7 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.tabs = m.tabs.InsertTabAt(idx, panes.Tab{Title: msg.title, Content: msg.room})
 
 		var cmds []tea.Cmd
-		if m.events != nil {
+		if m.eventManager != nil {
 			cmds = append(cmds, waitForEvent(msg.room.device))
 		}
 		if wasEmpty {

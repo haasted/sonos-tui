@@ -9,7 +9,7 @@ import (
 	"github.com/lmittmann/tint"
 )
 
-func CaptureLogs(enable bool) func() {
+func CaptureLogs(enable bool, level slog.Leveler) func() {
 	if !enable {
 		slog.SetDefault(slog.New(slog.DiscardHandler))
 		return func() {}
@@ -17,7 +17,10 @@ func CaptureLogs(enable bool) func() {
 
 	buf := NewBuffer()
 	slog.SetDefault(slog.New(NewElapsedHandler(
-		tint.NewTextHandler(buf, &tint.Options{TimeFormat: time.TimeOnly}),
+		tint.NewTextHandler(buf, &tint.Options{
+			TimeFormat: time.TimeOnly,
+			Level:      level,
+		}),
 		time.Now(),
 	)))
 
