@@ -10,15 +10,21 @@ No dedicated issue tracker is configured for this project. Use TodoWrite for ses
 
 Do not run git commits, pushes, or remote sync unless explicitly asked. At handoff, report changed files, validation performed, and suggested next commands; wait for approval before committing or pushing.
 
-## Comments
-
-Do not leave comments in the code.
-
 ## Architecture
 
 When working on generic functionality or utilities, consider whether it's possible to solve by adding a well-tested and proven dependency.
 
 If my instructions are vague, ambiguous or are over-looking something, feel free to doubt and press for more reflection or answers.
+
+## Go style
+
+When creating a test, prefer keeping the test functions at the top of the file and the helper functions below.
+
+If you cannot keep the comments brief and succint, refrain from commenting the code. A comment MUST NOT exceed 2 lines.
+
+Comment functions for their purpose, structs for the conceptual meaning, variables for the state they hold and test functions for what case they exercise.
+
+Variable comments must be placed after the variable declaration with //. If the purpose of a variable is obvious, eg. when used for interface checks, comments should be omitted.
 
 ## Build & Test
 
