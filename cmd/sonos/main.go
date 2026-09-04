@@ -72,21 +72,21 @@ func discoverSpeakers(program *tea.Program) {
 	program.Send(discoveryDoneMsg{found: found})
 }
 
-func loadRoom(events *sonos.EventManager, speaker sonos.Speaker) tea.Cmd {
+func loadSpeaker(events *sonos.EventManager, speaker sonos.Speaker) tea.Cmd {
 	return func() tea.Msg {
+		slog.Debug("starting loadSpeaker", "speaker", speaker.DisplayName())
+		defer slog.Debug("ending loadSpeaker", "speaker", speaker.DisplayName())
+
 		device := sonos.NewDevice(speaker)
-		if err := device.Refresh(); err != nil {
-			slog.Warn("refreshing transport state", "speaker", speaker, "err", err)
-		}
-		if err := device.RefreshTrack(); err != nil {
-			slog.Warn("refreshing track info", "speaker", speaker, "err", err)
+		if err := device.RefreshAll(); err != nil {
+			slog.Warn("refreshing speaker state", "speaker", speaker, "err", err)
 		}
 
 		if err := events.Subscribe(context.Background(), device); err != nil {
 			slog.Warn("subscribing to speaker events", "speaker", speaker, "err", err)
 		}
 
-		return roomReadyMsg{title: speaker.DisplayName(), ip: speaker.IP, room: newRoomModel(device)}
+		return speakerReadyMsg{title: speaker.DisplayName(), ip: speaker.IP, speaker: newSpeakerModel(device)}
 	}
 }
 

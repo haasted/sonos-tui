@@ -194,6 +194,26 @@ func (c *SonosClient) SetVolume(level int) error {
 	return err
 }
 
+func (c *SonosClient) SetRelativeVolume(adjustment int) (int, error) {
+	data, err := c.rendering("SetRelativeVolume", fmt.Sprintf(
+		`<u:SetRelativeVolume xmlns:u="%s">
+      <InstanceID>0</InstanceID>
+      <Channel>Master</Channel>
+      <Adjustment>%d</Adjustment>
+    </u:SetRelativeVolume>`, renderingService, adjustment))
+	if err != nil {
+		return 0, err
+	}
+
+	var resp struct {
+		Volume int `xml:"Body>SetRelativeVolumeResponse>NewVolume"`
+	}
+	if err := xml.Unmarshal(data, &resp); err != nil {
+		return 0, fmt.Errorf("parsing SetRelativeVolume response: %w", err)
+	}
+	return resp.Volume, nil
+}
+
 // GetMute returns true if the speaker is muted.
 func (c *SonosClient) GetMute() (bool, error) {
 	data, err := c.rendering("GetMute", fmt.Sprintf(

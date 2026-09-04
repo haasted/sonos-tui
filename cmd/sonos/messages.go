@@ -6,10 +6,10 @@ type speakerFoundMsg struct {
 	speaker sonos.Speaker
 }
 
-type roomReadyMsg struct {
-	title string
-	ip    string
-	room  roomModel
+type speakerReadyMsg struct {
+	title   string
+	ip      string
+	speaker speakerModel
 }
 
 type discoveryDoneMsg struct {

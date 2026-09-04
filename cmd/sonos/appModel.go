@@ -64,21 +64,21 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Sequence(tea.ClearScreen, tea.Quit)
 		}
 	case speakerFoundMsg:
-		return m, loadRoom(m.eventManager, msg.speaker)
-	case roomReadyMsg:
+		return m, loadSpeaker(m.eventManager, msg.speaker)
+	case speakerReadyMsg:
 		wasEmpty := len(m.tabs.Items) == 0
 		idx := sort.SearchStrings(m.ips, msg.ip)
 		m.ips = append(m.ips, "")
 		copy(m.ips[idx+1:], m.ips[idx:])
 		m.ips[idx] = msg.ip
-		m.tabs = m.tabs.InsertTabAt(idx, panes.Tab{Title: msg.title, Content: msg.room})
+		m.tabs = m.tabs.InsertTabAt(idx, panes.Tab{Title: msg.title, Content: msg.speaker})
 
 		var cmds []tea.Cmd
 		if m.eventManager != nil {
-			cmds = append(cmds, waitForEvent(msg.room.device))
+			cmds = append(cmds, waitForEvent(msg.speaker.device))
 		}
 		if wasEmpty {
-			cmds = append(cmds, msg.room.Init())
+			cmds = append(cmds, msg.speaker.Init())
 		}
 		return m, tea.Batch(cmds...)
 	case sonos.Event:
@@ -95,21 +95,21 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m appModel) applyEvent(event sonos.Event) (tea.Model, tea.Cmd) {
 	for i, tab := range m.tabs.Items {
-		room, ok := tab.Content.(roomModel)
-		if !ok || !isSameSpeaker(room.device, event.Speaker) {
+		speaker, ok := tab.Content.(speakerModel)
+		if !ok || !isSameSpeaker(speaker.device, event.Speaker) {
 			continue
 		}
 
-		updated, cmd := room.Update(nowplaying.TrackMsg{Track: trackFromState(room.device.State())})
+		updated, cmd := speaker.Update(nowplaying.TrackMsg{Track: trackFromState(speaker.device.State())})
 		m.tabs.Items[i].Content = updated
 
 		if i != m.tabs.Active {
 			cmd = nil
 		}
-		return m, tea.Batch(cmd, waitForEvent(room.device))
+		return m, tea.Batch(cmd, waitForEvent(speaker.device))
 	}
 
-	slog.Warn("event for a speaker with no room — dropping", "speaker", event.Speaker)
+	slog.Warn("event for a speaker with no tab — dropping", "speaker", event.Speaker)
 	return m, nil
 }
 

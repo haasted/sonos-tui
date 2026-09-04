@@ -1,6 +1,7 @@
 package sonos
 
 import (
+	"errors"
 	"log/slog"
 	"sync"
 )
@@ -27,6 +28,9 @@ type DeviceState struct {
 	Transport TransportInfo
 	Current   TrackMetadata
 	RelTime   string
+
+	Volume int
+	Muted  bool
 }
 
 type Event struct {
@@ -133,6 +137,93 @@ func (d *Device) RefreshTrack() error {
 	d.state.RelTime = info.RelTime
 	d.mu.Unlock()
 	return nil
+}
+
+func (d *Device) RefreshVolume() error {
+	var (
+		wg      sync.WaitGroup
+		volume  int
+		muted   bool
+		volErr  error
+		muteErr error
+	)
+
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		volume, volErr = d.client.GetVolume()
+	}()
+	go func() {
+		defer wg.Done()
+		muted, muteErr = d.client.GetMute()
+	}()
+	wg.Wait()
+
+	if err := errors.Join(volErr, muteErr); err != nil {
+		return err
+	}
+
+	d.mu.Lock()
+	d.state.Volume = volume
+	d.state.Muted = muted
+	d.mu.Unlock()
+	return nil
+}
+
+func (d *Device) RefreshAll() error {
+	refreshers := []func() error{d.Refresh, d.RefreshTrack, d.RefreshVolume}
+	errs := make([]error, len(refreshers))
+
+	var wg sync.WaitGroup
+	wg.Add(len(refreshers))
+	for i, refresh := range refreshers {
+		go func() {
+			defer wg.Done()
+			errs[i] = refresh()
+		}()
+	}
+	wg.Wait()
+
+	return errors.Join(errs...)
+}
+
+func (d *Device) AdjustVolume(adjustment int) (int, error) {
+	d.mu.RLock()
+	muted := d.state.Muted
+	d.mu.RUnlock()
+
+	if muted {
+		if err := d.SetMuted(false); err != nil {
+			return 0, err
+		}
+	}
+
+	volume, err := d.client.SetRelativeVolume(adjustment)
+	if err != nil {
+		return 0, err
+	}
+
+	d.mu.Lock()
+	d.state.Volume = volume
+	d.mu.Unlock()
+	return volume, nil
+}
+
+func (d *Device) SetMuted(muted bool) error {
+	if err := d.client.SetMute(muted); err != nil {
+		return err
+	}
+	d.mu.Lock()
+	d.state.Muted = muted
+	d.mu.Unlock()
+	return nil
+}
+
+func (d *Device) ToggleMute() error {
+	d.mu.RLock()
+	muted := d.state.Muted
+	d.mu.RUnlock()
+	return d.SetMuted(!muted)
 }
 
 // Play starts or resumes playback.
