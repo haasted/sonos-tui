@@ -62,6 +62,14 @@ func (s Speaker) DisplayName() string {
 	return s.IP
 }
 
+// storeDescription publishes a freshly fetched description. Speaker is copied
+// by value, but description is a shared pointer, so every copy sees it.
+func (s Speaker) storeDescription(desc DeviceDescription) {
+	if s.description != nil {
+		s.description.Store(&desc)
+	}
+}
+
 func NewSpeaker(ip, location, usn string, desc DeviceDescription) Speaker {
 	s := Speaker{IP: ip, Location: location, USN: usn, description: &atomic.Pointer[DeviceDescription]{}}
 	s.description.Store(&desc)
@@ -220,18 +228,42 @@ func extractHeader(response, header string) string {
 }
 
 func GetLocalIP() (string, error) {
+	ipnet, err := localIPNet()
+	if err != nil {
+		return "", err
+	}
+	return ipnet.IP.String(), nil
+}
+
+// LocalSubnet returns the local network in CIDR form, e.g. "192.168.68.0/24".
+// It is a cheap, approximate identity for "which network am I on" — two homes
+// commonly share 192.168.1.0/24 — so it is only ever a fast pre-filter, never
+// proof that a cached speaker is still reachable.
+func LocalSubnet() (string, error) {
+	ipnet, err := localIPNet()
+	if err != nil {
+		return "", err
+	}
+	network := &net.IPNet{IP: ipnet.IP.Mask(ipnet.Mask), Mask: ipnet.Mask}
+	return network.String(), nil
+}
+
+// localIPNet returns the first non-loopback IPv4 interface address, with its
+// mask. One syscall, no subprocess and no CGo — see ADR-0001, which rejected
+// the SSID and gateway-MAC alternatives for needing both.
+func localIPNet() (*net.IPNet, error) {
 	//	https://stackoverflow.com/a/31551220/13075
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	for _, address := range addrs {
 		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
 			if ipnet.IP.To4() != nil {
-				return ipnet.IP.String(), nil
+				return ipnet, nil
 			}
 		}
 	}
-	return "", fmt.Errorf("Could not retrieve local IP address")
+	return nil, fmt.Errorf("could not retrieve local IP address")
 }

@@ -19,6 +19,7 @@ import (
 // here. RoomName/DisplayName are the fields that hold what a user actually
 // named the speaker in the Sonos app (e.g. "Spisestue" / "Amp").
 type DeviceDescription struct {
+	UDN         string // "uuid:RINCON_...", the identity half of the SSDP USN
 	RoomName    string
 	DisplayName string
 	ModelName   string
@@ -69,6 +70,7 @@ func FetchDeviceDescription(ctx context.Context, client *http.Client, location s
 	// (same lesson as the earlier InstanceID/Event path bugs).
 	var doc struct {
 		Device struct {
+			UDN         string `xml:"UDN"`
 			RoomName    string `xml:"roomName"`
 			DisplayName string `xml:"displayName"`
 			ModelName   string `xml:"modelName"`
@@ -80,6 +82,7 @@ func FetchDeviceDescription(ctx context.Context, client *http.Client, location s
 	}
 
 	return DeviceDescription{
+		UDN:         doc.Device.UDN,
 		RoomName:    doc.Device.RoomName,
 		DisplayName: doc.Device.DisplayName,
 		ModelName:   doc.Device.ModelName,
