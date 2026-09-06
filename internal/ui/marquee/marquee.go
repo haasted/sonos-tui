@@ -22,6 +22,20 @@ func (l Line) Advance() Line {
 	return l
 }
 
+// RenderWidth renders the line clipped to width rather than the window it was
+// built with, leaving scroll position untouched so the caller can narrow the
+// line temporarily and restore it without the text jumping.
+func (l Line) RenderWidth(style lipgloss.Style, width int) string {
+	if width >= l.windowWidth {
+		return l.Render(style)
+	}
+	if lipgloss.Width(l.text) <= width {
+		return style.Render(l.text)
+	}
+	doubled := append(append([]rune{}, l.runes...), l.runes...)
+	return style.Render(string(doubled[l.offset : l.offset+width]))
+}
+
 func (l Line) Render(style lipgloss.Style) string {
 	if !l.NeedsScroll() {
 		return style.Render(l.text)

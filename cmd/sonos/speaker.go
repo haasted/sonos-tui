@@ -66,6 +66,7 @@ func trackFromState(state sonos.DeviceState) nowplaying.Track {
 		Duration: sonos.ParseDuration(state.Current.Duration),
 		Playing:  state.Transport.State == "PLAYING",
 		Muted:    state.Muted,
+		Volume:   state.Volume,
 	}
 }
 

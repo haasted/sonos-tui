@@ -27,6 +27,21 @@ const (
 )
 
 const (
+	volumeHold = 1400 * time.Millisecond // readout stays at full strength this long
+	volumeFade = 600 * time.Millisecond  // then dims away, restoring the clock
+)
+
+const (
+	volumeUpGlyph   = "▲"
+	volumeDownGlyph = "▼"
+)
+
+// volumeSlotWidth is the room the readout needs: the widest form ("▼ 100")
+// plus a separating space. Only claimed from the album while showing, so a
+// long album title keeps the full width the rest of the time.
+const volumeSlotWidth = 6
+
+const (
 	scrollInterval = 150 * time.Millisecond
 	scrollDelay    = 3 * time.Second
 )
@@ -52,7 +67,15 @@ var (
 
 	muteFlashColor = lipgloss.Color("#C01C28") // background the mute glyph flashes on activation
 	muteGlyphColor = lipgloss.Color("#FFFFFF") // glyph stays legible against the flash
+
+	volumeAccent = theme.LightDark(lipgloss.Color("#B45309"), lipgloss.Color("#FBBF24"))
 )
+
+// volumeStyle fades the readout from the accent into the terminal background
+// as strength goes 1 -> 0, so it is already invisible when it stops rendering.
+func volumeStyle(strength float64) lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(blend(terminalBackground(), volumeAccent, strength))
+}
 
 // muteGlyphStyle keeps the glyph legible and flashes its background, fading
 // that background toward the terminal's own so the block disappears.
@@ -62,12 +85,13 @@ func muteGlyphStyle(strength float64) lipgloss.Style {
 	}
 	return lipgloss.NewStyle().
 		Foreground(muteGlyphColor).
-		Background(blend(muteRestColor(), muteFlashColor, strength))
+		Background(blend(terminalBackground(), muteFlashColor, strength))
 }
 
-// muteRestColor is the terminal's background, or a themed stand-in when it
-// did not report one.
-func muteRestColor() color.Color {
+// terminalBackground is the terminal's own background, or a themed stand-in
+// when it did not report one. Both transients fade toward it so they are
+// already invisible by the time they stop being drawn.
+func terminalBackground() color.Color {
 	if bg := theme.Background(); bg != nil {
 		return bg
 	}

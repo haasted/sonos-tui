@@ -29,15 +29,20 @@ const (
 type volStyle int
 
 const (
-	volBarAndLevel volStyle = iota
-	volBarOnly
-	volLevelOnly
-	volBlocks
+	volArrowLevel volStyle = iota
+	volLabelLevel
+	volFineBar
+	volFineBarArrow
+	volFineBarBare
+	volBraille
 	volStyleCount
 )
 
 func (s volStyle) String() string {
-	return [...]string{"braille bar + level", "braille bar only", "level only", "block bar + level"}[s]
+	return [...]string{
+		"arrow + level", "label + level", "fine bar + level",
+		"arrow + fine bar + level", "fine bar, no track", "braille bar + level",
+	}[s]
 }
 
 // volumeDemo renders the real nowplaying title row with the volume readout
@@ -52,6 +57,7 @@ type volumeDemo struct {
 	mutedAt    time.Time   // when mute was last switched on, for the highlight fade
 	eased      bool        // smoothstep the fades instead of ramping them linearly
 	bg         color.Color // the terminal's real background, target of the mute flash fade
+	rising     bool        // direction of the last volume change, for the arrow
 }
 
 func newVolumeDemo() volumeDemo {
@@ -75,19 +81,43 @@ func brailleBar(volume, cells int) string {
 	return b.String()
 }
 
-func blockBar(volume, cells int) string {
-	full := (volume*cells + 50) / 100
-	return strings.Repeat("█", full) + strings.Repeat("░", cells-full)
+// fineBar uses eighth-width block characters, so each cell carries 8 sub-steps
+// and a 2-point volume change is visible on nearly every keypress.
+func fineBar(volume, cells int, track bool) string {
+	eighths := (volume * cells * 8) / 100
+	full, rem := eighths/8, eighths%8
+
+	var b strings.Builder
+	b.WriteString(strings.Repeat("█", full))
+	used := full
+	if rem > 0 {
+		b.WriteString(string([]rune("▏▎▍▌▋▊▉")[rem-1]))
+		used++
+	}
+	pad := " "
+	if track {
+		pad = "░"
+	}
+	b.WriteString(strings.Repeat(pad, max(cells-used, 0)))
+	return b.String()
 }
 
 func (m volumeDemo) readout() string {
+	arrow := "▼"
+	if m.rising {
+		arrow = "▲"
+	}
 	switch m.style {
-	case volBarOnly:
-		return brailleBar(m.volume, volDemoBrailleCell)
-	case volLevelOnly:
+	case volArrowLevel:
+		return fmt.Sprintf("%s %d", arrow, m.volume)
+	case volLabelLevel:
 		return fmt.Sprintf("vol %d", m.volume)
-	case volBlocks:
-		return fmt.Sprintf("%s %d", blockBar(m.volume, volDemoBlockCells), m.volume)
+	case volFineBar:
+		return fmt.Sprintf("%s %d", fineBar(m.volume, 6, true), m.volume)
+	case volFineBarArrow:
+		return fmt.Sprintf("%s %s %d", arrow, fineBar(m.volume, 6, true), m.volume)
+	case volFineBarBare:
+		return fmt.Sprintf("%s %d", fineBar(m.volume, 6, false), m.volume)
 	default:
 		return fmt.Sprintf("%s %d", brailleBar(m.volume, volDemoBrailleCell), m.volume)
 	}
@@ -161,10 +191,12 @@ func (m volumeDemo) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up":
 			m.volume = min(m.volume+2, 100)
 			m.changedAt = time.Now()
+			m.rising = true
 			m.muted = false
 		case "down":
 			m.volume = max(m.volume-2, 0)
 			m.changedAt = time.Now()
+			m.rising = false
 			m.muted = false
 		case "m", "M":
 			m.muted = !m.muted
@@ -213,7 +245,7 @@ func (m volumeDemo) View() tea.View {
 
 	b.WriteString("\n  " + dimStyle().Render("ladder — every level in this style:") + "\n")
 	for _, v := range []int{0, 10, 25, 40, 46, 50, 60, 73, 88, 95, 100} {
-		probe := volumeDemo{volume: v, style: m.style}
+		probe := volumeDemo{volume: v, style: m.style, rising: m.rising}
 		marker := "  "
 		if v == m.volume {
 			marker = "▸ "

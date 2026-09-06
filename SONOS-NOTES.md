@@ -128,6 +128,48 @@ removed:
 `NextTrackMetaData` is empty across all captures, consistent with these being
 radio sessions rather than queue playback.
 
+## Volume range is 0-100, but that is convention rather than protocol
+
+`SetVolume` range-checks 0-100 and the volume readout divides by 100. That
+assumption is correct on real hardware, but it is a de facto standard, not
+something UPnP guarantees.
+
+UPnP publishes the authoritative answer per service in an **SCPD document**,
+linked from the device description as
+`<SCPDURL>/xml/RenderingControl1.xml</SCPDURL>`:
+
+```xml
+<name>Volume</name>
+<dataType>ui2</dataType>
+<allowedValueRange>
+  <minimum>0</minimum>
+  <maximum>100</maximum>
+  <step>1</step>
+</allowedValueRange>
+```
+
+Queried live against five different hardware classes — an amplifier, a
+line-out Port, two Era models and an IKEA SYMFONISK — all agreed exactly:
+
+| Room | Model | Volume |
+|---|---|---|
+| Køkken | Sonos Era 100 | 0-100 step 1 |
+| Spisestue | Sonos Amp | 0-100 step 1 |
+| Værelse | Sonos Era 300 | 0-100 step 1 |
+| Soveværelse | SYMFONISK Picture frame | 0-100 step 1 |
+| Ovenpå | Sonos Port | 0-100 step 1 |
+
+**Decision: hardcode 0-100 and do not read the SCPD.** Reading it would mean
+an extra fetch and parse per speaker at load, to discover a number that is the
+same on every Sonos device sold. Not worth the complexity.
+
+Two things to know if that ever stops holding. UPnP explicitly permits a
+vendor-defined maximum — that is precisely why `allowedValueRange` exists — so
+a future product, or any non-Sonos UPnP renderer, need not use 0-100. And
+nothing in this codebase reads SCPDs at all today: `internal/sonos/description.go`
+parses the device description only for room name and model, ignoring the
+service list entirely. The range is asserted, never asked for.
+
 ## Discovery timing
 
 Measured startup, five speakers, with `MX: 3` in the SSDP M-SEARCH:

@@ -22,6 +22,7 @@ type Track struct {
 	Duration time.Duration
 	Playing  bool
 	Muted    bool
+	Volume   int
 }
 
 type TrackMsg struct {
@@ -48,15 +49,15 @@ func scrollTick(gen int) tea.Cmd {
 	})
 }
 
-const muteTickInterval = 40 * time.Millisecond
+const fadeTickInterval = 40 * time.Millisecond
 
-type muteTickMsg struct {
+type fadeTickMsg struct {
 	gen int
 }
 
-func muteTick(gen int) tea.Cmd {
-	return tea.Tick(muteTickInterval, func(time.Time) tea.Msg {
-		return muteTickMsg{gen: gen}
+func fadeTick(gen int) tea.Cmd {
+	return tea.Tick(fadeTickInterval, func(time.Time) tea.Msg {
+		return fadeTickMsg{gen: gen}
 	})
 }
 
@@ -78,7 +79,13 @@ type Model struct {
 
 	muted   bool
 	mutedAt time.Time // when mute last switched on, driving the flash fade
-	muteGen *int
+
+	volume        int
+	volumeKnown   bool      // suppresses the readout on the first track, which has no previous level
+	volumeRising  bool      // direction of the last change, picking the arrow
+	volumeShownAt time.Time // when the readout last appeared, driving its fade
+
+	fadeGen *int // one ticker drives both the mute and volume fades
 
 	title  marquee.Line
 	artist marquee.Line
@@ -99,12 +106,19 @@ func New(track Track) Model {
 	s := spinner.New()
 	s.Spinner = spinners.Equalizer
 
-	m := Model{spinner: s, scrollGen: new(int), posGen: new(int), muteGen: new(int)}
+	m := Model{spinner: s, scrollGen: new(int), posGen: new(int), fadeGen: new(int)}
 	return m.applyTrack(track)
 }
 
 func (m Model) applyTrack(track Track) Model {
 	metaWindowWidth := titleRowWidth - lipgloss.Width(m.spinner.View()) - 1
+
+	if m.volumeKnown && track.Volume != m.volume {
+		m.volumeRising = track.Volume > m.volume
+		m.volumeShownAt = time.Now()
+	}
+	m.volume = track.Volume
+	m.volumeKnown = true
 
 	if track.Muted && !m.muted {
 		m.mutedAt = time.Now()
@@ -138,19 +152,34 @@ func (m Model) elapsed() time.Duration {
 
 // muteFlash is 1 while the flash is held, easing to 0 across the fade.
 func (m Model) muteFlash() float64 {
-	if m.mutedAt.IsZero() {
+	return easedFlash(m.mutedAt, muteFlashHold, muteFlashFade)
+}
+
+// easedFlash holds at 1 for hold, then smoothsteps to 0 across fade.
+func easedFlash(since time.Time, hold, fade time.Duration) float64 {
+	if since.IsZero() {
 		return 0
 	}
-	since := time.Since(m.mutedAt)
-	if since < muteFlashHold {
+	elapsed := time.Since(since)
+	if elapsed < hold {
 		return 1
 	}
-	left := muteFlashHold + muteFlashFade - since
+	left := hold + fade - elapsed
 	if left <= 0 {
 		return 0
 	}
-	t := float64(left) / float64(muteFlashFade)
+	t := float64(left) / float64(fade)
 	return t * t * (3 - 2*t)
+}
+
+// volumeFlash is 1 while the readout is held, easing to 0 across its fade.
+func (m Model) volumeFlash() float64 {
+	return easedFlash(m.volumeShownAt, volumeHold, volumeFade)
+}
+
+// fading reports whether any transient overlay still needs redrawing.
+func (m Model) fading() bool {
+	return m.muteFlash() > 0 || m.volumeFlash() > 0
 }
 
 func (m Model) needsScroll() bool {
@@ -165,8 +194,8 @@ func (m Model) startCmds() tea.Cmd {
 	if m.needsScroll() {
 		cmds = append(cmds, scrollTick(*m.scrollGen))
 	}
-	if m.muteFlash() > 0 {
-		cmds = append(cmds, muteTick(*m.muteGen))
+	if m.fading() {
+		cmds = append(cmds, fadeTick(*m.fadeGen))
 	}
 	if len(cmds) == 0 {
 		return nil
@@ -182,7 +211,7 @@ func (m Model) Init() tea.Cmd {
 func (m Model) restartTicks() {
 	*m.scrollGen = nextGeneration()
 	*m.posGen = nextGeneration()
-	*m.muteGen = nextGeneration()
+	*m.fadeGen = nextGeneration()
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
@@ -198,11 +227,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
-	case muteTickMsg:
-		if msg.gen != *m.muteGen || m.muteFlash() <= 0 {
+	case fadeTickMsg:
+		if msg.gen != *m.fadeGen || !m.fading() {
 			return m, nil
 		}
-		return m, muteTick(msg.gen)
+		return m, fadeTick(msg.gen)
 	case positionTickMsg:
 		if msg.gen != *m.posGen || !m.playing {
 			return m, nil
@@ -248,15 +277,34 @@ func (m Model) View() string {
 	titleLine := left + strings.Repeat(" ", gap) + position
 
 	indent := strings.Repeat(" ", lipgloss.Width(spinnerGlyph)+1)
+
+	albumLine := indent + m.album.Render(albumStyle)
+	if strength := m.volumeFlash(); strength > 0 {
+		readout := volumeStyle(strength).Render(m.volumeReadout())
+		narrowed := titleRowWidth - lipgloss.Width(indent) - volumeSlotWidth
+		albumLine = indent + m.album.RenderWidth(albumStyle, narrowed)
+		gap := max(titleRowWidth-lipgloss.Width(albumLine)-lipgloss.Width(readout), 1)
+		albumLine += strings.Repeat(" ", gap) + readout
+	}
+
 	lines := []string{
 		titleLine,
 		indent + m.artist.Render(artistStyle),
-		indent + m.album.Render(albumStyle),
+		albumLine,
 	}
 	if m.err != nil {
 		lines = append(lines, errorStyle.Render("⚠ "+m.err.Error()))
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
+}
+
+// volumeReadout is the arrow-and-level text that stands in for the clock.
+func (m Model) volumeReadout() string {
+	arrow := volumeDownGlyph
+	if m.volumeRising {
+		arrow = volumeUpGlyph
+	}
+	return fmt.Sprintf("%s %d", arrow, m.volume)
 }
 
 func formatPosition(elapsed, duration time.Duration) string {
