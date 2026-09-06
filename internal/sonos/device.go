@@ -34,7 +34,17 @@ type DeviceState struct {
 	Muted  bool
 }
 
+// EventKind says which service produced an event. Volume events carry no
+// playback position, so consumers must not treat them as a position update.
+type EventKind int
+
+const (
+	EventAVTransport EventKind = iota
+	EventRenderingControl
+)
+
 type Event struct {
+	Kind      EventKind
 	Speaker   Speaker
 	Transport TransportInfo
 	Current   TrackMetadata
@@ -86,6 +96,7 @@ func (d *Device) HandleAVTransportEvent(body []byte) error {
 	d.mu.Unlock()
 
 	event := Event{
+		Kind:      EventAVTransport,
 		Speaker:   d.Speaker,
 		Transport: snapshot.Transport,
 		Current:   snapshot.Current,
@@ -121,6 +132,7 @@ func (d *Device) HandleRenderingControlEvent(body []byte) error {
 	d.mu.Unlock()
 
 	event := Event{
+		Kind:      EventRenderingControl,
 		Speaker:   d.Speaker,
 		Transport: snapshot.Transport,
 		Current:   snapshot.Current,

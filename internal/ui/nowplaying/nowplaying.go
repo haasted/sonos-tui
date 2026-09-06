@@ -29,6 +29,18 @@ type TrackMsg struct {
 	Track Track
 }
 
+// VolumeMsg reports volume and mute without claiming anything about the
+// track. Commands that cannot move playback send this instead of a TrackMsg,
+// whose Elapsed would reset the clock to a stale position.
+type VolumeMsg struct {
+	Volume int
+	Muted  bool
+
+	// Show forces the readout even when the level is unchanged, for arriving
+	// at a speaker's tab rather than adjusting it.
+	Show bool
+}
+
 type ErrorMsg struct {
 	Err error
 }
@@ -80,10 +92,11 @@ type Model struct {
 	muted   bool
 	mutedAt time.Time // when mute last switched on, driving the flash fade
 
-	volume        int
-	volumeKnown   bool      // suppresses the readout on the first track, which has no previous level
-	volumeRising  bool      // direction of the last change, picking the arrow
-	volumeShownAt time.Time // when the readout last appeared, driving its fade
+	volume            int
+	volumeKnown       bool      // suppresses the readout on the first track, which has no previous level
+	volumeRising      bool      // direction of the last change, picking the arrow
+	volumeDirectional bool      // false when shown on arrival, where no arrow applies
+	volumeShownAt     time.Time // when the readout last appeared, driving its fade
 
 	fadeGen *int // one ticker drives both the mute and volume fades
 
@@ -114,6 +127,7 @@ func (m Model) applyTrack(track Track) Model {
 	metaWindowWidth := titleRowWidth - lipgloss.Width(m.spinner.View()) - 1
 
 	if m.volumeKnown && track.Volume != m.volume {
+		m.volumeDirectional = true
 		m.volumeRising = track.Volume > m.volume
 		m.volumeShownAt = time.Now()
 	}
@@ -172,6 +186,27 @@ func easedFlash(since time.Time, hold, fade time.Duration) float64 {
 	return t * t * (3 - 2*t)
 }
 
+// applyVolume records a volume/mute update, leaving the clock and the track
+// untouched. Show makes the readout appear even without a change.
+func (m Model) applyVolume(msg VolumeMsg) Model {
+	if changed := m.volumeKnown && msg.Volume != m.volume; changed || msg.Show {
+		m.volumeDirectional = changed
+		m.volumeRising = msg.Volume >= m.volume
+		m.volumeShownAt = time.Now()
+	}
+	m.volume = msg.Volume
+	m.volumeKnown = true
+
+	if msg.Muted && !m.muted {
+		m.mutedAt = time.Now()
+	}
+	if !msg.Muted {
+		m.mutedAt = time.Time{}
+	}
+	m.muted = msg.Muted
+	return m
+}
+
 // volumeFlash is 1 while the readout is held, easing to 0 across its fade.
 func (m Model) volumeFlash() float64 {
 	return easedFlash(m.volumeShownAt, volumeHold, volumeFade)
@@ -219,6 +254,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case TrackMsg:
 		m = m.applyTrack(msg.Track)
 		m.restartTicks()
+		return m, m.startCmds()
+	case VolumeMsg:
+		m = m.applyVolume(msg)
 		return m, m.startCmds()
 	case ErrorMsg:
 		m.err = msg.Err
@@ -298,8 +336,13 @@ func (m Model) View() string {
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
 
-// volumeReadout is the arrow-and-level text that stands in for the clock.
+// volumeReadout is the level, prefixed with a direction arrow only when the
+// volume actually moved. Arriving at a speaker shows the level alone: nothing
+// is going up or down, so an arrow would be a lie.
 func (m Model) volumeReadout() string {
+	if !m.volumeDirectional {
+		return fmt.Sprintf("%d", m.volume)
+	}
 	arrow := volumeDownGlyph
 	if m.volumeRising {
 		arrow = volumeUpGlyph

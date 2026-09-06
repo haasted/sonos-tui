@@ -70,9 +70,18 @@ func trackFromState(state sonos.DeviceState) nowplaying.Track {
 	}
 }
 
-// Init starts the now-playing widget's own tickers.
+// Init starts the widget's tickers and shows this speaker's volume, so
+// arriving at a tab says how loud it is without having to nudge it.
 func (m speakerModel) Init() tea.Cmd {
-	return m.widget.Init()
+	return tea.Batch(m.widget.Init(), m.showVolume())
+}
+
+// showVolume surfaces the current level without changing it.
+func (m speakerModel) showVolume() tea.Cmd {
+	state := m.device.State()
+	return func() tea.Msg {
+		return nowplaying.VolumeMsg{Volume: state.Volume, Muted: state.Muted, Show: true}
+	}
 }
 
 // Update applies volume commits and playback keys, forwarding anything else
@@ -138,26 +147,28 @@ func (m speakerModel) togglePlayback() tea.Cmd {
 	}
 }
 
-// adjustVolume applies an accumulated delta, reporting the new state so an
-// auto-unmute is reflected in the glyph.
+// adjustVolume applies an accumulated delta. It reports volume only: a volume
+// change cannot move playback, and a TrackMsg would reset the clock.
 func (m speakerModel) adjustVolume(delta int) tea.Cmd {
 	return func() tea.Msg {
 		if _, err := m.device.AdjustVolume(delta); err != nil {
 			slog.Warn("volume command failed", "speaker", m.device.Speaker, "delta", delta, "err", err)
 			return nowplaying.ErrorMsg{Err: err}
 		}
-		return nowplaying.TrackMsg{Track: trackFromState(m.device.State())}
+		state := m.device.State()
+		return nowplaying.VolumeMsg{Volume: state.Volume, Muted: state.Muted}
 	}
 }
 
-// toggleMute flips the speaker's mute state and reports it for the glyph.
+// toggleMute flips mute, reporting volume only for the same reason as adjustVolume.
 func (m speakerModel) toggleMute() tea.Cmd {
 	return func() tea.Msg {
 		if err := m.device.ToggleMute(); err != nil {
 			slog.Warn("mute command failed", "speaker", m.device.Speaker, "err", err)
 			return nowplaying.ErrorMsg{Err: err}
 		}
-		return nowplaying.TrackMsg{Track: trackFromState(m.device.State())}
+		state := m.device.State()
+		return nowplaying.VolumeMsg{Volume: state.Volume, Muted: state.Muted}
 	}
 }
 

@@ -102,7 +102,7 @@ func (m appModel) applyEvent(event sonos.Event) (tea.Model, tea.Cmd) {
 			continue
 		}
 
-		updated, cmd := speaker.Update(nowplaying.TrackMsg{Track: trackFromState(speaker.device.State())})
+		updated, cmd := speaker.Update(eventMsg(event, speaker.device.State()))
 		m.tabs.Items[i].Content = updated
 
 		if i != m.tabs.Active {
@@ -113,6 +113,16 @@ func (m appModel) applyEvent(event sonos.Event) (tea.Model, tea.Cmd) {
 
 	slog.Warn("event for a speaker with no tab — dropping", "speaker", event.Speaker)
 	return m, nil
+}
+
+// eventMsg narrows a volume event to a VolumeMsg. A RenderingControl event
+// carries no playback position, so sending a TrackMsg would reset the clock to
+// whatever stale RelTime the last AVTransport event left behind.
+func eventMsg(event sonos.Event, state sonos.DeviceState) tea.Msg {
+	if event.Kind == sonos.EventRenderingControl {
+		return nowplaying.VolumeMsg{Volume: state.Volume, Muted: state.Muted}
+	}
+	return nowplaying.TrackMsg{Track: trackFromState(state)}
 }
 
 func isSameSpeaker(device *sonos.Device, speaker sonos.Speaker) bool {
