@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"sort"
 	"strings"
@@ -17,6 +18,7 @@ var _ tea.Model = &appModel{}
 const maxPlayerHeightRows = 7
 
 type appModel struct {
+	ctx           context.Context // root context; Bubbletea commands carry none of their own
 	tabs          panes.Tabs
 	ips           []string
 	eventManager  *sonos.EventManager
@@ -28,11 +30,11 @@ type appModel struct {
 	verticalSpaceChecked bool
 }
 
-func newAppModel(events *sonos.EventManager) appModel {
+func newAppModel(ctx context.Context, events *sonos.EventManager) appModel {
 	tabs := panes.NewTabs(nil)
 	tabs.Position = panes.Bottom
 	tabs.HideBorder = true
-	return appModel{tabs: tabs, eventManager: events}
+	return appModel{ctx: ctx, tabs: tabs, eventManager: events}
 }
 
 func (m appModel) Init() tea.Cmd {
@@ -64,7 +66,7 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Sequence(tea.ClearScreen, tea.Quit)
 		}
 	case speakerFoundMsg:
-		return m, loadSpeaker(m.eventManager, msg.speaker)
+		return m, loadSpeaker(m.ctx, m.eventManager, msg.speaker)
 	case speakerReadyMsg:
 		wasEmpty := len(m.tabs.Items) == 0
 		idx := sort.SearchStrings(m.ips, msg.ip)

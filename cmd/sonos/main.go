@@ -22,12 +22,13 @@ const (
 var logsFlag = flag.Bool("logs", true, "capture and print log output once the program exits; set to false to discard all logs")
 
 func main() {
-	ctx := context.Background()
-
 	flag.Parse()
 
 	dumpLogs := log.CaptureLogs(*logsFlag, slog.LevelDebug)
 	defer dumpLogs()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	events, err := sonos.NewEventManager()
 	if err != nil {
@@ -35,17 +36,20 @@ func main() {
 		return
 	}
 
-	program := tea.NewProgram(newAppModel(events), tea.WithContext(ctx))
+	program := tea.NewProgram(newAppModel(ctx, events), tea.WithContext(ctx))
 
-	go discoverSpeakers(program)
+	go discoverSpeakers(ctx, program)
 
 	_, runErr := program.Run()
+	cancel() // stop discovery and anything else still tied to the root
 
-	shutdownCtx, cancel := context.WithTimeout(ctx, shutdownTimeout)
+	// Deliberately rooted at Background, not ctx: ctx is cancelled just above
+	// and UNSUBSCRIBE still has to reach the speakers.
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	if err := events.Close(shutdownCtx); err != nil {
 		slog.Warn("shutting down event listener", "err", err)
 	}
-	cancel()
+	shutdownCancel()
 
 	if runErr != nil {
 		fmt.Fprintln(os.Stderr, "bubbletea error:", runErr)
@@ -53,8 +57,10 @@ func main() {
 	}
 }
 
-func discoverSpeakers(program *tea.Program) {
-	ctx, cancel := context.WithTimeout(context.Background(), discoverTimeout)
+// discoverSpeakers streams discovered speakers into the program, giving up
+// after discoverTimeout or when ctx is cancelled.
+func discoverSpeakers(ctx context.Context, program *tea.Program) {
+	ctx, cancel := context.WithTimeout(ctx, discoverTimeout)
 	defer cancel()
 
 	ch, err := sonos.Discover(ctx)
@@ -72,7 +78,8 @@ func discoverSpeakers(program *tea.Program) {
 	program.Send(discoveryDoneMsg{found: found})
 }
 
-func loadSpeaker(events *sonos.EventManager, speaker sonos.Speaker) tea.Cmd {
+// loadSpeaker builds a speaker's tab: fetch its state, then subscribe to its events.
+func loadSpeaker(ctx context.Context, events *sonos.EventManager, speaker sonos.Speaker) tea.Cmd {
 	return func() tea.Msg {
 		slog.Debug("starting loadSpeaker", "speaker", speaker.DisplayName())
 		defer slog.Debug("ending loadSpeaker", "speaker", speaker.DisplayName())
@@ -82,7 +89,7 @@ func loadSpeaker(events *sonos.EventManager, speaker sonos.Speaker) tea.Cmd {
 			slog.Warn("refreshing speaker state", "speaker", speaker, "err", err)
 		}
 
-		if err := events.Subscribe(context.Background(), device); err != nil {
+		if err := events.Subscribe(ctx, device); err != nil {
 			slog.Warn("subscribing to speaker events", "speaker", speaker, "err", err)
 		}
 
