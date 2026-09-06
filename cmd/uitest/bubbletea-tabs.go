@@ -140,7 +140,7 @@ func (m tabsRootModel) View() tea.View {
 		return tea.NewView("")
 	}
 
-	hint := "\n\ntab/shift+tab or ←/→ to switch tabs · 1-8 to jump, 0 for last · d to cycle spinner style · q to quit\n"
+	hint := "\n\ntab/shift+tab or ←/→ to switch tabs · 1-8 to jump, 0 for last · d spinner style · q to quit\n"
 	if m.forcedWidth > 0 {
 		hint = fmt.Sprintf(" [ui-size: %dx%d]", m.forcedWidth, m.forcedHeight) + hint
 	}

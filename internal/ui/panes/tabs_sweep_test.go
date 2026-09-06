@@ -1,6 +1,7 @@
 package panes_test
 
 import (
+	"image/color"
 	"regexp"
 	"testing"
 	"time"
@@ -135,3 +136,113 @@ func TestTabs_NoGlintBeforeAnySwitch(t *testing.T) {
 }
 
 func lipglossWidth(s string) int { return lipgloss.Width(s) }
+
+// Case: a divider sweep in flight, which must paint the line per-character
+// instead of the single flat separator colour.
+func TestTabs_DividerSweepPaintsTheLine(t *testing.T) {
+	tabs := twoTabs()
+	resting := distinctForegrounds(tabs.View())
+
+	tabs = panes.ForceDividerSweep(tabs, false)
+	tabs = panes.SetDividerElapsed(tabs, panes.DividerSweepDuration/2)
+
+	if during := distinctForegrounds(tabs.View()); during <= resting {
+		t.Fatalf("expected the sweep to paint per-character colours: %d distinct vs %d resting", during, resting)
+	}
+}
+
+// Case: the two directions, which must be mirror images at the same progress.
+func TestTabs_DividerSweepRunsBothWays(t *testing.T) {
+	// Pin the palette: the colour is rolled per sweep, and comparing the
+	// brightest cell across two different colours measures the colour, not
+	// the direction.
+	original := panes.DividerSweepColors
+	panes.DividerSweepColors = original[:1]
+	defer func() { panes.DividerSweepColors = original }()
+
+	at := func(reverse bool, frac float64) int {
+		tabs := twoTabs()
+		tabs = panes.ForceDividerSweep(tabs, reverse)
+		tabs = panes.SetDividerElapsed(tabs, time.Duration(frac*float64(panes.DividerSweepDuration)))
+		return brightestIndexIn(tabs.View())
+	}
+
+	if forward, back := at(false, 0.2), at(true, 0.2); forward >= back {
+		t.Fatalf("at the same progress the reverse sweep should be further right: forward %d, reverse %d", forward, back)
+	}
+}
+
+// Case: a finished sweep, which must restore the plain divider.
+func TestTabs_DividerSweepEndsCleanly(t *testing.T) {
+	tabs := twoTabs()
+	resting := distinctForegrounds(tabs.View())
+
+	tabs = panes.ForceDividerSweep(tabs, false)
+	tabs = panes.SetDividerElapsed(tabs, panes.DividerSweepDuration+time.Second)
+
+	if after := distinctForegrounds(tabs.View()); after != resting {
+		t.Fatalf("after the sweep the divider should be flat again: %d distinct vs %d resting", after, resting)
+	}
+}
+
+func brightestIndexIn(view string) int {
+	best, bestIdx := -1, -1
+	for i, m := range regexp.MustCompile(`38;2;(\d+);(\d+);(\d+)`).FindAllStringSubmatch(view, -1) {
+		sum := 0
+		for _, c := range m[1:] {
+			n := 0
+			for _, d := range c {
+				n = n*10 + int(d-'0')
+			}
+			sum += n
+		}
+		if sum > best {
+			best, bestIdx = sum, i
+		}
+	}
+	return bestIdx
+}
+
+// Case: a schedule tick from a superseded generation, which must not start a
+// sweep — the guard that stops a re-Init leaving two timer chains running.
+func TestTabs_StaleDividerScheduleIsIgnored(t *testing.T) {
+	tabs := twoTabs()
+	tabs, _ = tabs.Update(panes.NewDividerSchedule(panes.DividerGen(tabs) + 999))
+
+	if _, sweeping := panes.DividerActive(tabs); sweeping {
+		t.Fatal("a schedule tick from another generation must not start a sweep")
+	}
+}
+
+// Case: repeated sweeps, which must vary in colour rather than always using
+// one, while holding that colour steady for the sweep's duration.
+func TestTabs_DividerSweepRollsAColourPerSweep(t *testing.T) {
+	seen := map[color.Color]bool{}
+	for range 100 {
+		seen[panes.DividerColor(panes.ForceDividerSweep(twoTabs(), false))] = true
+	}
+	if len(seen) < 2 {
+		t.Fatalf("expected sweeps to vary in colour, saw only %d", len(seen))
+	}
+
+	tabs := panes.ForceDividerSweep(twoTabs(), false)
+	fixed := panes.DividerColor(tabs)
+	for _, frac := range []float64{0.1, 0.4, 0.9} {
+		moved := panes.SetDividerElapsed(tabs, time.Duration(frac*float64(panes.DividerSweepDuration)))
+		if panes.DividerColor(moved) != fixed {
+			t.Fatal("the colour must hold for the whole sweep, or it strobes every frame")
+		}
+	}
+}
+
+// Case: an emptied palette, which must degrade to an invisible sweep rather
+// than panicking on an empty slice.
+func TestTabs_DividerSweepToleratesAnEmptyPalette(t *testing.T) {
+	original := panes.DividerSweepColors
+	panes.DividerSweepColors = nil
+	defer func() { panes.DividerSweepColors = original }()
+
+	tabs := panes.ForceDividerSweep(twoTabs(), false)
+	tabs = panes.SetDividerElapsed(tabs, panes.DividerSweepDuration/2)
+	tabs.View() // must not panic
+}

@@ -3,6 +3,8 @@
 package panes
 
 import (
+	"image/color"
+	"math/rand/v2"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -39,12 +41,95 @@ type Tabs struct {
 
 	sweepGen   int
 	sweepStart time.Time
+
+	dividerGen     int
+	dividerStart   time.Time   // zero between sweeps
+	dividerReverse bool        // this sweep travels right to left
+	dividerColor   color.Color // picked once per sweep, so it does not strobe per frame
 }
 
 const (
 	tabSweepDuration = 620 * time.Millisecond
 	tabSweepInterval = 22 * time.Millisecond
 )
+
+const (
+	dividerSweepDuration = 1100 * time.Millisecond // one traversal of the divider
+	dividerSweepInterval = 33 * time.Millisecond   // frame rate while sweeping
+	dividerSweepMinGap   = 10 * time.Second        // shortest rest between sweeps
+	dividerSweepMaxGap   = 15 * time.Second        // longest rest between sweeps
+)
+
+// DividerSweepColors is the palette a divider sweep draws from, one picked at
+// random per sweep. Replace it to change the look; a one-element slice fixes
+// the colour. Each entry adapts to the terminal background, since the sweep
+// has to stand out against a light grey divider as well as a dark one.
+var DividerSweepColors = []color.Color{
+	theme.LightDark(lipgloss.Color("#6B46C1"), lipgloss.Color("#A5B4FC")), // indigo
+	theme.LightDark(lipgloss.Color("#0E7490"), lipgloss.Color("#67E8F9")), // cyan
+	theme.LightDark(lipgloss.Color("#B45309"), lipgloss.Color("#FBBF24")), // amber
+	theme.LightDark(lipgloss.Color("#9D174D"), lipgloss.Color("#F9A8D4")), // rose
+	theme.LightDark(lipgloss.Color("#15803D"), lipgloss.Color("#86EFAC")), // green
+}
+
+var dividerGenerations atomic.Int64
+
+func nextDividerGen() int { return int(dividerGenerations.Add(1)) }
+
+// dividerScheduleMsg fires when a divider sweep is due to begin.
+type dividerScheduleMsg struct {
+	gen int
+}
+
+// dividerTickMsg is one animation frame of a running divider sweep.
+type dividerTickMsg struct {
+	gen int
+}
+
+// scheduleDividerSweep waits a random rest, then starts the next sweep.
+func scheduleDividerSweep(gen int) tea.Cmd {
+	gap := dividerSweepMinGap +
+		time.Duration(rand.Int64N(int64(dividerSweepMaxGap-dividerSweepMinGap)))
+	return tea.Tick(gap, func(time.Time) tea.Msg {
+		return dividerScheduleMsg{gen: gen}
+	})
+}
+
+func dividerTick(gen int) tea.Cmd {
+	return tea.Tick(dividerSweepInterval, func(time.Time) tea.Msg {
+		return dividerTickMsg{gen: gen}
+	})
+}
+
+// beginDividerSweep rolls this sweep's direction and colour. Both are fixed
+// for its duration: re-rolling in the render path would strobe every frame.
+func (t *Tabs) beginDividerSweep() {
+	t.dividerStart = time.Now()
+	t.dividerReverse = rand.IntN(2) == 0
+	t.dividerColor = pickDividerColor()
+}
+
+// pickDividerColor chooses from the palette, falling back to the divider's own
+// tone so an emptied palette simply yields no visible sweep.
+func pickDividerColor() color.Color {
+	if len(DividerSweepColors) == 0 {
+		return separatorColor
+	}
+	return DividerSweepColors[rand.IntN(len(DividerSweepColors))]
+}
+
+// dividerProgress reports how far the current sweep has travelled, as 0-1,
+// and whether one is running at all.
+func (t Tabs) dividerProgress() (float32, bool) {
+	if t.dividerStart.IsZero() {
+		return 0, false
+	}
+	elapsed := time.Since(t.dividerStart)
+	if elapsed >= dividerSweepDuration {
+		return 0, false
+	}
+	return float32(elapsed) / float32(dividerSweepDuration), true
+}
 
 var tabSweepGenerations atomic.Int64
 
@@ -109,16 +194,39 @@ func (t Tabs) InsertTabAt(index int, tab Tab) Tabs {
 	return t
 }
 
-// Init forwards to the initially active tab's content.
+// Init starts the divider's idle sweep timer and forwards to the initially
+// active tab's content. The timer starts even with no tabs yet: cmd/sonos
+// builds its Tabs empty and fills it as speakers are discovered.
 func (t Tabs) Init() tea.Cmd {
-	if len(t.Items) == 0 {
-		return nil
+	t.dividerGen = nextDividerGen()
+	cmds := []tea.Cmd{scheduleDividerSweep(t.dividerGen)}
+	if len(t.Items) > 0 {
+		cmds = append(cmds, t.Items[t.Active].Content.Init())
 	}
-	return t.Items[t.Active].Content.Init()
+	return tea.Batch(cmds...)
 }
 
 // Update switches tabs on navigation keys, otherwise forwards to the active tab's content.
 func (t Tabs) Update(msg tea.Msg) (Tabs, tea.Cmd) {
+	switch msg := msg.(type) {
+	case dividerScheduleMsg:
+		if msg.gen != t.dividerGen {
+			return t, nil
+		}
+		t.beginDividerSweep()
+		return t, dividerTick(msg.gen)
+
+	case dividerTickMsg:
+		if msg.gen != t.dividerGen {
+			return t, nil
+		}
+		if _, sweeping := t.dividerProgress(); sweeping {
+			return t, dividerTick(msg.gen)
+		}
+		t.dividerStart = time.Time{}
+		return t, scheduleDividerSweep(msg.gen)
+	}
+
 	if len(t.Items) == 0 {
 		return t, nil
 	}
@@ -193,7 +301,14 @@ func (t Tabs) View() string {
 	}
 	content := box.Render(t.Items[t.Active].Content.View().Content)
 
-	divider := separatorStyle.Render(strings.Repeat("─", max(lipgloss.Width(row), lipgloss.Width(content))))
+	run := strings.Repeat("─", max(lipgloss.Width(row), lipgloss.Width(content)))
+	divider := separatorStyle.Render(run)
+	if progress, sweeping := t.dividerProgress(); sweeping {
+		if t.dividerReverse {
+			progress = 1 - progress
+		}
+		divider = flashsweep.Glint(run, progress, dividerRamp(t.dividerColor))
+	}
 
 	if t.Position == Bottom {
 		return lipgloss.JoinVertical(lipgloss.Left, content, divider, row)
@@ -276,6 +391,18 @@ func (t Tabs) headerRow() string {
 	return row
 }
 
+// dividerRamp blends the configured sweep colour against the divider's resting
+// tone, so the light fades into the line rather than replacing it.
+func dividerRamp(flash color.Color) flashsweep.Ramp {
+	if flash == nil {
+		flash = separatorColor
+	}
+	return flashsweep.Ramp{
+		Base:  flashsweep.FromColor(separatorColor),
+		Flash: flashsweep.FromColor(flash),
+	}
+}
+
 // Colors go through theme.LightDark so the palette stays legible whether the
 // user's terminal background is light or dark, rather than assuming one or the other.
 var (
@@ -295,8 +422,9 @@ var (
 				Padding(0, 1).
 				Foreground(theme.LightDark(lipgloss.Color("#4A4A4A"), lipgloss.Color("#9B9B9B")))
 
-	separatorStyle = lipgloss.NewStyle().
-			Foreground(theme.LightDark(lipgloss.Color("#D0D0D0"), lipgloss.Color("#4A4A4A")))
+	separatorColor = theme.LightDark(lipgloss.Color("#D0D0D0"), lipgloss.Color("#4A4A4A"))
+
+	separatorStyle = lipgloss.NewStyle().Foreground(separatorColor)
 
 	contentStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
