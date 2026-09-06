@@ -18,6 +18,7 @@ var layouts = map[string]layout{
 	"blank":       layoutBlank,
 	"tabs":        layoutTabs,
 	"tabs-bottom": layoutTabsBottom,
+	"volume":      layoutVolume,
 	"effects":     layoutEffects,
 	"effects2":    layoutEffects2,
 	"interface1":  layoutInterface1,
