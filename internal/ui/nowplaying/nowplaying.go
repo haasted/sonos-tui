@@ -21,6 +21,7 @@ type Track struct {
 	Elapsed  time.Duration
 	Duration time.Duration
 	Playing  bool
+	Muted    bool
 }
 
 type TrackMsg struct {
@@ -47,6 +48,18 @@ func scrollTick(gen int) tea.Cmd {
 	})
 }
 
+const muteTickInterval = 40 * time.Millisecond
+
+type muteTickMsg struct {
+	gen int
+}
+
+func muteTick(gen int) tea.Cmd {
+	return tea.Tick(muteTickInterval, func(time.Time) tea.Msg {
+		return muteTickMsg{gen: gen}
+	})
+}
+
 const positionTickInterval = time.Second
 
 type positionTickMsg struct {
@@ -62,6 +75,10 @@ func positionTick(gen int) tea.Cmd {
 type Model struct {
 	spinner spinner.Model
 	playing bool
+
+	muted   bool
+	mutedAt time.Time // when mute last switched on, driving the flash fade
+	muteGen *int
 
 	title  marquee.Line
 	artist marquee.Line
@@ -82,13 +99,20 @@ func New(track Track) Model {
 	s := spinner.New()
 	s.Spinner = spinners.Equalizer
 
-	m := Model{spinner: s, scrollGen: new(int), posGen: new(int)}
+	m := Model{spinner: s, scrollGen: new(int), posGen: new(int), muteGen: new(int)}
 	return m.applyTrack(track)
 }
 
 func (m Model) applyTrack(track Track) Model {
 	metaWindowWidth := titleRowWidth - lipgloss.Width(m.spinner.View()) - 1
 
+	if track.Muted && !m.muted {
+		m.mutedAt = time.Now()
+	}
+	if !track.Muted {
+		m.mutedAt = time.Time{}
+	}
+	m.muted = track.Muted
 	m.playing = track.Playing
 	m.title = marquee.NewLine(track.Title, longTitleWindowWidth)
 	m.artist = marquee.NewLine(track.Artist, metaWindowWidth)
@@ -112,6 +136,23 @@ func (m Model) elapsed() time.Duration {
 	return e
 }
 
+// muteFlash is 1 while the flash is held, easing to 0 across the fade.
+func (m Model) muteFlash() float64 {
+	if m.mutedAt.IsZero() {
+		return 0
+	}
+	since := time.Since(m.mutedAt)
+	if since < muteFlashHold {
+		return 1
+	}
+	left := muteFlashHold + muteFlashFade - since
+	if left <= 0 {
+		return 0
+	}
+	t := float64(left) / float64(muteFlashFade)
+	return t * t * (3 - 2*t)
+}
+
 func (m Model) needsScroll() bool {
 	return m.title.NeedsScroll() || m.artist.NeedsScroll() || m.album.NeedsScroll()
 }
@@ -123,6 +164,9 @@ func (m Model) startCmds() tea.Cmd {
 	}
 	if m.needsScroll() {
 		cmds = append(cmds, scrollTick(*m.scrollGen))
+	}
+	if m.muteFlash() > 0 {
+		cmds = append(cmds, muteTick(*m.muteGen))
 	}
 	if len(cmds) == 0 {
 		return nil
@@ -138,6 +182,7 @@ func (m Model) Init() tea.Cmd {
 func (m Model) restartTicks() {
 	*m.scrollGen = nextGeneration()
 	*m.posGen = nextGeneration()
+	*m.muteGen = nextGeneration()
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
@@ -153,6 +198,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
+	case muteTickMsg:
+		if msg.gen != *m.muteGen || m.muteFlash() <= 0 {
+			return m, nil
+		}
+		return m, muteTick(msg.gen)
 	case positionTickMsg:
 		if msg.gen != *m.posGen || !m.playing {
 			return m, nil
@@ -184,6 +234,9 @@ func (m Model) View() string {
 	spinnerGlyph := m.spinner.View()
 	if !m.playing {
 		spinnerGlyph = pausedGlyph
+	}
+	if m.muted {
+		spinnerGlyph = muteGlyphStyle(m.muteFlash()).Render(mutedGlyph)
 	}
 	left := lipgloss.JoinHorizontal(lipgloss.Top, spinnerGlyph, " ", m.title.Render(trackStyle))
 	position := formatPosition(m.elapsed(), m.duration)

@@ -65,6 +65,7 @@ func trackFromState(state sonos.DeviceState) nowplaying.Track {
 		Elapsed:  sonos.ParseDuration(state.RelTime),
 		Duration: sonos.ParseDuration(state.Current.Duration),
 		Playing:  state.Transport.State == "PLAYING",
+		Muted:    state.Muted,
 	}
 }
 
@@ -136,26 +137,26 @@ func (m speakerModel) togglePlayback() tea.Cmd {
 	}
 }
 
-// adjustVolume applies an accumulated delta, reporting nothing on success
-// because no UI shows volume yet.
+// adjustVolume applies an accumulated delta, reporting the new state so an
+// auto-unmute is reflected in the glyph.
 func (m speakerModel) adjustVolume(delta int) tea.Cmd {
 	return func() tea.Msg {
 		if _, err := m.device.AdjustVolume(delta); err != nil {
 			slog.Warn("volume command failed", "speaker", m.device.Speaker, "delta", delta, "err", err)
 			return nowplaying.ErrorMsg{Err: err}
 		}
-		return nil
+		return nowplaying.TrackMsg{Track: trackFromState(m.device.State())}
 	}
 }
 
-// toggleMute flips the speaker's mute state, reporting only failures.
+// toggleMute flips the speaker's mute state and reports it for the glyph.
 func (m speakerModel) toggleMute() tea.Cmd {
 	return func() tea.Msg {
 		if err := m.device.ToggleMute(); err != nil {
 			slog.Warn("mute command failed", "speaker", m.device.Speaker, "err", err)
 			return nowplaying.ErrorMsg{Err: err}
 		}
-		return nil
+		return nowplaying.TrackMsg{Track: trackFromState(m.device.State())}
 	}
 }
 
