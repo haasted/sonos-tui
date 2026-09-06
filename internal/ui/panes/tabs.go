@@ -194,6 +194,27 @@ func (t Tabs) InsertTabAt(index int, tab Tab) Tabs {
 	return t
 }
 
+// RemoveTabAt drops one tab, keeping Active pointing at the same tab where it
+// can and clamping to the last tab when the removed one was at the end.
+func (t Tabs) RemoveTabAt(index int) Tabs {
+	if index < 0 || index >= len(t.Items) {
+		return t
+	}
+
+	items := make([]Tab, 0, len(t.Items)-1)
+	items = append(items, t.Items[:index]...)
+	items = append(items, t.Items[index+1:]...)
+	t.Items = items
+
+	if index < t.Active {
+		t.Active--
+	}
+	if t.Active >= len(t.Items) {
+		t.Active = max(len(t.Items)-1, 0)
+	}
+	return t
+}
+
 // Init starts the divider's idle sweep timer and forwards to the initially
 // active tab's content. The timer starts even with no tabs yet: cmd/sonos
 // builds its Tabs empty and fills it as speakers are discovered.

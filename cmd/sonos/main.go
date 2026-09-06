@@ -36,11 +36,15 @@ func main() {
 		return
 	}
 
-	program := tea.NewProgram(newAppModel(ctx, events), tea.WithContext(ctx))
+	cached, selected := loadCachedSpeakers()
+
+	model := newAppModel(ctx, events, cached, selected)
+	program := tea.NewProgram(model, tea.WithContext(ctx))
 
 	go discoverSpeakers(ctx, program)
 
-	_, runErr := program.Run()
+	final, runErr := program.Run()
+	saveCache(final)
 	cancel() // stop discovery and anything else still tied to the root
 
 	// Deliberately rooted at Background, not ctx: ctx is cancelled just above
@@ -54,6 +58,80 @@ func main() {
 	if runErr != nil {
 		fmt.Fprintln(os.Stderr, "bubbletea error:", runErr)
 		os.Exit(1)
+	}
+}
+
+// loadCachedSpeakers returns last run's speakers, or nothing when there is no
+// cache or it was recorded on a different network. Every failure is silent:
+// the cache is a shortcut, and discovery still runs regardless.
+func loadCachedSpeakers() ([]sonos.Speaker, string) {
+	path, pathErr := sonos.CachePath()
+	if pathErr != nil {
+		path = "<unknown>"
+	}
+
+	cache, ok := sonos.LoadCache()
+	if !ok {
+		slog.Info("no usable speaker cache — discovering from scratch", "path", path)
+		return nil, ""
+	}
+
+	subnet, err := sonos.LocalSubnet()
+	if err != nil {
+		slog.Debug("cannot read local subnet — ignoring cache", "err", err)
+		return nil, ""
+	}
+	if !cache.UsableOn(subnet) {
+		slog.Info("cache was recorded on another network — ignoring it",
+			"path", path, "cached", cache.Subnet, "current", subnet)
+		return nil, ""
+	}
+
+	speakers := cache.SpeakerList()
+	slog.Info("seeding tabs from cache",
+		"path", path,
+		"speakers", len(speakers),
+		"subnet", cache.Subnet,
+		"age", time.Since(cache.SavedAt).Truncate(time.Second))
+	return speakers, cache.Selected
+}
+
+// saveCache records the speakers still on screen, and which one was selected,
+// for the next run to start from.
+func saveCache(final tea.Model) {
+	app, ok := final.(appModel)
+	if !ok {
+		return
+	}
+	speakers, selected := app.speakerSnapshot()
+	if len(speakers) == 0 {
+		return
+	}
+	if err := sonos.SaveCache(speakers, selected); err != nil {
+		slog.Warn("writing speaker cache", "err", err)
+		return
+	}
+	if path, err := sonos.CachePath(); err == nil {
+		slog.Info("wrote speaker cache", "path", path, "speakers", len(speakers), "selected", selected)
+	}
+}
+
+// verifyCachedSpeaker proves a cached speaker is still there, refreshes it and
+// subscribes to its events. All three run behind the already-rendered tab.
+func verifyCachedSpeaker(ctx context.Context, events *sonos.EventManager, speaker sonos.Speaker, device *sonos.Device) tea.Cmd {
+	return func() tea.Msg {
+		if err := sonos.VerifySpeaker(ctx, speaker); err != nil {
+			slog.Info("cached speaker failed verification", "speaker", speaker.IP, "err", err)
+			return speakerGoneMsg{ip: speaker.IP}
+		}
+
+		if err := device.RefreshAll(); err != nil {
+			slog.Warn("refreshing cached speaker", "speaker", speaker.IP, "err", err)
+		}
+		if err := events.Subscribe(ctx, device); err != nil {
+			slog.Warn("subscribing to cached speaker", "speaker", speaker.IP, "err", err)
+		}
+		return speakerVerifiedMsg{ip: speaker.IP, title: speaker.DisplayName(), speaker: device}
 	}
 }
 

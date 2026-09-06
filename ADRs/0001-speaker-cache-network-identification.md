@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted — implemented in `internal/sonos/cache.go` and wired into `cmd/sonos` (son-jgt).
 
 ## Context
 
@@ -69,10 +69,69 @@ flowchart TD
 
 The subnet mismatch and verification-failure paths both fall through to the same full `Discover` — the cache is never a hard dependency, only ever a shortcut around it.
 
-### Open questions before implementation
+### Resolved during implementation (son-jgt)
 
-- **Eager vs. lazy verification**: verify every cached speaker on startup, or only the one about to be used (e.g. `cmd/sonos/main.go` today only ever acts on `speakers[0]`)? Leaning lazy — matches the "quick startup" goal better, and re-verifying N entries when only one is needed defeats some of the point.
-- **Which endpoint verifies a speaker**: a lightweight GET of the cached `Location` URL (`device_description.xml` — minimal, and its UDN can be cross-checked against the cached USN to catch a DHCP lease reassigned to a *different* device), or a real SOAP call like `GetTransportInfo()` that verifies and fetches useful data in the same round trip? Leaning toward the real call for whichever speaker is actually being used, lightweight GET for any others.
+**The rendering strategy was reversed.** This ADR, and son-jgt as filed, both
+specified the conservative order: verify, *then* render. That was reconsidered
+against the goal of being ready as fast as possible, and the optimistic order
+was chosen instead — read the cache, render every speaker immediately,
+re-select the tab that was active at last exit, and run verification behind the
+already-visible UI. The flow above still holds otherwise; it is only the point
+at which tabs appear that moved.
+
+The tradeoff accepted: for a second or two a tab may exist for a speaker that
+has since gone. That is judged the right price, because the cache is usually
+correct and the alternative is staring at an empty screen while every speaker
+is probed.
+
+**Verify all cached speakers, concurrently**, not just the one about to be
+used. The "lazy" leaning recorded above assumed a single-speaker program;
+`cmd/sonos` shows every speaker as a tab, so every tab needs proving. They are
+independent network calls, so they run in parallel and the slowest one bounds
+the total rather than the sum.
+
+**Both checks are used, cheap one first.** `device_description.xml` is fetched
+and its `UDN` compared against the cached SSDP `USN` before any SOAP call. This
+catches a DHCP lease reassigned to a different device, which a reachability
+check alone would call success. Measured against real hardware: a live speaker
+verifies in ~73ms, a reassigned address is rejected in ~29ms, and a dead
+address costs the full 2s timeout.
+
+`DeviceDescription` gained a `UDN` field for this. The description fetched
+during verification is also stored back onto the `Speaker`, so a room renamed
+in the Sonos app updates its tab title without a second request.
+
+**A failed speaker's tab is removed immediately**, including the active one.
+Considered and rejected: keeping a failed active tab with an error line. The
+simpler rule — the tab set always reflects reachable speakers — was preferred
+over special-casing which tab you happen to be reading.
+
+**Discovery always runs**, cache hit or not. Verification only proves the
+speakers we already knew about; a speaker added since the cache was written
+would never appear otherwise. Discovered speakers already on screen are
+ignored, so the cache and discovery converge rather than duplicating.
+
+**GENA subscription happens alongside verification**, not after it, so a
+cache-started room is live as early as it is visible.
+
+**The cache is written on exit only.** It records the speakers still on screen
+and the USN of the selected tab. A crash or `kill -9` therefore loses it and
+the next start pays full discovery — accepted deliberately, in exchange for a
+single write at a single moment. Bubble Tea handles `q` and Ctrl+C gracefully,
+so only hard kills are affected.
+
+**Timeouts are hand-rolled, not context-threaded.** Verification uses its own
+short-timeout `http.Client` rather than waiting on son-5hy, which threads
+`context.Context` through the whole SOAP client. That refactor should not block
+this feature, and the two calls here are the only ones needing a bound.
+
+**Storage is JSON**, deliberately, not SQLite — see ADR-0003, which decided the
+broader storage question separately. son-a3n tracks migrating this cache onto
+that store once it exists.
+
+**The subnet fingerprint costs ~24µs**, measured. `GetLocalIP` was refactored to
+share a single `net.InterfaceAddrs` call with the new `LocalSubnet`, so the
+fingerprint added no second interface enumeration.
 
 ### Related, smaller optimization (no caching required)
 
