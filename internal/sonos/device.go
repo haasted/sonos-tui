@@ -34,6 +34,12 @@ type DeviceState struct {
 	Muted  bool
 }
 
+// Playing reports whether the speaker is actively playing. Every other
+// transport state — paused, stopped, transitioning — counts as idle.
+func (s DeviceState) Playing() bool {
+	return s.Transport.State == transportPlaying
+}
+
 // EventKind says which service produced an event. Volume events carry no
 // playback position, so consumers must not treat them as a position update.
 type EventKind int
@@ -279,7 +285,7 @@ func (d *Device) Play() error {
 		return fmt.Errorf("play: %w", err)
 	}
 	d.mu.Lock()
-	d.state.Transport.State = "PLAYING"
+	d.state.Transport.State = transportPlaying
 	d.mu.Unlock()
 	return nil
 }
@@ -300,7 +306,7 @@ func (d *Device) Next() error {
 		return fmt.Errorf("next track: %w", err)
 	}
 	d.mu.Lock()
-	d.state.Transport.State = "PLAYING"
+	d.state.Transport.State = transportPlaying
 	d.mu.Unlock()
 	return nil
 }
@@ -310,7 +316,7 @@ func (d *Device) Previous() error {
 		return fmt.Errorf("previous track: %w", err)
 	}
 	d.mu.Lock()
-	d.state.Transport.State = "PLAYING"
+	d.state.Transport.State = transportPlaying
 	d.mu.Unlock()
 	return nil
 }

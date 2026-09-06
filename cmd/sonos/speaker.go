@@ -64,7 +64,7 @@ func trackFromState(state sonos.DeviceState) nowplaying.Track {
 		Album:    state.Current.Album,
 		Elapsed:  sonos.ParseDuration(state.RelTime),
 		Duration: sonos.ParseDuration(state.Current.Duration),
-		Playing:  state.Transport.State == "PLAYING",
+		Playing:  state.Playing(),
 		Muted:    state.Muted,
 		Volume:   state.Volume,
 	}
@@ -140,7 +140,7 @@ func (m speakerModel) queueVolume(delta int) (tea.Model, tea.Cmd) {
 // togglePlayback pauses a playing speaker and starts a stopped one.
 func (m speakerModel) togglePlayback() tea.Cmd {
 	return func() tea.Msg {
-		if m.device.State().Transport.State == "PLAYING" {
+		if m.device.State().Playing() {
 			return m.runDeviceAction((*sonos.Device).Pause)
 		}
 		return m.runDeviceAction((*sonos.Device).Play)

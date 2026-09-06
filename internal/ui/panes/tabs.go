@@ -21,6 +21,7 @@ import (
 type Tab struct {
 	Title   string
 	Content tea.Model
+	Playing bool // drives the status glyph; kept in sync by whoever owns the content
 }
 
 // Position controls whether the header row renders above or below the
@@ -344,14 +345,22 @@ func (t Tabs) headerRow() string {
 	labels := make([]string, len(t.Items))
 	widths := make([]int, len(t.Items))
 	for i, tab := range t.Items {
+		label := tabGlyph(tab.Playing) + " " + tab.Title
+
+		// Focus wins the colour outright, so the active tab reads the same
+		// whether or not it is playing; among the rest, playing rooms sit a
+		// step brighter than idle ones.
 		style := inactiveTabStyle
-		label := tab.Title
-		if i == t.Active {
+		switch {
+		case i == t.Active:
 			style = activeTabStyle
 			if progress, sweeping := t.sweepProgress(); sweeping {
-				label = flashsweep.Glint(tab.Title, progress, tabSweepFg)
+				label = flashsweep.Glint(label, progress, tabSweepFg)
 			}
+		case tab.Playing:
+			style = playingTabStyle
 		}
+
 		labels[i] = style.Render(label)
 		widths[i] = lipgloss.Width(labels[i])
 	}
@@ -412,6 +421,22 @@ func (t Tabs) headerRow() string {
 	return row
 }
 
+// Braille cells, read as a level meter to match the equalizer in the room
+// view. Both are reliably one column wide, unlike ▶ and its emoji variant.
+const (
+	playingGlyph = "⣶"
+	idleGlyph    = "⣀"
+)
+
+// tabGlyph is the status slot every tab carries. Idle gets its own glyph
+// rather than a blank, so starting or stopping playback cannot reflow the row.
+func tabGlyph(playing bool) string {
+	if playing {
+		return playingGlyph
+	}
+	return idleGlyph
+}
+
 // dividerRamp blends the configured sweep colour against the divider's resting
 // tone, so the light fades into the line rather than replacing it.
 func dividerRamp(flash color.Color) flashsweep.Ramp {
@@ -442,6 +467,13 @@ var (
 	inactiveTabStyle = lipgloss.NewStyle().
 				Padding(0, 1).
 				Foreground(theme.LightDark(lipgloss.Color("#4A4A4A"), lipgloss.Color("#9B9B9B")))
+
+	// A step more contrast than inactiveTabStyle, so a playing room reads
+	// from the corner of the eye without competing with the active tab's
+	// accent. Deliberately still grey: colour belongs to focus alone.
+	playingTabStyle = lipgloss.NewStyle().
+			Padding(0, 1).
+			Foreground(theme.LightDark(lipgloss.Color("#1F2937"), lipgloss.Color("#E5E7EB")))
 
 	separatorColor = theme.LightDark(lipgloss.Color("#D0D0D0"), lipgloss.Color("#4A4A4A"))
 

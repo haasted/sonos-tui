@@ -54,6 +54,9 @@ func (c *SonosClient) Previous() error {
 	return err
 }
 
+// transportPlaying is the one TransportState that counts as playing.
+const transportPlaying = "PLAYING"
+
 // TransportInfo holds the playback state returned by GetTransportInfo.
 type TransportInfo struct {
 	State  string // "PLAYING", "PAUSED_PLAYBACK", "STOPPED"

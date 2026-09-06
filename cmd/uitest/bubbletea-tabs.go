@@ -67,7 +67,9 @@ func newTabsRootModel(pos panes.Position) tabsRootModel {
 	tabs := make([]panes.Tab, len(roomNames))
 	for i, room := range roomNames {
 		content := fmt.Sprintf("Nothing playing yet in the %s.", room)
-		tabs[i] = panes.Tab{Title: room, Content: panes.StaticContent(content)}
+		// Every third room plays, so the status glyphs and the three
+		// brightness levels can all be judged in one row.
+		tabs[i] = panes.Tab{Title: room, Content: panes.StaticContent(content), Playing: i%3 == 0}
 	}
 	t := panes.NewTabs(tabs)
 	t.Position = pos

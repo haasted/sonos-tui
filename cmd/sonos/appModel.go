@@ -137,7 +137,33 @@ func (m appModel) speakerSnapshot() ([]sonos.Speaker, string) {
 	return speakers, selected
 }
 
+// Update handles the message, then re-reads playing state for every tab.
+// Syncing centrally rather than at each site that changes playback means a new
+// path cannot forget to do it and leave a tab's glyph lying.
 func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	model, cmd := m.update(msg)
+	updated, ok := model.(appModel)
+	if !ok {
+		return model, cmd
+	}
+	return updated.syncPlaying(), cmd
+}
+
+// syncPlaying refreshes each tab's playing flag from the device behind it.
+// Devices update their own state optimistically on local commands and on
+// arriving events, so this reflects both without waiting for a round trip.
+func (m appModel) syncPlaying() appModel {
+	for i, tab := range m.tabs.Items {
+		speaker, ok := tab.Content.(speakerModel)
+		if !ok {
+			continue
+		}
+		m.tabs.Items[i].Playing = speaker.device.State().Playing()
+	}
+	return m
+}
+
+func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		firstResize := m.height == 0
