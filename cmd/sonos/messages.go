@@ -1,6 +1,18 @@
 package main
 
-import "github.com/haasted/sonos-sandbox/internal/sonos"
+import (
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/haasted/sonos-sandbox/internal/sonos"
+)
+
+// speakerMsg addresses a message to one speaker's tab. Command results carry
+// no speaker of their own, and every command is a round trip, so without an
+// address they reach whichever tab is active by the time they come back.
+type speakerMsg struct {
+	device *sonos.Device
+	msg    tea.Msg
+}
 
 type speakerFoundMsg struct {
 	speaker sonos.Speaker

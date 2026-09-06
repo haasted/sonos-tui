@@ -212,6 +212,8 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, msg.speaker.Init())
 		}
 		return m, tea.Batch(cmds...)
+	case speakerMsg:
+		return m.applySpeakerMsg(msg)
 	case sonos.Event:
 		return m.applyEvent(msg)
 	case discoveryDoneMsg:
@@ -243,6 +245,28 @@ func (m appModel) applyVerified(msg speakerVerifiedMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(cmd, waitForEvent(msg.speaker))
 	}
+	return m, nil
+}
+
+// applySpeakerMsg hands a command result to the speaker that issued it. The
+// tab it belongs to may no longer be the active one: every command is a round
+// trip, and the user is free to move on while it is in flight.
+func (m appModel) applySpeakerMsg(msg speakerMsg) (tea.Model, tea.Cmd) {
+	for i, tab := range m.tabs.Items {
+		speaker, ok := tab.Content.(speakerModel)
+		if !ok || speaker.device != msg.device {
+			continue
+		}
+
+		updated, cmd := speaker.Update(msg.msg)
+		m.tabs.Items[i].Content = updated
+		if i != m.tabs.Active {
+			cmd = nil // background rooms animate nothing, as in applyEvent
+		}
+		return m, cmd
+	}
+
+	slog.Warn("command result for a speaker with no tab — dropping", "speaker", msg.device.Speaker)
 	return m, nil
 }
 

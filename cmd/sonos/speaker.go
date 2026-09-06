@@ -80,7 +80,7 @@ func (m speakerModel) Init() tea.Cmd {
 func (m speakerModel) showVolume() tea.Cmd {
 	state := m.device.State()
 	return func() tea.Msg {
-		return nowplaying.VolumeMsg{Volume: state.Volume, Muted: state.Muted, Show: true}
+		return m.to(nowplaying.VolumeMsg{Volume: state.Volume, Muted: state.Muted, Show: true})
 	}
 }
 
@@ -122,6 +122,12 @@ func (m speakerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+// to addresses a command result to this speaker, so a slow round trip cannot
+// deliver it to whichever tab the user switched to in the meantime.
+func (m speakerModel) to(msg tea.Msg) tea.Msg {
+	return speakerMsg{device: m.device, msg: msg}
+}
+
 // queueVolume accumulates delta into the open window, opening one if none is.
 // Only the upward direction is capped, so down stays a fast escape.
 func (m speakerModel) queueVolume(delta int) (tea.Model, tea.Cmd) {
@@ -153,10 +159,10 @@ func (m speakerModel) adjustVolume(delta int) tea.Cmd {
 	return func() tea.Msg {
 		if _, err := m.device.AdjustVolume(delta); err != nil {
 			slog.Warn("volume command failed", "speaker", m.device.Speaker, "delta", delta, "err", err)
-			return nowplaying.ErrorMsg{Err: err}
+			return m.to(nowplaying.ErrorMsg{Err: err})
 		}
 		state := m.device.State()
-		return nowplaying.VolumeMsg{Volume: state.Volume, Muted: state.Muted}
+		return m.to(nowplaying.VolumeMsg{Volume: state.Volume, Muted: state.Muted})
 	}
 }
 
@@ -165,10 +171,10 @@ func (m speakerModel) toggleMute() tea.Cmd {
 	return func() tea.Msg {
 		if err := m.device.ToggleMute(); err != nil {
 			slog.Warn("mute command failed", "speaker", m.device.Speaker, "err", err)
-			return nowplaying.ErrorMsg{Err: err}
+			return m.to(nowplaying.ErrorMsg{Err: err})
 		}
 		state := m.device.State()
-		return nowplaying.VolumeMsg{Volume: state.Volume, Muted: state.Muted}
+		return m.to(nowplaying.VolumeMsg{Volume: state.Volume, Muted: state.Muted})
 	}
 }
 
@@ -184,9 +190,9 @@ func (m speakerModel) deviceCommand(action func(*sonos.Device) error) tea.Cmd {
 func (m speakerModel) runDeviceAction(action func(*sonos.Device) error) tea.Msg {
 	if err := action(m.device); err != nil {
 		slog.Warn("playback command failed", "speaker", m.device.Speaker, "err", err)
-		return nowplaying.ErrorMsg{Err: err}
+		return m.to(nowplaying.ErrorMsg{Err: err})
 	}
-	return nowplaying.TrackMsg{Track: trackFromState(m.device.State())}
+	return m.to(nowplaying.TrackMsg{Track: trackFromState(m.device.State())})
 }
 
 // View renders the now-playing widget.
