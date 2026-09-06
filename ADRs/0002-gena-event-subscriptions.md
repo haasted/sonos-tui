@@ -18,7 +18,7 @@ UPnP defines an eventing mechanism for exactly this — **GENA** (General Event 
 
 The part that matters architecturally: this makes our program an HTTP **server** as well as a client — the speaker calls back into us. Nothing in this codebase has needed an inbound HTTP surface before; `Discover`'s UDP listener is the closest existing precedent for "background goroutine owning a network resource."
 
-Scope for this first pass is **AVTransport only** (play/pause/track-change state — the service that actually changes during normal listening). `RenderingControl` (volume/mute) is deliberately deferred: both services share identical GENA mechanics and a single bundled `LastChange` variable, so the subscribe/listen/renew plumbing built here is expected to be directly reusable — only the inner `LastChange` schema differs.
+Scope for this first pass was **AVTransport only** (see the amendment below, which added RenderingControl) (play/pause/track-change state — the service that actually changes during normal listening). `RenderingControl` (volume/mute) is deliberately deferred: both services share identical GENA mechanics and a single bundled `LastChange` variable, so the subscribe/listen/renew plumbing built here is expected to be directly reusable — only the inner `LastChange` schema differs.
 
 ## Options considered
 
@@ -90,6 +90,53 @@ Two decisions were revised against what this ADR originally sketched, both for s
 
 - **Event delivery is a non-blocking send, not a blocking one.** `HandleEvent` runs on the listener's own request goroutine; a consumer that has stopped receiving (the UI shutting down) would wedge that goroutine and in turn stall `Shutdown`. State is applied before the send, so a dropped event costs a redraw, not correctness.
 - **The bridge to Bubbletea is a `tea.Cmd` that waits on the channel, not a goroutine calling `program.Send`.** Equivalent in effect, but it avoids handing a `*tea.Program` to code that constructs the model, which is awkward given the program needs the model to exist first.
+
+## Amendment: RenderingControl picked up (son-6f7)
+
+The deferred `RenderingControl` scope above has been implemented. Two
+expectations recorded here proved right, one proved wrong.
+
+**Right:** the subscribe/renew/unsubscribe plumbing was directly reusable, and
+the callback listener needed no new inbound surface.
+
+**Wrong: "only the inner `LastChange` schema differs."** Two things beyond the
+schema had to change.
+
+*The callback path was keyed per device, not per (device, service).*
+`notifyPath` hashed the device USN alone, so a second subscription for the same
+device would have collided on one path with no way to tell the two services'
+NOTIFYs apart. Paths now hash `USN + "|" + service`. Note this keeps the
+original decision to route by path rather than by the GENA `SID` header —
+that reasoning (SID changes on renewal, risking misattribution) applies to
+service dispatch exactly as it did to device dispatch, so the SID is still
+never used for routing.
+
+*`Device.HandleEvent` hardcoded `ParseAVTransportEvent`.* It is now
+`HandleAVTransportEvent` and `HandleRenderingControlEvent`, chosen by the
+route's service. This is not cosmetic: the AVTransport handler refetches
+playback position via `GetPositionInfo` when the event omits it, which it
+almost always does. Sending volume events down that path would have fired a
+needless SOAP call on every volume change.
+
+**The schema difference was also sharper than anticipated.** RenderingControl
+uses the `.../RCS/` namespace rather than `.../AVT/`, and — the part worth
+recording — `Volume` and `Mute` are repeated **once per channel**:
+
+```xml
+<Volume channel="Master" val="32"/>
+<Volume channel="LF" val="100"/>
+<Volume channel="RF" val="100"/>
+```
+
+A parser taking the first or last `<Volume>` would report 100 where the
+speaker's actual volume is 32. Both fields are filtered to `Master`. This was
+found by capturing a real event from a speaker rather than inferring the shape;
+the capture is kept as a fixture in `internal/sonos/testdata/` and the parser is tested against it.
+
+**Partial failure is tolerated.** `Subscribe` now attempts every service and
+joins the errors rather than abandoning the device on the first failure — a
+speaker with live playback events but no volume events is more useful than one
+with neither.
 
 ## Consequences
 

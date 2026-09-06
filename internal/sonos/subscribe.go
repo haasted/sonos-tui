@@ -6,7 +6,13 @@ import (
 	"net/http"
 )
 
-const avTransportEventPath = "/MediaRenderer/AVTransport/Event"
+const (
+	avTransportEventPath      = "/MediaRenderer/AVTransport/Event"
+	renderingControlEventPath = "/MediaRenderer/RenderingControl/Event"
+)
+
+// subscribedServices are the event services each device is subscribed to.
+var subscribedServices = []string{avTransportEventPath, renderingControlEventPath}
 
 const subscriptionSeconds = 300
 

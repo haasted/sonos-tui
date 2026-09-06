@@ -60,7 +60,7 @@ func (d *Device) Events() <-chan Event {
 	return d.events
 }
 
-func (d *Device) HandleEvent(body []byte) error {
+func (d *Device) HandleAVTransportEvent(body []byte) error {
 	parsed, err := ParseAVTransportEvent(body)
 	if err != nil {
 		return err
@@ -90,6 +90,40 @@ func (d *Device) HandleEvent(body []byte) error {
 		Transport: snapshot.Transport,
 		Current:   snapshot.Current,
 		Raw:       parsed,
+	}
+
+	select {
+	case d.events <- event:
+	default:
+		slog.Warn("event channel full — dropping event", "speaker", d.Speaker)
+	}
+
+	return nil
+}
+
+// HandleRenderingControlEvent applies a volume/mute event and publishes it.
+// Unlike AVTransport it never refetches position: volume changes say nothing
+// about playback progress.
+func (d *Device) HandleRenderingControlEvent(body []byte) error {
+	parsed, err := ParseRenderingControlEvent(body)
+	if err != nil {
+		return err
+	}
+
+	d.mu.Lock()
+	if parsed.HasVolume {
+		d.state.Volume = parsed.Volume
+	}
+	if parsed.HasMute {
+		d.state.Muted = parsed.Muted
+	}
+	snapshot := d.state
+	d.mu.Unlock()
+
+	event := Event{
+		Speaker:   d.Speaker,
+		Transport: snapshot.Transport,
+		Current:   snapshot.Current,
 	}
 
 	select {

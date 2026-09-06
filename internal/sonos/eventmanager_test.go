@@ -17,15 +17,16 @@ import (
 type fakeSpeaker struct {
 	server *httptest.Server
 
-	mu           sync.Mutex
-	callbackURL  string
-	unsubscribed bool
+	mu            sync.Mutex
+	callbacks     map[string]string // event path -> callback URL handed to us
+	unsubscribed  bool
+	unsubscribeds int
 }
 
 func newFakeSpeaker(t *testing.T) *fakeSpeaker {
 	t.Helper()
 
-	fs := &fakeSpeaker{}
+	fs := &fakeSpeaker{callbacks: map[string]string{}}
 	fs.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fs.mu.Lock()
 		defer fs.mu.Unlock()
@@ -33,11 +34,12 @@ func newFakeSpeaker(t *testing.T) *fakeSpeaker {
 		switch r.Method {
 		case "SUBSCRIBE":
 			if cb := r.Header.Get("CALLBACK"); cb != "" {
-				fs.callbackURL = strings.Trim(cb, "<>")
+				fs.callbacks[r.URL.Path] = strings.Trim(cb, "<>")
 			}
 			w.Header().Set("SID", "uuid:fake-sub")
 		case "UNSUBSCRIBE":
 			fs.unsubscribed = true
+			fs.unsubscribeds++
 		}
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -46,10 +48,18 @@ func newFakeSpeaker(t *testing.T) *fakeSpeaker {
 	return fs
 }
 
-func (fs *fakeSpeaker) callback() string {
+// callback returns the URL handed to the speaker for one event service.
+func (fs *fakeSpeaker) callback(eventPath string) string {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
-	return fs.callbackURL
+	return fs.callbacks[eventPath]
+}
+
+// unsubscribeCount reports how many UNSUBSCRIBEs arrived, one per service.
+func (fs *fakeSpeaker) unsubscribeCount() int {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	return fs.unsubscribeds
 }
 
 func (fs *fakeSpeaker) sentUnsubscribe() bool {
@@ -77,8 +87,11 @@ func TestEventManager_DeliversNotifyToSubscribedDevice(t *testing.T) {
 
 	require.NoError(t, em.Subscribe(context.Background(), device))
 
-	callback := fs.callback()
+	callback := fs.callback(avTransportEventPath)
 	require.NotEmpty(t, callback, "the speaker should have been handed a callback URL to post events to")
+
+	require.NotEqual(t, callback, fs.callback(renderingControlEventPath),
+		"each service needs its own callback path, or NOTIFYs cannot be told apart")
 
 	body := `<?xml version="1.0"?>
 <e:propertyset xmlns:e="urn:schemas-upnp-org:event-1-0">
@@ -166,4 +179,67 @@ func TestEventManager_SubscribeFailurePropagates(t *testing.T) {
 	routes := len(em.listener.routes)
 	em.listener.mu.RUnlock()
 	assert.Zero(t, routes)
+}
+
+// Case: a volume change arriving from another control point, which must land
+// in Device.State() without any command from this program.
+func TestEventManager_DeliversRenderingControlToSubscribedDevice(t *testing.T) {
+	fs := newFakeSpeaker(t)
+	device := testDevice(fs)
+
+	em, err := NewEventManager()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		em.Close(ctx)
+	})
+
+	require.NoError(t, em.Subscribe(context.Background(), device))
+
+	callback := fs.callback(renderingControlEventPath)
+	require.NotEmpty(t, callback)
+
+	body := `<e:propertyset xmlns:e="urn:schemas-upnp-org:event-1-0"><e:property><LastChange>` +
+		`&lt;Event xmlns=&quot;urn:schemas-upnp-org:metadata-1-0/RCS/&quot;&gt;&lt;InstanceID val=&quot;0&quot;&gt;` +
+		`&lt;Volume channel=&quot;Master&quot; val=&quot;27&quot;/&gt;` +
+		`&lt;Volume channel=&quot;LF&quot; val=&quot;100&quot;/&gt;` +
+		`&lt;Mute channel=&quot;Master&quot; val=&quot;1&quot;/&gt;` +
+		`&lt;/InstanceID&gt;&lt;/Event&gt;</LastChange></e:property></e:propertyset>`
+
+	req, err := http.NewRequest("NOTIFY", callback, strings.NewReader(body))
+	require.NoError(t, err)
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	select {
+	case <-device.Events():
+	case <-time.After(2 * time.Second):
+		t.Fatal("no event published for a RenderingControl NOTIFY")
+	}
+
+	assert.Equal(t, 27, device.State().Volume, "must take Master, not the LF channel's 100")
+	assert.True(t, device.State().Muted)
+}
+
+// Case: shutdown with two subscriptions per device, which must both be
+// released rather than leaving one dangling on the speaker.
+func TestEventManager_CloseUnsubscribesEveryService(t *testing.T) {
+	fs := newFakeSpeaker(t)
+	device := testDevice(fs)
+
+	em, err := NewEventManager()
+	require.NoError(t, err)
+	require.NoError(t, em.Subscribe(context.Background(), device))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	require.NoError(t, em.Close(ctx))
+
+	assert.Equal(t, len(subscribedServices), fs.unsubscribeCount(),
+		"every subscribed service should be unsubscribed on shutdown")
 }

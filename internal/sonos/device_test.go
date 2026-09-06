@@ -128,7 +128,7 @@ func didlItem(title, artist, album string) string {
 		`<upnp:album>` + album + `</upnp:album></item></DIDL-Lite>`)
 }
 
-func TestDevice_HandleEvent_UpdatesStateAndPublishes(t *testing.T) {
+func TestDevice_HandleAVTransportEvent_UpdatesStateAndPublishes(t *testing.T) {
 	srv := avTransportServer(t, "PLAYING")
 	defer srv.Close()
 
@@ -141,7 +141,7 @@ func TestDevice_HandleEvent_UpdatesStateAndPublishes(t *testing.T) {
 			`<CurrentTrackURI val="x-sonos-http:live"/>` +
 			`<CurrentTrackMetaData val="` + didlItem("Live Track", "Live Artist", "Live Album") + `"/>`)
 
-	require.NoError(t, d.HandleEvent(body))
+	require.NoError(t, d.HandleAVTransportEvent(body))
 
 	state := d.State()
 	assert.Equal(t, "PLAYING", state.Transport.State)
@@ -158,7 +158,7 @@ func TestDevice_HandleEvent_UpdatesStateAndPublishes(t *testing.T) {
 	}
 }
 
-func TestDevice_HandleEvent_FetchesPositionWhenEventOmitsIt(t *testing.T) {
+func TestDevice_HandleAVTransportEvent_FetchesPositionWhenEventOmitsIt(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/xml")
 		fmt.Fprint(w, `<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
@@ -174,22 +174,22 @@ func TestDevice_HandleEvent_FetchesPositionWhenEventOmitsIt(t *testing.T) {
 
 	d := newTestDevice(t, srv)
 
-	require.NoError(t, d.HandleEvent(notifyBody(`<TransportState val="PAUSED_PLAYBACK"/>`)))
+	require.NoError(t, d.HandleAVTransportEvent(notifyBody(`<TransportState val="PAUSED_PLAYBACK"/>`)))
 
 	assert.Equal(t, "PAUSED_PLAYBACK", d.State().Transport.State)
 	assert.Equal(t, "0:02:45", d.State().RelTime, "position should come from GetPositionInfo when the event omits it")
 }
 
-func TestDevice_HandleEvent_MalformedBodyIsAnError(t *testing.T) {
+func TestDevice_HandleAVTransportEvent_MalformedBodyIsAnError(t *testing.T) {
 	srv := avTransportServer(t, "PLAYING")
 	defer srv.Close()
 
 	d := newTestDevice(t, srv)
 
-	require.Error(t, d.HandleEvent([]byte("not xml at all")))
+	require.Error(t, d.HandleAVTransportEvent([]byte("not xml at all")))
 }
 
-func TestDevice_HandleEvent_DropsRatherThanBlockingWhenNobodyReceives(t *testing.T) {
+func TestDevice_HandleAVTransportEvent_DropsRatherThanBlockingWhenNobodyReceives(t *testing.T) {
 	srv := avTransportServer(t, "PLAYING")
 	defer srv.Close()
 
@@ -201,20 +201,20 @@ func TestDevice_HandleEvent_DropsRatherThanBlockingWhenNobodyReceives(t *testing
 	go func() {
 		defer close(done)
 		for range sonos.EventChanBuffer * 3 {
-			require.NoError(t, d.HandleEvent(body))
+			require.NoError(t, d.HandleAVTransportEvent(body))
 		}
 	}()
 
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("HandleEvent blocked when the event channel filled up")
+		t.Fatal("HandleAVTransportEvent blocked when the event channel filled up")
 	}
 
 	assert.Equal(t, "PLAYING", d.State().Transport.State, "state must still be applied even when events are dropped")
 }
 
-func TestDevice_HandleEvent_ConcurrentWithCommands(t *testing.T) {
+func TestDevice_HandleAVTransportEvent_ConcurrentWithCommands(t *testing.T) {
 	srv := avTransportServer(t, "PLAYING")
 	defer srv.Close()
 
@@ -233,7 +233,7 @@ func TestDevice_HandleEvent_ConcurrentWithCommands(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			require.NoError(t, d.HandleEvent(body))
+			require.NoError(t, d.HandleAVTransportEvent(body))
 		}()
 
 		wg.Add(1)

@@ -20,7 +20,7 @@ type eventListener struct {
 	baseURL string
 
 	mu     sync.RWMutex
-	routes map[string]*Device
+	routes map[string]route
 }
 
 func newEventListener() (*eventListener, error) {
@@ -36,7 +36,7 @@ func newEventListener() (*eventListener, error) {
 
 	el := &eventListener{
 		baseURL: fmt.Sprintf("http://%s:%d", localIP, ln.Addr().(*net.TCPAddr).Port),
-		routes:  map[string]*Device{},
+		routes:  map[string]route{},
 	}
 
 	mux := http.NewServeMux()
@@ -53,19 +53,26 @@ func newEventListener() (*eventListener, error) {
 	return el, nil
 }
 
-func (el *eventListener) register(device *Device) string {
-	path := notifyPath(device)
+// route is one subscription's destination: which device, and which of its
+// services the NOTIFY came from.
+type route struct {
+	device  *Device
+	service string
+}
+
+func (el *eventListener) register(device *Device, service string) string {
+	path := notifyPath(device, service)
 
 	el.mu.Lock()
-	el.routes[path] = device
+	el.routes[path] = route{device: device, service: service}
 	el.mu.Unlock()
 
 	return el.baseURL + path
 }
 
-func (el *eventListener) unregister(device *Device) {
+func (el *eventListener) unregister(device *Device, service string) {
 	el.mu.Lock()
-	delete(el.routes, notifyPath(device))
+	delete(el.routes, notifyPath(device, service))
 	el.mu.Unlock()
 }
 
@@ -79,17 +86,17 @@ func (el *eventListener) handleNotify(w http.ResponseWriter, r *http.Request) {
 	}
 
 	el.mu.RLock()
-	device := el.routes[r.URL.Path]
+	found := el.routes[r.URL.Path]
 	el.mu.RUnlock()
 
-	if device == nil {
+	if found.device == nil {
 		slog.Debug("NOTIFY for unknown subscription", "path", r.URL.Path)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
-	if err := device.HandleEvent(body); err != nil {
-		slog.Warn("handling event", "speaker", device.Speaker, "err", err)
+	if err := found.handle(body); err != nil {
+		slog.Warn("handling event", "speaker", found.device.Speaker, "service", found.service, "err", err)
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -99,11 +106,19 @@ func (el *eventListener) close(ctx context.Context) error {
 	return el.server.Shutdown(ctx)
 }
 
-func notifyPath(device *Device) string {
+// handle dispatches the body to the parser for this route's service.
+func (r route) handle(body []byte) error {
+	if r.service == renderingControlEventPath {
+		return r.device.HandleRenderingControlEvent(body)
+	}
+	return r.device.HandleAVTransportEvent(body)
+}
+
+func notifyPath(device *Device, service string) string {
 	key := device.USN
 	if key == "" {
 		key = device.IP
 	}
-	sum := sha256.Sum256([]byte(key))
+	sum := sha256.Sum256([]byte(key + "|" + service))
 	return notifyPrefix + hex.EncodeToString(sum[:])[:12]
 }

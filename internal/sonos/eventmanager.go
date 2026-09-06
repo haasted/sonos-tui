@@ -2,6 +2,8 @@ package sonos
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -40,34 +42,53 @@ func NewEventManager() (*EventManager, error) {
 	}, nil
 }
 
+// Subscribe subscribes device to every service in subscribedServices. A
+// failure on one service does not abandon the others: a speaker with live
+// playback events but no volume events is more useful than none at all.
 func (em *EventManager) Subscribe(ctx context.Context, device *Device) error {
-	callbackURL := em.listener.register(device)
+	var errs []error
+	for _, service := range subscribedServices {
+		if err := em.subscribeService(ctx, device, service); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", service, err))
+		}
+	}
+	return errors.Join(errs...)
+}
 
-	sid, err := subscribe(ctx, em.client, device.client.BaseURL, avTransportEventPath, callbackURL)
+func (em *EventManager) subscribeService(ctx context.Context, device *Device, service string) error {
+	callbackURL := em.listener.register(device, service)
+
+	sid, err := subscribe(ctx, em.client, device.client.BaseURL, service, callbackURL)
 	if err != nil {
-		em.listener.unregister(device)
+		em.listener.unregister(device, service)
 		return err
 	}
 
 	renewCtx, stop := context.WithCancel(context.Background())
 	sub := &subscription{
 		device:    device,
-		eventPath: avTransportEventPath,
+		eventPath: service,
 		sid:       sid,
 		stop:      stop,
 	}
 
+	key := subKey(device, service)
 	em.mu.Lock()
-	if existing, ok := em.subs[device.USN]; ok {
+	if existing, ok := em.subs[key]; ok {
 		existing.stop()
 	}
-	em.subs[device.USN] = sub
+	em.subs[key] = sub
 	em.mu.Unlock()
 
 	go em.renewLoop(renewCtx, sub, callbackURL)
 
-	slog.Info("subscribed", "speaker", device.Speaker, "sid", sid)
+	slog.Info("subscribed", "speaker", device.Speaker, "service", service, "sid", sid)
 	return nil
+}
+
+// subKey identifies one subscription: a device now has one per service.
+func subKey(device *Device, service string) string {
+	return device.USN + "|" + service
 }
 
 func (em *EventManager) renewLoop(ctx context.Context, sub *subscription, callbackURL string) {
@@ -115,7 +136,7 @@ func (em *EventManager) Close(ctx context.Context) error {
 
 	for _, sub := range subs {
 		sub.stop()
-		em.listener.unregister(sub.device)
+		em.listener.unregister(sub.device, sub.eventPath)
 
 		if err := unsubscribe(ctx, em.client, sub.device.client.BaseURL, sub.eventPath, sub.sid); err != nil {
 			slog.Warn("unsubscribe failed", "speaker", sub.device.Speaker, "err", err)
