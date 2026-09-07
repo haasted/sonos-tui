@@ -88,7 +88,7 @@ func TestModal_IsOptIn(t *testing.T) {
 
 	m = key(m, "?")
 
-	if m.modal.open {
+	if m.modal.IsOpen() {
 		t.Fatal("a layout that never asked for a modal must not get one")
 	}
 	if m.View().AltScreen {

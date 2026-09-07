@@ -19,8 +19,9 @@ type simpleTabsModel struct {
 	tabs     panes.Tabs
 	quitting bool
 
-	modal    altScreenModal
+	modal    panes.Modal
 	hasModal bool // opt-in: layouts that never ask for one behave exactly as before
+	resizes  int  // resizes seen while the modal is open, shown in the demo content
 	width    int
 	height   int
 }
@@ -44,9 +45,9 @@ func (m simpleTabsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if sizeMsg, ok := msg.(tea.WindowSizeMsg); ok {
 		m.tabs.Width = sizeMsg.Width
 		m.width, m.height = sizeMsg.Width, sizeMsg.Height
-		m.modal.width, m.modal.height = sizeMsg.Width, sizeMsg.Height
-		if m.modal.open {
-			m.modal.resizes++
+		m.modal = m.modal.SetSize(sizeMsg.Width, sizeMsg.Height)
+		if m.modal.IsOpen() {
+			m.resizes++
 		}
 		return m, nil
 	}
@@ -54,14 +55,19 @@ func (m simpleTabsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		key := keyMsg.String()
 
-		// While open the modal owns the keyboard, so the tabs underneath
-		// cannot be navigated behind it — the same rule son-quf will need.
-		if m.modal.open {
+		// An open modal owns the keyboard, so the tabs underneath cannot be
+		// navigated behind it. panes.Modal handles esc itself; the rest of
+		// these are this playground's own bindings.
+		if m.modal.IsOpen() {
 			switch key {
-			case "?", "esc", "q":
-				m.modal = m.modal.toggle()
+			case "?", "q":
+				m.modal = m.modal.Close()
 			case "m":
-				m.modal = m.modal.cycle()
+				m.modal.Mode = (m.modal.Mode + 1) % 2
+			default:
+				modal, cmd := m.modal.Update(msg)
+				m.modal = modal
+				return m, cmd
 			}
 			return m, nil
 		}
@@ -72,7 +78,8 @@ func (m simpleTabsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "?":
 			if m.hasModal {
-				m.modal = m.modal.toggle()
+				m.modal = m.modal.Open()
+				m.resizes = 0
 				return m, nil
 			}
 		}
@@ -90,12 +97,25 @@ func (m simpleTabsModel) View() tea.View {
 
 	// AltScreen is a per-frame property in Bubbletea v2, not a command: the
 	// renderer switches whenever it differs from the previous frame.
-	if m.modal.open {
+	if m.modal.IsOpen() {
+		m.modal.Content = m.demoContent()
 		view := tea.NewView(m.modal.ViewOver(m.appView()))
-		view.AltScreen = m.modal.altScreen()
+		view.AltScreen = m.modal.AltScreen()
 		return view
 	}
 	return tea.NewView(m.appView())
+}
+
+// demoContent rebuilds the throwaway modal body with the sizes the component
+// has settled on, so the overlay reports what it actually did.
+func (m simpleTabsModel) demoContent() modalDemo {
+	w, h := m.modal.BoxSize()
+	return modalDemo{
+		mode:     m.modal.Mode,
+		terminal: [2]int{m.width, m.height},
+		box:      [2]int{w, h},
+		resizes:  m.resizes,
+	}
 }
 
 // appView is the layout itself, rendered the same whether it stands alone
