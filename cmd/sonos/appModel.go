@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/haasted/sonos-sandbox/internal/sonos"
 	"github.com/haasted/sonos-sandbox/internal/ui/nowplaying"
@@ -15,7 +16,13 @@ import (
 
 var _ tea.Model = &appModel{}
 
-const maxPlayerHeightRows = 7
+// playerHeightRows is the height the inline frame always occupies. Holding it
+// constant is what keeps the terminal from scrolling: a frame that grows after
+// its first render scrolls to make room, and that scroll is unrecoverable —
+// tea.Println reserves space ABOVE the frame, which does nothing for growth
+// below it, so the startup reservation and the growth both scrolled and the
+// surplus was the band of blank lines above the player.
+const playerHeightRows = 6
 
 type appModel struct {
 	ctx           context.Context // root context; Bubbletea commands carry none of their own
@@ -28,8 +35,6 @@ type appModel struct {
 	fromCache     bool // tabs were seeded from the cache this run
 	cached        []sonos.Speaker
 	quitting      bool
-
-	verticalSpaceChecked bool
 }
 
 // newAppModel builds the model, seeding tabs straight from the cache so the
@@ -166,21 +171,9 @@ func (m appModel) syncPlaying() appModel {
 func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		firstResize := m.height == 0
 		m.width = msg.Width
 		m.height = msg.Height
 		m.tabs.Width = msg.Width
-		if firstResize {
-			return m, tea.RequestCursorPosition
-		}
-	case tea.CursorPositionMsg:
-		if m.verticalSpaceChecked {
-			return m, nil
-		}
-		m.verticalSpaceChecked = true
-		if needed := maxPlayerHeightRows - (m.height - msg.Y); needed > 0 {
-			return m, tea.Println(strings.Repeat("\n", needed-1))
-		}
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
@@ -348,5 +341,15 @@ func (m appModel) View() tea.View {
 		content = m.tabs.View()
 	}
 
-	return tea.NewView(content)
+	return tea.NewView(padToHeight(content, playerHeightRows))
+}
+
+// padToHeight grows content to exactly rows lines. It never truncates: losing
+// the bottom of the player would be worse than a frame one row too tall, and
+// TestView_NeverExceedsThePlayerHeight guards the case that would cause it.
+func padToHeight(content string, rows int) string {
+	if missing := rows - lipgloss.Height(content); missing > 0 {
+		return content + strings.Repeat("\n", missing)
+	}
+	return content
 }
