@@ -170,8 +170,12 @@ func (t Tabs) sweepProgress() (float32, bool) {
 }
 
 // NewTabs builds a Tabs component, starting on the first tab.
+//
+// The divider generation is assigned here rather than in Init because Init has
+// a value receiver: anything it assigns is written to a copy and lost, so a
+// generation rolled there would never reach the model that has to recognise it.
 func NewTabs(tabs []Tab) Tabs {
-	return Tabs{Items: tabs}
+	return Tabs{Items: tabs, dividerGen: nextDividerGen()}
 }
 
 func (t Tabs) AddTab(tab Tab) Tabs {
@@ -223,7 +227,9 @@ func (t Tabs) RemoveTabAt(index int) Tabs {
 // active tab's content. The timer starts even with no tabs yet: cmd/sonos
 // builds its Tabs empty and fills it as speakers are discovered.
 func (t Tabs) Init() tea.Cmd {
-	t.dividerGen = nextDividerGen()
+	// Schedules against the generation NewTabs already assigned. A Tabs built
+	// as a literal has generation 0 and schedules with 0, which Update still
+	// accepts — degraded to the son-5cl cross-talk risk, but not silent.
 	cmds := []tea.Cmd{scheduleDividerSweep(t.dividerGen)}
 	if len(t.Items) > 0 {
 		cmds = append(cmds, t.Items[t.Active].Content.Init())

@@ -246,3 +246,30 @@ func TestTabs_DividerSweepToleratesAnEmptyPalette(t *testing.T) {
 	tabs = panes.SetDividerElapsed(tabs, panes.DividerSweepDuration/2)
 	tabs.View() // must not panic
 }
+
+// Case: the generation Init schedules a sweep with, which must be one the
+// model itself keeps. Init has a value receiver, so a generation rolled there
+// would be written to a copy and thrown away, and the sweep it scheduled would
+// then be rejected on arrival. Every other sweep test bypasses Init via
+// ForceDividerSweep, which is precisely how that went unnoticed.
+func TestTabs_InitSchedulesWithAGenerationTheModelKeeps(t *testing.T) {
+	tabs := twoTabs()
+	other := twoTabs()
+
+	_ = tabs.Init()
+
+	if panes.DividerGen(tabs) == 0 {
+		t.Fatal("Init scheduled a sweep against a generation the model does not hold")
+	}
+	if panes.DividerGen(tabs) == panes.DividerGen(other) {
+		t.Fatal("two Tabs share a divider generation, so one's ticks can drive the other")
+	}
+
+	updated, cmd := tabs.Update(panes.NewDividerSchedule(panes.DividerGen(tabs)))
+	if _, sweeping := panes.DividerActive(updated); !sweeping {
+		t.Fatal("the scheduled sweep was discarded instead of starting")
+	}
+	if cmd == nil {
+		t.Fatal("a started sweep must arm its animation ticker")
+	}
+}
