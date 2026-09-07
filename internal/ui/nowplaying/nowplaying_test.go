@@ -1,7 +1,6 @@
 package nowplaying_test
 
 import (
-	"errors"
 	"testing"
 	"time"
 
@@ -123,23 +122,4 @@ func TestModel_Elapsed_ClampsToDuration(t *testing.T) {
 
 	time.Sleep(1100 * time.Millisecond)
 	assert.Contains(t, m.View(), "1:00 / 1:00")
-}
-
-func TestModel_ErrorMsg_ShowsInView(t *testing.T) {
-	m := nowplaying.New(nowplaying.Track{Title: "Test"})
-
-	updated, _ := m.Update(nowplaying.ErrorMsg{Err: errors.New("speaker unreachable")})
-
-	assert.Contains(t, updated.View(), "speaker unreachable")
-}
-
-func TestModel_TrackMsg_ClearsPriorError(t *testing.T) {
-	m := nowplaying.New(nowplaying.Track{Title: "Test"})
-
-	m, _ = m.Update(nowplaying.ErrorMsg{Err: errors.New("speaker unreachable")})
-	require.Contains(t, m.View(), "speaker unreachable")
-
-	m, _ = m.Update(nowplaying.TrackMsg{Track: nowplaying.Track{Title: "Test"}})
-
-	assert.NotContains(t, m.View(), "speaker unreachable")
 }

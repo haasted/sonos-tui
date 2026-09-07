@@ -41,10 +41,6 @@ type VolumeMsg struct {
 	Show bool
 }
 
-type ErrorMsg struct {
-	Err error
-}
-
 var generations atomic.Int64
 
 func nextGeneration() int {
@@ -111,8 +107,6 @@ type Model struct {
 	ticksWaited int
 	scrollGen   *int
 	posGen      *int
-
-	err error
 }
 
 func New(track Track) Model {
@@ -149,7 +143,6 @@ func (m Model) applyTrack(track Track) Model {
 	m.receivedAt = time.Now()
 	m.duration = track.Duration
 	m.ticksWaited = 0
-	m.err = nil
 	return m
 }
 
@@ -258,9 +251,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case VolumeMsg:
 		m = m.applyVolume(msg)
 		return m, m.startCmds()
-	case ErrorMsg:
-		m.err = msg.Err
-		return m, nil
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
@@ -329,9 +319,6 @@ func (m Model) View() string {
 		titleLine,
 		indent + m.artist.Render(artistStyle),
 		albumLine,
-	}
-	if m.err != nil {
-		lines = append(lines, errorStyle.Render("⚠ "+m.err.Error()))
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }

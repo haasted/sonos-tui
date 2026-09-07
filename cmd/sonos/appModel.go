@@ -196,7 +196,8 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.applyVerified(msg)
 	case speakerGoneMsg:
 		slog.Info("cached speaker did not answer — dropping its tab", "ip", msg.ip)
-		return m.removeSpeaker(msg.ip), nil
+		title := m.titleFor(msg.ip)
+		return m.removeSpeaker(msg.ip), notify(panes.NoticeWarn, title+" did not answer — removed")
 	case speakerReadyMsg:
 		if m.hasSpeaker(msg.ip) {
 			return m, nil // already on screen from the cache
@@ -210,6 +211,9 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if wasEmpty {
 			cmds = append(cmds, msg.speaker.Init())
+		}
+		if msg.degraded != "" {
+			cmds = append(cmds, notify(panes.NoticeWarn, msg.degraded))
 		}
 		return m, tea.Batch(cmds...)
 	case speakerMsg:
@@ -243,9 +247,31 @@ func (m appModel) applyVerified(msg speakerVerifiedMsg) (tea.Model, tea.Cmd) {
 		if i != m.tabs.Active {
 			cmd = nil
 		}
-		return m, tea.Batch(cmd, waitForEvent(msg.speaker))
+		var degraded tea.Cmd
+		if msg.degraded != "" {
+			degraded = notify(panes.NoticeWarn, msg.degraded)
+		}
+		return m, tea.Batch(cmd, degraded, waitForEvent(msg.speaker))
 	}
 	return m, nil
+}
+
+// notify raises an app-wide notice. panes.Tabs handles NoticeMsg itself, so
+// this only has to reach the fallthrough at the end of update.
+func notify(level panes.NoticeLevel, text string) tea.Cmd {
+	return func() tea.Msg {
+		return panes.NoticeMsg{Level: level, Text: text}
+	}
+}
+
+// titleFor is the room name shown on a tab, for naming it in a notice after
+// the tab itself is gone.
+func (m appModel) titleFor(ip string) string {
+	idx := sort.SearchStrings(m.ips, ip)
+	if idx >= len(m.ips) || m.ips[idx] != ip {
+		return ip
+	}
+	return m.tabs.Items[idx].Title
 }
 
 // applySpeakerMsg hands a command result to the speaker that issued it. The

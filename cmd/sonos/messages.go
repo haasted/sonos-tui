@@ -22,14 +22,18 @@ type speakerReadyMsg struct {
 	title   string
 	ip      string
 	speaker speakerModel
+	// degraded describes what failed while loading, empty when all of it
+	// worked. A speaker can appear with stale state or no live updates.
+	degraded string
 }
 
 // speakerVerifiedMsg reports a cached speaker that answered: its state is
 // already refreshed on the shared Device, so the tab just needs redrawing.
 type speakerVerifiedMsg struct {
-	ip      string
-	title   string
-	speaker *sonos.Device
+	ip       string
+	title    string
+	speaker  *sonos.Device
+	degraded string // as speakerReadyMsg: answered, but not everything worked
 }
 
 // speakerGoneMsg reports a cached speaker that did not answer, or that turned

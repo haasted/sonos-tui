@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -125,14 +126,30 @@ func verifyCachedSpeaker(ctx context.Context, events *sonos.EventManager, speake
 			return speakerGoneMsg{ip: speaker.IP}
 		}
 
+		var degraded []string
 		if err := device.RefreshAll(); err != nil {
 			slog.Warn("refreshing cached speaker", "speaker", speaker.IP, "err", err)
+			degraded = append(degraded, "state may be stale")
 		}
 		if err := events.Subscribe(ctx, device); err != nil {
 			slog.Warn("subscribing to cached speaker", "speaker", speaker.IP, "err", err)
+			degraded = append(degraded, "no live updates")
 		}
-		return speakerVerifiedMsg{ip: speaker.IP, title: speaker.DisplayName(), speaker: device}
+		return speakerVerifiedMsg{
+			ip: speaker.IP, title: speaker.DisplayName(), speaker: device,
+			degraded: degradedText(speaker.DisplayName(), degraded),
+		}
 	}
+}
+
+// degradedText names the room and what about it is not working, or returns
+// empty when nothing failed. A speaker that loads degraded looks identical to
+// a healthy one, which is exactly why it has to say so.
+func degradedText(room string, problems []string) string {
+	if len(problems) == 0 {
+		return ""
+	}
+	return room + ": " + strings.Join(problems, ", ")
 }
 
 // discoverSpeakers streams discovered speakers into the program, giving up
@@ -163,15 +180,21 @@ func loadSpeaker(ctx context.Context, events *sonos.EventManager, speaker sonos.
 		defer slog.Debug("ending loadSpeaker", "speaker", speaker.DisplayName())
 
 		device := sonos.NewDevice(speaker)
+
+		var degraded []string
 		if err := device.RefreshAll(); err != nil {
 			slog.Warn("refreshing speaker state", "speaker", speaker, "err", err)
+			degraded = append(degraded, "state may be stale")
 		}
-
 		if err := events.Subscribe(ctx, device); err != nil {
 			slog.Warn("subscribing to speaker events", "speaker", speaker, "err", err)
+			degraded = append(degraded, "no live updates")
 		}
 
-		return speakerReadyMsg{title: speaker.DisplayName(), ip: speaker.IP, speaker: newSpeakerModel(device)}
+		return speakerReadyMsg{
+			title: speaker.DisplayName(), ip: speaker.IP, speaker: newSpeakerModel(device),
+			degraded: degradedText(speaker.DisplayName(), degraded),
+		}
 	}
 }
 

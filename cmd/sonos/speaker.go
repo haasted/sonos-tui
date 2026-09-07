@@ -9,6 +9,7 @@ import (
 
 	"github.com/haasted/sonos-sandbox/internal/sonos"
 	"github.com/haasted/sonos-sandbox/internal/ui/nowplaying"
+	"github.com/haasted/sonos-sandbox/internal/ui/panes"
 )
 
 var _ tea.Model = &speakerModel{}
@@ -128,6 +129,16 @@ func (m speakerModel) to(msg tea.Msg) tea.Msg {
 	return speakerMsg{device: m.device, msg: msg}
 }
 
+// failed reports a command failure as an app-wide notice. Deliberately NOT
+// addressed to this speaker's tab: the user may be looking at another room,
+// and a failure they never see is the problem son-0n7 exists to fix.
+func (m speakerModel) failed(err error) tea.Msg {
+	return panes.NoticeMsg{
+		Level: panes.NoticeError,
+		Text:  m.device.DisplayName() + ": " + err.Error(),
+	}
+}
+
 // queueVolume accumulates delta into the open window, opening one if none is.
 // Only the upward direction is capped, so down stays a fast escape.
 func (m speakerModel) queueVolume(delta int) (tea.Model, tea.Cmd) {
@@ -159,7 +170,7 @@ func (m speakerModel) adjustVolume(delta int) tea.Cmd {
 	return func() tea.Msg {
 		if _, err := m.device.AdjustVolume(delta); err != nil {
 			slog.Warn("volume command failed", "speaker", m.device.Speaker, "delta", delta, "err", err)
-			return m.to(nowplaying.ErrorMsg{Err: err})
+			return m.failed(err)
 		}
 		state := m.device.State()
 		return m.to(nowplaying.VolumeMsg{Volume: state.Volume, Muted: state.Muted})
@@ -171,7 +182,7 @@ func (m speakerModel) toggleMute() tea.Cmd {
 	return func() tea.Msg {
 		if err := m.device.ToggleMute(); err != nil {
 			slog.Warn("mute command failed", "speaker", m.device.Speaker, "err", err)
-			return m.to(nowplaying.ErrorMsg{Err: err})
+			return m.failed(err)
 		}
 		state := m.device.State()
 		return m.to(nowplaying.VolumeMsg{Volume: state.Volume, Muted: state.Muted})
@@ -190,7 +201,7 @@ func (m speakerModel) deviceCommand(action func(*sonos.Device) error) tea.Cmd {
 func (m speakerModel) runDeviceAction(action func(*sonos.Device) error) tea.Msg {
 	if err := action(m.device); err != nil {
 		slog.Warn("playback command failed", "speaker", m.device.Speaker, "err", err)
-		return m.to(nowplaying.ErrorMsg{Err: err})
+		return m.failed(err)
 	}
 	return m.to(nowplaying.TrackMsg{Track: trackFromState(m.device.State())})
 }

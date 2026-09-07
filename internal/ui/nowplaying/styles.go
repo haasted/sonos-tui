@@ -62,9 +62,6 @@ var (
 			Faint(true).
 			Foreground(theme.LightDark(lipgloss.Color("#4A4A4A"), lipgloss.Color("#9B9B9B")))
 
-	errorStyle = lipgloss.NewStyle().
-			Foreground(theme.LightDark(lipgloss.Color("#B00020"), lipgloss.Color("#FF6B6B")))
-
 	muteFlashColor = lipgloss.Color("#C01C28") // background the mute glyph flashes on activation
 	muteGlyphColor = lipgloss.Color("#FFFFFF") // glyph stays legible against the flash
 

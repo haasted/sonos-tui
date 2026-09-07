@@ -47,6 +47,9 @@ type Tabs struct {
 	dividerStart   time.Time   // zero between sweeps
 	dividerReverse bool        // this sweep travels right to left
 	dividerColor   color.Color // picked once per sweep, so it does not strobe per frame
+
+	notice    notice
+	noticeGen int // guards fade ticks, so a replaced notice cannot drive its successor
 }
 
 const (
@@ -231,6 +234,21 @@ func (t Tabs) Init() tea.Cmd {
 // Update switches tabs on navigation keys, otherwise forwards to the active tab's content.
 func (t Tabs) Update(msg tea.Msg) (Tabs, tea.Cmd) {
 	switch msg := msg.(type) {
+	case NoticeMsg:
+		t.notice = notice{text: msg.Text, level: msg.Level, shownAt: time.Now()}
+		t.noticeGen = nextNoticeGen()
+		return t, noticeTick(t.noticeGen)
+
+	case noticeTickMsg:
+		if msg.gen != t.noticeGen {
+			return t, nil
+		}
+		if t.notice.strength() <= 0 {
+			t.notice = notice{}
+			return t, nil
+		}
+		return t, noticeTick(msg.gen)
+
 	case dividerScheduleMsg:
 		if msg.gen != t.dividerGen {
 			return t, nil
@@ -325,6 +343,13 @@ func (t Tabs) View() string {
 
 	run := strings.Repeat("─", max(lipgloss.Width(row), lipgloss.Width(content)))
 	divider := separatorStyle.Render(run)
+
+	// A notice owns the rule while it lasts: the sweep is decorative, and two
+	// things animating the same line at once would fight.
+	if t.notice.strength() > 0 {
+		return t.joinRows(row, t.notice.render(run), content)
+	}
+
 	if progress, sweeping := t.dividerProgress(); sweeping {
 		if t.dividerReverse {
 			progress = 1 - progress
@@ -332,6 +357,11 @@ func (t Tabs) View() string {
 		divider = flashsweep.Glint(run, progress, dividerRamp(t.dividerColor))
 	}
 
+	return t.joinRows(row, divider, content)
+}
+
+// joinRows stacks the three bands in whichever order Position calls for.
+func (t Tabs) joinRows(row, divider, content string) string {
 	if t.Position == Bottom {
 		return lipgloss.JoinVertical(lipgloss.Left, content, divider, row)
 	}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/haasted/sonos-sandbox/internal/sonos"
 	"github.com/haasted/sonos-sandbox/internal/ui/nowplaying"
+	"github.com/haasted/sonos-sandbox/internal/ui/panes"
 )
 
 // Case: a playback command whose result comes back after the user has moved to
@@ -41,19 +42,20 @@ func TestVolumeResultReachesItsOwnSpeaker(t *testing.T) {
 	assert(t, !strings.Contains(render(m, 1), "42"), "Bedroom must not show Kitchen's volume")
 }
 
-// Case: a failed command, whose warning must appear on the speaker that failed.
-func TestErrorReachesItsOwnSpeaker(t *testing.T) {
+// Case: a failed command, which must name its room and surface app-wide —
+// the user may well be looking at a different tab when it fails.
+func TestFailedCommandRaisesANamedNotice(t *testing.T) {
 	m, kitchen := modelPlaying(t, "Kitchen Song")
-	result := speakerModelFor(t, m, kitchen).to(
-		nowplaying.ErrorMsg{Err: errors.New("kitchen exploded")})
 
-	m = switchRight(t, m, "Bedroom")
-	m = deliver(m, result)
+	msg := speakerModelFor(t, m, kitchen).failed(errors.New("kitchen exploded"))
 
-	assert(t, !strings.Contains(render(m, 1), "kitchen exploded"),
-		"Bedroom must not show Kitchen's error")
-	assert(t, strings.Contains(render(m, 0), "kitchen exploded"),
-		"the speaker that failed must show the error")
+	notice, ok := msg.(panes.NoticeMsg)
+	if !ok {
+		t.Fatalf("expected an app-wide notice, got %T", msg)
+	}
+	assert(t, notice.Level == panes.NoticeError, "a failed command is an error, not a warning")
+	assert(t, strings.Contains(notice.Text, "Kitchen"), "the notice must name the room that failed")
+	assert(t, strings.Contains(notice.Text, "kitchen exploded"), "the notice must carry the cause")
 }
 
 // Case: a result for a speaker whose tab was removed mid-flight, which must be
