@@ -115,11 +115,15 @@ func TestModal_HoverIsSmallerThanFullScreen(t *testing.T) {
 	hover := key(resize(newSimpleTabsModel(demoTabs()).withModal(), 100, 30), "?")
 	full := key(hover, "m")
 
-	if !strings.Contains(hover.View().Content, "modal         66×20") {
-		t.Fatalf("unexpected hover size:\n%s", hover.View().Content)
+	hoverWidth, hoverHeight := hover.modal.BoxSize()
+	fullWidth, fullHeight := full.modal.BoxSize()
+
+	if hoverWidth >= fullWidth || hoverHeight >= fullHeight {
+		t.Fatalf("hover %dx%d is not smaller than full screen %dx%d",
+			hoverWidth, hoverHeight, fullWidth, fullHeight)
 	}
-	if !strings.Contains(full.View().Content, "modal         100×30") {
-		t.Fatal("full screen must size the box to the terminal")
+	if fullWidth != 100 || fullHeight != 30 {
+		t.Fatalf("full screen must take the terminal, got %dx%d", fullWidth, fullHeight)
 	}
 }
 

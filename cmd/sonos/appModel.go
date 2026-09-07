@@ -35,6 +35,11 @@ type appModel struct {
 	fromCache     bool // tabs were seeded from the cache this run
 	cached        []sonos.Speaker
 	quitting      bool
+	help          panes.Modal
+
+	// frameRows is the tallest the inline frame has ever needed to be. It
+	// only ever grows: see growFrame.
+	frameRows int
 }
 
 // newAppModel builds the model, seeding tabs straight from the cache so the
@@ -45,7 +50,10 @@ func newAppModel(ctx context.Context, events *sonos.EventManager, cached []sonos
 	tabs.Position = panes.Bottom
 	tabs.HideBorder = true
 
-	m := appModel{ctx: ctx, tabs: tabs, eventManager: events, fromCache: len(cached) > 0}
+	help := panes.NewModal(helpContent{})
+	help.Mode = panes.ModalHover
+
+	m := appModel{ctx: ctx, tabs: tabs, eventManager: events, fromCache: len(cached) > 0, help: help}
 	for _, speaker := range cached {
 		m = m.insertSpeaker(speaker.IP, speaker.DisplayName(), newSpeakerModel(sonos.NewDevice(speaker)))
 	}
@@ -151,7 +159,25 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return model, cmd
 	}
-	return updated.syncPlaying(), cmd
+	return updated.syncPlaying().growFrame(), cmd
+}
+
+// growFrame records the tallest the frame has needed to be, and never lets it
+// shrink. Giving rows back strands them: the inline renderer works from a
+// relative cursor, so once the terminal has scrolled to make room it cannot
+// reach above its own frame to erase what it no longer owns. Opening and
+// closing a modal would leave a copy of it behind, once per cycle.
+func (m appModel) growFrame() appModel {
+	needed := playerHeightRows
+	if m.help.IsOpen() {
+		if _, height := m.help.BoxSize(); height > needed {
+			needed = height
+		}
+	}
+	if needed > m.frameRows {
+		m.frameRows = needed
+	}
+	return m
 }
 
 // syncPlaying refreshes each tab's playing flag from the device behind it.
@@ -174,11 +200,27 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.tabs.Width = msg.Width
+		m.help = m.help.SetSize(msg.Width, msg.Height)
 	case tea.KeyMsg:
+		// An open modal owns the keyboard: without this the arrow keys would
+		// still be changing volume behind it, unseen.
+		if m.help.IsOpen() {
+			if msg.String() == "?" {
+				m.help = m.help.Close()
+				return m, nil
+			}
+			help, cmd := m.help.Update(msg)
+			m.help = help
+			return m, cmd
+		}
+
 		switch msg.String() {
 		case "q", "ctrl+c":
 			m.quitting = true
 			return m, tea.Sequence(tea.ClearScreen, tea.Quit)
+		case "?":
+			m.help = m.help.Open()
+			return m, nil
 		}
 	case speakerFoundMsg:
 		if m.hasSpeaker(msg.speaker.IP) {
@@ -341,7 +383,9 @@ func (m appModel) View() tea.View {
 		content = m.tabs.View()
 	}
 
-	return tea.NewView(padToHeight(content, playerHeightRows))
+	// Pad first, so the modal composites onto a backdrop already at the frame's
+	// full height and the frame itself never changes size while it is open.
+	return tea.NewView(m.help.ViewOver(padToHeight(content, max(m.frameRows, playerHeightRows))))
 }
 
 // padToHeight grows content to exactly rows lines. It never truncates: losing

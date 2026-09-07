@@ -25,18 +25,21 @@ const (
 	ModalFullScreen
 )
 
-// Hovering modals are sized as a share of the terminal, then clamped, so they
-// stay readable in a small window and stop growing in a large one. The upper
-// bounds matter: a frame taller than the terminal has its top lines dropped by
-// the renderer, which would silently cut off the modal's own first row.
+// A hovering modal is allowed the terminal less a margin, then clamped, and
+// shrinks to its content below that. The margin keeps it off the very edge;
+// the maxima stop it sprawling on a large display. The upper bounds matter for
+// more than looks: a frame taller than the terminal has its top lines dropped
+// by the renderer, silently cutting off the modal's own first row.
 const (
-	modalWidthNumerator  = 2
-	modalHeightNumerator = 2
-	modalDenominator     = 3
-	modalMinWidth        = 34
-	modalMaxWidth        = 76
-	modalMinHeight       = 8
-	modalMaxHeight       = 22
+	modalMarginX   = 4
+	modalMarginY   = 2
+	modalMinWidth  = 34
+	modalMaxWidth  = 76
+	modalMinHeight = 8
+	modalMaxHeight = 26
+
+	modalFrameWidth  = 4 // the border's two columns plus one of padding each side
+	modalFrameHeight = 2 // the border's two rows; Padding is horizontal only
 )
 
 // Modal is an overlay drawn on top of another view. It owns only its own
@@ -86,17 +89,38 @@ func (m Modal) AltScreen() bool {
 	return m.open && m.Mode == ModalFullScreen
 }
 
-// BoxSize is the modal's outer size, border included.
+// BoxSize is the modal's outer size, border included. A hovering modal shrinks
+// to fit its content rather than always taking its full allowance: a short
+// modal in a tall box wastes space, and in hover mode every row it does not
+// need is a row of inline frame growth avoided.
 func (m Modal) BoxSize() (width, height int) {
 	if m.Mode == ModalFullScreen {
 		return m.width, m.height
 	}
-	// The terminal wins over the minimum: on a window narrower or shorter than
-	// the floor, honouring the floor would push the modal off the screen, and
-	// the renderer answers an oversized frame by dropping its top lines.
-	width = min(clamp(m.width*modalWidthNumerator/modalDenominator, modalMinWidth, modalMaxWidth), m.width)
-	height = min(clamp(m.height*modalHeightNumerator/modalDenominator, modalMinHeight, modalMaxHeight), m.height)
-	return width, height
+
+	allowedWidth, allowedHeight := m.allowance()
+	wanted, wantedHeight := m.contentSize()
+
+	return clamp(wanted, min(modalMinWidth, allowedWidth), allowedWidth),
+		clamp(wantedHeight, min(modalMinHeight, allowedHeight), allowedHeight)
+}
+
+// allowance is the largest a hovering modal may be: a share of the terminal,
+// clamped, and never larger than the terminal itself. The terminal wins over
+// the minimum, because the renderer answers an oversized frame by dropping its
+// top lines rather than by complaining.
+func (m Modal) allowance() (width, height int) {
+	return min(clamp(m.width-modalMarginX, modalMinWidth, modalMaxWidth), m.width),
+		min(clamp(m.height-modalMarginY, modalMinHeight, modalMaxHeight), m.height)
+}
+
+// contentSize is the outer size the content would like, its frame included.
+func (m Modal) contentSize() (width, height int) {
+	if m.Content == nil {
+		return 0, 0
+	}
+	body := m.Content.View().Content
+	return lipgloss.Width(body) + modalFrameWidth, lipgloss.Height(body) + modalFrameHeight
 }
 
 // Update dismisses the modal on esc and forwards everything else to its

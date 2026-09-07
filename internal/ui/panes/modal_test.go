@@ -56,19 +56,40 @@ func TestModal_FullScreenFillsTheTerminal(t *testing.T) {
 	assert.Equal(t, 20, lipgloss.Height(view))
 }
 
-// Case: the sizes the component picks, which must be a clamped share when
-// hovering and the whole terminal when full screen.
-func TestModal_BoxSizeFollowsTheMode(t *testing.T) {
-	m := panes.NewModal(nil).SetSize(120, 40).Open()
+// Case: full screen, which must take the terminal whatever it contains.
+func TestModal_FullScreenIgnoresContentSize(t *testing.T) {
+	m := panes.NewModal(panes.StaticContent("tiny")).SetSize(120, 40).Open()
+	m.Mode = panes.ModalFullScreen
 
 	width, height := m.BoxSize()
-	assert.Equal(t, 76, width, "hover width must stop at the maximum")
-	assert.Equal(t, 22, height, "hover height must stop at the maximum")
 
-	m.Mode = panes.ModalFullScreen
-	width, height = m.BoxSize()
 	assert.Equal(t, 120, width)
 	assert.Equal(t, 40, height)
+}
+
+// Case: a hovering modal holding little, which must shrink to it rather than
+// take its whole allowance. Every row it does not need is a row of inline
+// frame growth avoided.
+func TestModal_HoverShrinksToItsContent(t *testing.T) {
+	small := panes.NewModal(panes.StaticContent("one\ntwo\nthree")).SetSize(120, 40).Open()
+	large := panes.NewModal(panes.StaticContent(strings.Repeat("a line of content\n", 40))).SetSize(120, 40).Open()
+
+	_, smallHeight := small.BoxSize()
+	_, largeHeight := large.BoxSize()
+
+	assert.Equal(t, 8, smallHeight, "three lines must not claim the full allowance")
+	assert.Equal(t, 26, largeHeight, "long content must still stop at the allowance")
+	assert.Less(t, smallHeight, largeHeight)
+}
+
+// Case: content wider than the allowance, which must be capped rather than
+// widening the box past what the terminal can show.
+func TestModal_HoverCapsWideContent(t *testing.T) {
+	m := panes.NewModal(panes.StaticContent(strings.Repeat("x", 500))).SetSize(120, 40).Open()
+
+	width, _ := m.BoxSize()
+
+	assert.Equal(t, 76, width, "content must not push the box past its allowance")
 }
 
 // Case: the renderer drops lines from the top of a frame taller than the

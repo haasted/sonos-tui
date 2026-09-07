@@ -44,8 +44,10 @@ func (m modalDemo) View() tea.View {
 		demoHintStyle.Render("m switches hover/full screen · ? or esc closes"),
 		"",
 	}
-	for i := len(lines); i < m.box[1]; i++ {
-		lines = append(lines, demoFillStyle.Render(fmt.Sprintf("%3d %s", i, strings.Repeat("·", max(m.box[0]-10, 4)))))
+	// Fixed filler, not derived from the box: the box now sizes to its content,
+	// so measuring the box to build the content would be circular.
+	for i := range 4 {
+		lines = append(lines, demoFillStyle.Render(fmt.Sprintf("%3d %s", i, strings.Repeat("·", 38))))
 	}
 
 	return tea.NewView(strings.Join(lines, "\n"))
