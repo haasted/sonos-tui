@@ -199,5 +199,5 @@ func layoutInterface3() {
 	tb := panes.NewTabs(tabs)
 	tb.Position = panes.Bottom
 	tb.HideBorder = true
-	runSimpleTabs(tb)
+	runSimpleTabsWithModal(tb)
 }
