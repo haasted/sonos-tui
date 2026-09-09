@@ -305,6 +305,22 @@ func (m Model) restart() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+// restartFade rolls the fade generation and arms a fade chain if one is still
+// needed. Scoped deliberately: a volume or mute change moves nothing else — not
+// the marquee, not the clock, not the label — and restarting those would reset
+// their timers. Since a held volume key emits a message every volumeDebounce,
+// and that equals scrollInterval, a full restart discards every scroll tick
+// before it can fire and the marquee stalls for as long as the key is held.
+//
+// It still rolls before arming, for the reason restart does.
+func (m Model) restartFade() tea.Cmd {
+	*m.fadeGen = nextGeneration()
+	if !m.fading() {
+		return nil
+	}
+	return fadeTick(*m.fadeGen)
+}
+
 func (m Model) Init() tea.Cmd {
 	return m.restart()
 }
@@ -316,7 +332,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, m.restart()
 	case VolumeMsg:
 		m = m.applyVolume(msg)
-		return m, m.restart()
+		return m, m.restartFade()
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)

@@ -9,65 +9,74 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Case: a volume change while the marquee is scrolling. Arming a chain without
-// rolling the generation first leaves the previous one valid, so both survive
-// the guard and both re-arm — the marquee then runs at double speed, and faster
-// again for every further change.
-func TestRestart_AVolumeChangeDoesNotForkTheScrollChain(t *testing.T) {
+// Case: a volume change, which must not fork the fade chain. Arming without
+// rolling the generation first leaves the previous chain valid, so both survive
+// the guard and both re-arm — and every further change adds another.
+func TestRestart_AVolumeChangeDoesNotForkTheFadeChain(t *testing.T) {
+	m := scrollingModel()
+	_ = m.Init()
+	before := nowplaying.FadeGen(m)
+
+	m, _ = m.Update(nowplaying.VolumeMsg{Volume: 30})
+
+	require.NotEqual(t, before, nowplaying.FadeGen(m), "the fade generation must roll")
+
+	_, cmd := m.Update(nowplaying.NewFadeTick(before))
+	assert.Nil(t, cmd, "a tick from the pre-change fade chain must not re-arm")
+}
+
+// Case: the marquee during a volume change, which must be left entirely alone.
+// A held volume key emits a message every volumeDebounce, and that equals
+// scrollInterval — so rolling the scroll generation here discards every scroll
+// tick before it can fire and the title stops moving until the key is released.
+func TestRestart_AVolumeChangeLeavesTheScrollChainRunning(t *testing.T) {
 	m := scrollingModel()
 	_ = m.Init()
 	before := nowplaying.ScrollGen(m)
 
 	m, _ = m.Update(nowplaying.VolumeMsg{Volume: 30})
 
-	require.NotEqual(t, before, nowplaying.ScrollGen(m), "the generation must roll")
+	assert.Equal(t, before, nowplaying.ScrollGen(m), "volume must not touch the marquee's chain")
 
 	_, cmd := m.Update(nowplaying.NewScrollTick(before))
-	assert.Nil(t, cmd, "a tick from the pre-change chain must not re-arm")
+	assert.NotNil(t, cmd, "the in-flight scroll tick must still be accepted")
 }
 
-// Case: repeated volume changes, which are what a single held arrow key
-// produces. Each one used to add another live chain.
-func TestRestart_RepeatedVolumeChangesLeaveOneChain(t *testing.T) {
+// Case: a held volume key, which is a stream of changes at exactly the scroll
+// cadence. The marquee must keep advancing throughout.
+func TestRestart_AHeldVolumeKeyDoesNotStallTheMarquee(t *testing.T) {
 	m := scrollingModel()
 	_ = m.Init()
-
-	var stale []int
-	for volume := range 5 {
-		stale = append(stale, nowplaying.ScrollGen(m))
-		m, _ = m.Update(nowplaying.VolumeMsg{Volume: volume})
-	}
-
-	for _, gen := range stale {
-		_, cmd := m.Update(nowplaying.NewScrollTick(gen))
-		assert.Nil(t, cmd, "generation %d should be dead", gen)
-	}
-
-	_, cmd := m.Update(nowplaying.NewScrollTick(nowplaying.ScrollGen(m)))
-	assert.NotNil(t, cmd, "the current chain must still be alive")
-}
-
-// Case: the surviving chain, which must advance the marquee once per tick
-// however many volume changes preceded it.
-func TestRestart_ScrollSpeedIsUnaffectedByVolumeChanges(t *testing.T) {
-	quiet, noisy := scrollingModel(), scrollingModel()
-	_, _ = quiet.Init(), noisy.Init()
-	for volume := range 5 {
-		noisy, _ = noisy.Update(nowplaying.VolumeMsg{Volume: volume})
-	}
-
-	assert.Equal(t, advanceOnce(quiet), advanceOnce(noisy),
-		"the marquee must travel the same distance per tick either way")
-}
-
-// advanceOnce delivers enough ticks to clear the scroll delay plus one, and
-// returns the marquee window alone — comparing whole views would conflate the
-// scroll position with the volume readout a VolumeMsg also raises.
-func advanceOnce(m nowplaying.Model) string {
-	for range nowplaying.ScrollDelayTicks + 1 {
+	for range nowplaying.ScrollDelayTicks {
 		m, _ = m.Update(nowplaying.NewScrollTick(nowplaying.ScrollGen(m)))
 	}
-	return nowplaying.VisibleTitle(m)
+	before := nowplaying.VisibleTitle(m)
+
+	for volume := range 5 {
+		m, _ = m.Update(nowplaying.VolumeMsg{Volume: volume})
+		m, _ = m.Update(nowplaying.NewScrollTick(nowplaying.ScrollGen(m)))
+	}
+
+	assert.NotEqual(t, before, nowplaying.VisibleTitle(m),
+		"the title must still be travelling while the volume is held")
+}
+
+// Case: a new track, where everything genuinely changed and every chain should
+// be replaced — the case restart exists for.
+func TestRestart_ATrackChangeRollsEveryChain(t *testing.T) {
+	m := scrollingModel()
+	_ = m.Init()
+	scroll, fade := nowplaying.ScrollGen(m), nowplaying.FadeGen(m)
+
+	m, _ = m.Update(nowplaying.TrackMsg{Track: nowplaying.Track{
+		Title: "Something Else Entirely, Also Too Long For The Window", Playing: true,
+	}})
+
+	assert.NotEqual(t, scroll, nowplaying.ScrollGen(m))
+	assert.NotEqual(t, fade, nowplaying.FadeGen(m))
+
+	_, cmd := m.Update(nowplaying.NewScrollTick(scroll))
+	assert.Nil(t, cmd, "the previous track's scroll chain must be dead")
 }
 
 func scrollingModel() nowplaying.Model {
