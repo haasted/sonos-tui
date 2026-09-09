@@ -29,8 +29,27 @@ type subscription struct {
 	stop      context.CancelFunc
 }
 
-func NewEventManager() (*EventManager, error) {
-	listener, err := newEventListener()
+// EventManagerOption configures an EventManager at construction.
+type EventManagerOption func(*eventManagerConfig)
+
+type eventManagerConfig struct {
+	capture CaptureFunc
+}
+
+// WithCapture hands every raw NOTIFY body to capture before it is parsed.
+// The callback owns whatever it does with them: this package deliberately
+// does no filesystem work of its own.
+func WithCapture(capture CaptureFunc) EventManagerOption {
+	return func(c *eventManagerConfig) { c.capture = capture }
+}
+
+func NewEventManager(opts ...EventManagerOption) (*EventManager, error) {
+	var config eventManagerConfig
+	for _, opt := range opts {
+		opt(&config)
+	}
+
+	listener, err := newEventListener(config.capture)
 	if err != nil {
 		return nil, err
 	}

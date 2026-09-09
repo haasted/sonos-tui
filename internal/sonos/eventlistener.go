@@ -15,15 +15,36 @@ import (
 
 const notifyPrefix = "/notify/"
 
+// RawEvent is one NOTIFY exactly as it arrived, handed to a capture hook
+// before anything tries to interpret it.
+type RawEvent struct {
+	// Speaker is the device the NOTIFY was routed to, zero-valued when the
+	// path matched no subscription. An unrouted NOTIFY is itself worth
+	// recording: it means we are being sent something we did not expect.
+	Speaker Speaker
+
+	// Service is the event service the body came from, empty when unrouted.
+	Service string
+
+	Path string
+	Body []byte
+}
+
+// CaptureFunc receives every NOTIFY the listener accepts. It is called before
+// parsing, so a body this package cannot understand is still captured — those
+// are the ones worth having, being exactly the schema we do not handle yet.
+type CaptureFunc func(RawEvent)
+
 type eventListener struct {
 	server  *http.Server
 	baseURL string
+	capture CaptureFunc
 
 	mu     sync.RWMutex
 	routes map[string]route
 }
 
-func newEventListener() (*eventListener, error) {
+func newEventListener(capture CaptureFunc) (*eventListener, error) {
 	localIP, err := GetLocalIP()
 	if err != nil {
 		return nil, fmt.Errorf("detecting local IP: %w", err)
@@ -36,6 +57,7 @@ func newEventListener() (*eventListener, error) {
 
 	el := &eventListener{
 		baseURL: fmt.Sprintf("http://%s:%d", localIP, ln.Addr().(*net.TCPAddr).Port),
+		capture: capture,
 		routes:  map[string]route{},
 	}
 
@@ -88,6 +110,16 @@ func (el *eventListener) handleNotify(w http.ResponseWriter, r *http.Request) {
 	el.mu.RLock()
 	found := el.routes[r.URL.Path]
 	el.mu.RUnlock()
+
+	// Before the route lookup and before parsing, so an unrouted or
+	// unparseable body is captured too.
+	if el.capture != nil {
+		raw := RawEvent{Service: found.service, Path: r.URL.Path, Body: body}
+		if found.device != nil {
+			raw.Speaker = found.device.Speaker
+		}
+		el.capture(raw)
+	}
 
 	if found.device == nil {
 		slog.Debug("NOTIFY for unknown subscription", "path", r.URL.Path)

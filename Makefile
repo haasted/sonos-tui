@@ -26,6 +26,9 @@ test-live: ## Run tests requiring a real network with real Sonos speakers
 run: ## Run the CLI
 	go run ./cmd/sonos
 
+run-capture: ## Capture speaker data while running
+	go run ./cmd/sonos -capture=./captured-data
+
 tidy: ## Tidy go.mod/go.sum
 	go mod tidy
 

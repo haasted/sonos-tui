@@ -23,9 +23,9 @@ func TestCommandResultReachesItsOwnSpeaker(t *testing.T) {
 	m = switchRight(t, m, "Bedroom")
 	m = deliver(m, result)
 
-	assert(t, !strings.Contains(render(m, 1), "Kitchen Song"),
+	check(t, !strings.Contains(render(m, 1), "Kitchen Song"),
 		"Bedroom must not show Kitchen's track")
-	assert(t, strings.Contains(render(m, 0), "Kitchen Song"),
+	check(t, strings.Contains(render(m, 0), "Kitchen Song"),
 		"Kitchen must still show its own track")
 }
 
@@ -39,7 +39,7 @@ func TestVolumeResultReachesItsOwnSpeaker(t *testing.T) {
 	m = switchRight(t, m, "Bedroom")
 	m = deliver(m, result)
 
-	assert(t, !strings.Contains(render(m, 1), "42"), "Bedroom must not show Kitchen's volume")
+	check(t, !strings.Contains(render(m, 1), "42"), "Bedroom must not show Kitchen's volume")
 }
 
 // Case: a failed command, which must name its room and surface app-wide —
@@ -53,9 +53,9 @@ func TestFailedCommandRaisesANamedNotice(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected an app-wide notice, got %T", msg)
 	}
-	assert(t, notice.Level == panes.NoticeError, "a failed command is an error, not a warning")
-	assert(t, strings.Contains(notice.Text, "Kitchen"), "the notice must name the room that failed")
-	assert(t, strings.Contains(notice.Text, "kitchen exploded"), "the notice must carry the cause")
+	check(t, notice.Level == panes.NoticeError, "a failed command is an error, not a warning")
+	check(t, strings.Contains(notice.Text, "Kitchen"), "the notice must name the room that failed")
+	check(t, strings.Contains(notice.Text, "kitchen exploded"), "the notice must carry the cause")
 }
 
 // Case: a result for a speaker whose tab was removed mid-flight, which must be
@@ -69,7 +69,7 @@ func TestResultForARemovedSpeakerIsDropped(t *testing.T) {
 	m = deliver(model.(appModel), result)
 
 	for i := range m.tabs.Items {
-		assert(t, !strings.Contains(render(m, i), "Kitchen Song"),
+		check(t, !strings.Contains(render(m, i), "Kitchen Song"),
 			"no surviving tab may inherit the removed speaker's track")
 	}
 }
@@ -125,7 +125,7 @@ func render(m appModel, tab int) string {
 	return m.tabs.Items[tab].Content.View().Content
 }
 
-func assert(t *testing.T, ok bool, msg string) {
+func check(t *testing.T, ok bool, msg string) {
 	t.Helper()
 	if !ok {
 		t.Fatal(msg)
