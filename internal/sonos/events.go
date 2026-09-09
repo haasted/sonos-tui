@@ -73,8 +73,8 @@ const (
 var _ slog.LogValuer = AVTransportEvent{}
 
 // LogValue reports the fields most worth seeing in a log line — the same
-// set handleNotify (cmd/listening) used to assemble by hand at the call
-// site before this existed.
+// set the retired cmd/listening's handleNotify used to assemble by hand at
+// the call site before this existed.
 func (e AVTransportEvent) LogValue() slog.Value {
 	attrs := []slog.Attr{
 		slog.String("state", e.TransportState),

@@ -1,6 +1,7 @@
 package sonos_test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -81,4 +82,30 @@ func useTempCacheDir(t *testing.T) string {
 	t.Setenv("XDG_CACHE_HOME", dir)
 	t.Setenv("HOME", dir)
 	return dir
+}
+
+// Case: a cache written by a different layout version. The guard exists so a
+// format change is survivable, and this is the only thing that exercises it —
+// ported from cmd/listening before that command was deleted (son-cg8).
+func TestLoadCacheRejectsAnotherVersion(t *testing.T) {
+	useTempCacheDir(t)
+	require.NoError(t, sonos.SaveCache([]sonos.Speaker{
+		sonos.NewSpeaker("192.168.1.10", "http://x/d.xml", "uuid:A", sonos.DeviceDescription{}),
+	}, ""))
+
+	path, err := sonos.CachePath()
+	require.NoError(t, err)
+
+	var stored map[string]any
+	body, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(body, &stored))
+
+	stored["Version"] = stored["Version"].(float64) + 1
+	bumped, err := json.Marshal(stored)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, bumped, 0o644))
+
+	_, ok := sonos.LoadCache()
+	assert.False(t, ok, "a cache from another version must be ignored, not half-read")
 }

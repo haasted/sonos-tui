@@ -244,6 +244,6 @@ handler stamping time since start).
 root models. They are a playground for iterating on look and feel, deliberately
 disposable, and nothing outside `cmd/uitest` depends on them.
 
-`cmd/listening` holds an earlier event-listening prototype with its own
-`subscription`, `subscriptions` and cache types. It is superseded and slated for
-deletion; its structs are not the ones to learn from.
+`cmd/listening`, an earlier event-listening prototype with its own subscription
+and cache types, has been deleted — see ADR-0004. Everything it did now lives in
+`internal/sonos` and `cmd/sonos`.

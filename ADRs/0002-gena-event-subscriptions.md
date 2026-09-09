@@ -74,7 +74,7 @@ flowchart TD
     Unsubscribe --> Done([Clean exit])
 ```
 
-### `cmd/listening` — the verification harness
+### `cmd/listening` — the verification harness *(retired — see ADR-0004)*
 
 A new, deliberately simple command: discover every speaker on the LAN, subscribe to all of them, log every event to the console as it arrives (`log/slog` with [`lmittmann/tint`](https://github.com/lmittmann/tint) for human-readable, colorized output rather than raw JSON), and unsubscribe from everything on `Ctrl+C` before exiting. No interactive input in this first version — purely observational, run it and watch. This doubles as both the day-to-day development tool for building this feature and the natural shape for the `-live`-gated integration test (mirroring `discovery_test.go`/`ssdp_eval_test.go`), alongside `httptest`-based unit tests for the outbound `SUBSCRIBE`/renewal flow and the inbound listener (synthetic `NOTIFY` POSTs, no real speaker needed).
 
@@ -141,3 +141,19 @@ with neither.
 ## Consequences
 
 `internal/sonos` gains real new complexity: an inbound HTTP surface, background goroutines (per-subscription renewal, the shared listener), and shutdown/cleanup concerns that don't exist anywhere else in the codebase yet. `Device`'s public API grows (an events channel alongside `State()`/`Refresh()`/`Play()`/`Pause()`), but nothing existing has to change — polling via `Refresh()` keeps working exactly as today for callers that don't care about live updates. `RenderingControl` eventing, once wanted, is expected to be a small addition on top of this same machinery.
+
+## Amendment: `cmd/listening` retired (son-cg8)
+
+This ADR built GENA eventing inside `cmd/listening` and describes it above as
+the verification harness. It was exactly that, and it is now gone.
+
+son-0rd moved the mechanics into `internal/sonos`, after which `cmd/listening`
+was a second implementation of subscription handling that nothing exercised.
+Every capability that justified it had moved to `cmd/sonos` — playback controls,
+live events, the speaker cache, and finally raw NOTIFY capture, which was the
+last thing it could do that `cmd/sonos` could not.
+
+**ADR-0004 supersedes the harness section above.** The description of what
+`cmd/listening` did is left intact rather than rewritten: it records accurately
+what was decided at the time, and rewriting history to match the present would
+lose the reasoning.

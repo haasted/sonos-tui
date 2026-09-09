@@ -2,8 +2,9 @@
 
 Protocol findings about how Sonos actually behaves, as distinct from how the
 docs say UPnP works. Everything here was verified against the real event
-captures in `captured-data/` (22 GENA NOTIFY bodies from five speakers,
-recorded via `cmd/listening -capture`) rather than taken from documentation.
+captures in `captured-data/` and `internal/sonos/testdata/`, recorded with
+`cmd/sonos -capture`, rather than taken from documentation. The earliest
+findings here predate that flag and came from the retired `cmd/listening`.
 
 Design *decisions* live in `ADRs/`. This file is for observed facts.
 
