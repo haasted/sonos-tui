@@ -32,6 +32,25 @@ type DeviceState struct {
 
 	Volume int
 	Muted  bool
+
+	// Source is what is loaded on the speaker — a queue, a station, a line-in.
+	// Distinct from Current, which is whatever is coming out of it right now.
+	Source SourceInfo
+}
+
+// Live reports playback with no meaningful duration: a broadcast, or a station
+// between tracks. It asks about the DURATION rather than the source kind,
+// because an algorithmic station can play discrete tracks whose clock works
+// perfectly well — and it does not ask whether playback is running, since a
+// paused stream's clock is no more meaningful than a playing one's.
+//
+// Requiring a known source is what keeps a speaker whose state has not loaded
+// yet from being reported as a stream: everything is zero at that point,
+// including the duration.
+func (s DeviceState) Live() bool {
+	return s.Source.URI != "" &&
+		ParseDuration(s.Current.Duration) == 0 &&
+		s.Source.Kind() != SourceTrack
 }
 
 // Playing reports whether the speaker is actively playing. Every other
@@ -95,6 +114,11 @@ func (d *Device) HandleAVTransportEvent(body []byte) error {
 	d.mu.Lock()
 	if parsed.TransportState != "" {
 		d.state.Transport.State = parsed.TransportState
+	}
+	if parsed.Source.URI != "" {
+		// LastChange omits unchanged variables, so an event that says nothing
+		// about the source must not erase what we already know.
+		d.state.Source = parsed.Source
 	}
 	d.state.Current = parsed.Current
 	d.state.RelTime = relTime

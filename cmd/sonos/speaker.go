@@ -58,16 +58,69 @@ func newSpeakerModel(device *sonos.Device) speakerModel {
 }
 
 // trackFromState projects device state onto the fields the widget renders.
+//
+// Streams need three substitutions. Broadcast radio sends no dc:title at all,
+// so the title falls back to the station name; the station goes in the album
+// slot, which for station playback is empty anyway; and the clock is replaced
+// by a label whenever the duration is meaningless.
 func trackFromState(state sonos.DeviceState) nowplaying.Track {
+	title := state.Current.Title
+	if title == "" {
+		title = state.Source.Name
+	}
+
+	// A station's name outranks the album of a track you did not choose:
+	// "Akylas" is why this is playing, "Party - Single" is incidental.
+	album := state.Current.Album
+	if station := state.Source.Name; station != "" && station != title {
+		switch state.Source.Kind() {
+		case sonos.SourceBroadcast, sonos.SourceStation:
+			album = station
+		default:
+			if album == "" {
+				album = station
+			}
+		}
+	}
+
+	// Broadcast radio sends no artist, so the row below the station is free
+	// for the programme description — frequently the only thing a station
+	// says about what is actually on.
+	artist := state.Current.Artist
+	if artist == "" {
+		artist = state.Current.RadioShow
+	}
+
 	return nowplaying.Track{
-		Title:    state.Current.Title,
-		Artist:   state.Current.Artist,
-		Album:    state.Current.Album,
-		Elapsed:  sonos.ParseDuration(state.RelTime),
-		Duration: sonos.ParseDuration(state.Current.Duration),
-		Playing:  state.Playing(),
-		Muted:    state.Muted,
-		Volume:   state.Volume,
+		Title:       title,
+		Artist:      artist,
+		Album:       album,
+		Elapsed:     sonos.ParseDuration(state.RelTime),
+		Duration:    sonos.ParseDuration(state.Current.Duration),
+		Playing:     state.Playing(),
+		Muted:       state.Muted,
+		Volume:      state.Volume,
+		StreamLabel: streamLabel(state),
+	}
+}
+
+// streamLabel names what kind of unbounded playback this is, or returns empty
+// when the position readout still means something. A station playing a track
+// with a real duration keeps its clock — being a stream and having a usable
+// clock are separate questions.
+func streamLabel(state sonos.DeviceState) string {
+	if !state.Live() {
+		return ""
+	}
+	switch state.Source.Kind() {
+	case sonos.SourceBroadcast:
+		return "live"
+	case sonos.SourceStation:
+		return "radio"
+	case sonos.SourceLineIn:
+		return "line-in"
+	default:
+		return "stream"
 	}
 }
 

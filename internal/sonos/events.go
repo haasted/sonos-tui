@@ -26,7 +26,49 @@ type AVTransportEvent struct {
 	Next    TrackMetadata // zero value if nothing queued after Current
 
 	QueueSource string // title of the playlist/container playback started from, if any
+
+	// Source is what is loaded on the speaker, as opposed to the track
+	// currently coming out of it: a queue, a radio station, a line-in. Its
+	// URI scheme is the only reliable way to tell those apart.
+	Source SourceInfo
 }
+
+// SourceInfo describes what playback is coming from. For a station this is
+// where the station's own name lives — the track metadata carries the song,
+// which for broadcast radio is often the station name again or nothing at all.
+type SourceInfo struct {
+	URI  string // AVTransportURI, e.g. "x-sonosapi-hls:..." or "x-rincon-queue:..."
+	Name string // dc:title of AVTransportURIMetaData; empty for a plain queue
+}
+
+// Kind classifies a source by its URI scheme. Verified against captured
+// events on 2026-09-09; see SONOS-NOTES.md.
+func (s SourceInfo) Kind() SourceKind {
+	switch scheme, _, _ := strings.Cut(s.URI, ":"); scheme {
+	case "x-sonosapi-hls":
+		return SourceBroadcast
+	case "x-sonosapi-radio", "x-sonosapi-stream", "x-rincon-mp3radio":
+		return SourceStation
+	case "x-rincon-stream":
+		return SourceLineIn
+	case "":
+		return SourceUnknown
+	case "x-rincon-queue", "x-sonos-http", "x-sonosprog-http", "x-file-cifs":
+		return SourceTrack
+	}
+	return SourceUnknown
+}
+
+// SourceKind is the family a source belongs to.
+type SourceKind int
+
+const (
+	SourceUnknown   SourceKind = iota
+	SourceTrack                // a queue, a file, an individual track
+	SourceBroadcast            // live radio, genuinely unbounded
+	SourceStation              // an algorithmic station, which may play discrete tracks
+	SourceLineIn
+)
 
 var _ slog.LogValuer = AVTransportEvent{}
 
@@ -57,6 +99,11 @@ type TrackMetadata struct {
 	Artist      string
 	Album       string
 	AlbumArtURI string
+
+	// RadioShow describes the programme currently on a broadcast station —
+	// often the only thing a station says about what is playing, since its
+	// track metadata carries no title, artist or album at all.
+	RadioShow string
 }
 
 var _ slog.LogValuer = TrackMetadata{}
@@ -129,6 +176,8 @@ func ParseAVTransportEvent(body []byte) (AVTransportEvent, error) {
 			NextTrackURI                 val `xml:"NextTrackURI"`
 			NextTrackMetaData            val `xml:"NextTrackMetaData"`
 			EnqueuedTransportURIMetaData val `xml:"EnqueuedTransportURIMetaData"`
+			AVTransportURI               val `xml:"AVTransportURI"`
+			AVTransportURIMetaData       val `xml:"AVTransportURIMetaData"`
 		} `xml:"InstanceID"`
 	}
 	if err := xml.Unmarshal([]byte(lastChange), &doc); err != nil {
@@ -147,6 +196,11 @@ func ParseAVTransportEvent(body []byte) (AVTransportEvent, error) {
 
 	queueSource := parseDIDLTrack(instance.EnqueuedTransportURIMetaData.Val).Title
 
+	source := SourceInfo{
+		URI:  instance.AVTransportURI.Val,
+		Name: parseDIDLTrack(instance.AVTransportURIMetaData.Val).Title,
+	}
+
 	return AVTransportEvent{
 		TransportState: instance.TransportState.Val,
 		PlayMode:       instance.CurrentPlayMode.Val,
@@ -156,6 +210,7 @@ func ParseAVTransportEvent(body []byte) (AVTransportEvent, error) {
 		Current:        current,
 		Next:           next,
 		QueueSource:    queueSource,
+		Source:         source,
 	}, nil
 }
 
@@ -179,6 +234,7 @@ func parseDIDLTrack(raw string) TrackMetadata {
 			Creator     string `xml:"creator"`
 			Album       string `xml:"album"`
 			AlbumArtURI string `xml:"albumArtURI"`
+			RadioShowMd string `xml:"radioShowMd"`
 		} `xml:"item"`
 	}
 	if err := xml.Unmarshal([]byte(raw), &doc); err != nil {
@@ -192,7 +248,37 @@ func parseDIDLTrack(raw string) TrackMetadata {
 		Artist:      normalizeText(doc.Item.Creator),
 		Album:       normalizeText(doc.Item.Album),
 		AlbumArtURI: doc.Item.AlbumArtURI, // a URL — never whitespace-wrapped, and Fields/Join would corrupt one that used '+' spacing
+		RadioShow:   parseRadioShow(doc.Item.RadioShowMd),
 	}
+}
+
+// parseRadioShow pulls the description out of r:radioShowMd. The field is
+// comma-delimited with literal commas escaped as "\,", and the description is
+// the first field — the rest is a station-specific id that means nothing here.
+// Sonos also truncates the text, so it commonly ends mid-word.
+func parseRadioShow(raw string) string {
+	if raw == "" {
+		return ""
+	}
+
+	var (
+		description []rune
+		escaped     bool
+	)
+	for _, r := range raw {
+		switch {
+		case escaped:
+			description = append(description, r)
+			escaped = false
+		case r == '\\':
+			escaped = true
+		case r == ',':
+			return normalizeText(string(description))
+		default:
+			description = append(description, r)
+		}
+	}
+	return normalizeText(string(description))
 }
 
 // normalizeText collapses whitespace runs (including newlines) into single

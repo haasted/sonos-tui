@@ -10,6 +10,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"math/rand/v2"
+
+	"github.com/haasted/sonos-sandbox/internal/ui/flashsweep"
 	"github.com/haasted/sonos-sandbox/internal/ui/marquee"
 	"github.com/haasted/sonos-sandbox/pkg/ui/spinners"
 )
@@ -23,6 +26,11 @@ type Track struct {
 	Playing  bool
 	Muted    bool
 	Volume   int
+
+	// StreamLabel replaces the position readout when playback has no
+	// meaningful duration — "live", "radio", "stream". Empty for ordinary
+	// tracks, including those a station happens to be playing.
+	StreamLabel string
 }
 
 type TrackMsg struct {
@@ -69,6 +77,28 @@ func fadeTick(gen int) tea.Cmd {
 	})
 }
 
+const (
+	labelSweepDuration = 900 * time.Millisecond // one traversal of the label
+	labelSweepInterval = 40 * time.Millisecond  // frame rate while sweeping
+	labelSweepMinGap   = 8 * time.Second        // shortest rest between glints
+	labelSweepMaxGap   = 14 * time.Second
+)
+
+type labelScheduleMsg struct{ gen int }
+
+type labelTickMsg struct{ gen int }
+
+// scheduleLabelSweep waits a random rest, then starts the next glint. Random
+// so several streaming rooms do not pulse in lockstep.
+func scheduleLabelSweep(gen int) tea.Cmd {
+	gap := labelSweepMinGap + time.Duration(rand.Int64N(int64(labelSweepMaxGap-labelSweepMinGap)))
+	return tea.Tick(gap, func(time.Time) tea.Msg { return labelScheduleMsg{gen: gen} })
+}
+
+func labelTick(gen int) tea.Cmd {
+	return tea.Tick(labelSweepInterval, func(time.Time) tea.Msg { return labelTickMsg{gen: gen} })
+}
+
 const positionTickInterval = time.Second
 
 type positionTickMsg struct {
@@ -100,9 +130,13 @@ type Model struct {
 	artist marquee.Line
 	album  marquee.Line
 
-	baseline   time.Duration
-	receivedAt time.Time
-	duration   time.Duration
+	baseline    time.Duration
+	receivedAt  time.Time
+	duration    time.Duration
+	streamLabel string // non-empty while playback has no usable clock
+
+	labelGen   *int      // drives the label's idle glint
+	labelSweep time.Time // start of the current glint, zero between them
 
 	ticksWaited int
 	scrollGen   *int
@@ -113,7 +147,7 @@ func New(track Track) Model {
 	s := spinner.New()
 	s.Spinner = spinners.Equalizer
 
-	m := Model{spinner: s, scrollGen: new(int), posGen: new(int), fadeGen: new(int)}
+	m := Model{spinner: s, scrollGen: new(int), posGen: new(int), fadeGen: new(int), labelGen: new(int)}
 	return m.applyTrack(track)
 }
 
@@ -142,6 +176,7 @@ func (m Model) applyTrack(track Track) Model {
 	m.baseline = track.Elapsed
 	m.receivedAt = time.Now()
 	m.duration = track.Duration
+	m.streamLabel = track.StreamLabel
 	m.ticksWaited = 0
 	return m
 }
@@ -210,6 +245,29 @@ func (m Model) fading() bool {
 	return m.muteFlash() > 0 || m.volumeFlash() > 0
 }
 
+// labelProgress is how far the current glint has travelled, and whether one
+// is running at all.
+func (m Model) labelProgress() (float32, bool) {
+	if m.labelSweep.IsZero() {
+		return 0, false
+	}
+	elapsed := time.Since(m.labelSweep)
+	if elapsed >= labelSweepDuration {
+		return 0, false
+	}
+	return float32(elapsed) / float32(labelSweepDuration), true
+}
+
+// streamReadout is the label that stands in for the position, glinting when a
+// sweep is running. The light says the stream is alive, which a frozen clock
+// cannot.
+func (m Model) streamReadout() string {
+	if progress, sweeping := m.labelProgress(); sweeping {
+		return flashsweep.Glint(m.streamLabel, progress, streamLabelRamp())
+	}
+	return streamLabelStyle().Render(m.streamLabel)
+}
+
 func (m Model) needsScroll() bool {
 	return m.title.NeedsScroll() || m.artist.NeedsScroll() || m.album.NeedsScroll()
 }
@@ -224,6 +282,9 @@ func (m Model) startCmds() tea.Cmd {
 	}
 	if m.fading() {
 		cmds = append(cmds, fadeTick(*m.fadeGen))
+	}
+	if m.streamLabel != "" {
+		cmds = append(cmds, scheduleLabelSweep(*m.labelGen))
 	}
 	if len(cmds) == 0 {
 		return nil
@@ -240,6 +301,7 @@ func (m Model) restartTicks() {
 	*m.scrollGen = nextGeneration()
 	*m.posGen = nextGeneration()
 	*m.fadeGen = nextGeneration()
+	*m.labelGen = nextGeneration()
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
@@ -265,6 +327,21 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, positionTick(msg.gen)
+	case labelScheduleMsg:
+		if msg.gen != *m.labelGen || m.streamLabel == "" {
+			return m, nil
+		}
+		m.labelSweep = time.Now()
+		return m, labelTick(msg.gen)
+	case labelTickMsg:
+		if msg.gen != *m.labelGen {
+			return m, nil
+		}
+		if _, sweeping := m.labelProgress(); sweeping {
+			return m, labelTick(msg.gen)
+		}
+		m.labelSweep = time.Time{}
+		return m, scheduleLabelSweep(msg.gen)
 	case scrollTickMsg:
 		if msg.gen != *m.scrollGen {
 			return m, nil
@@ -297,6 +374,9 @@ func (m Model) View() string {
 	}
 	left := lipgloss.JoinHorizontal(lipgloss.Top, spinnerGlyph, " ", m.title.Render(trackStyle))
 	position := formatPosition(m.elapsed(), m.duration)
+	if m.streamLabel != "" {
+		position = m.streamReadout()
+	}
 
 	gap := titleRowWidth - lipgloss.Width(left) - lipgloss.Width(position)
 	if gap < 1 {

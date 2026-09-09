@@ -7,6 +7,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 
+	"github.com/haasted/sonos-sandbox/internal/ui/flashsweep"
 	"github.com/haasted/sonos-sandbox/internal/ui/theme"
 )
 
@@ -104,4 +105,19 @@ func blend(from, to color.Color, amount float64) color.Color {
 	}
 	return lipgloss.Color(fmt.Sprintf("#%02X%02X%02X",
 		mix(fr, tr), mix(fg, tg), mix(fb, tb)))
+}
+
+// streamLabelStyle is the resting look of the "live"/"radio"/"stream" label:
+// the same dim tone the clock it replaces uses, so the row does not shift in
+// weight when playback changes kind.
+func streamLabelStyle() lipgloss.Style { return timeStyle }
+
+// streamLabelRamp is the glint that travels the label. It brightens from the
+// label's own resting tone toward the accent already used for volume and the
+// active tab, so the pulse reads as this app rather than as an alarm.
+func streamLabelRamp() flashsweep.Ramp {
+	return flashsweep.Ramp{
+		Base:  flashsweep.FromColor(theme.LightDark(lipgloss.Color("#4A4A4A"), lipgloss.Color("#9B9B9B"))),
+		Flash: flashsweep.FromColor(volumeAccent),
+	}
 }
