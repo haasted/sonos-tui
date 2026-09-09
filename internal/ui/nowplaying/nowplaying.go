@@ -272,7 +272,20 @@ func (m Model) needsScroll() bool {
 	return m.title.NeedsScroll() || m.artist.NeedsScroll() || m.album.NeedsScroll()
 }
 
-func (m Model) startCmds() tea.Cmd {
+// restart rolls every tick generation, then arms one fresh chain for whatever
+// the model now needs — playing, scrolling, fading, labelled.
+//
+// The two halves are one method deliberately. Arming without rolling first
+// leaves the previous chain valid, so both survive the generation guard and
+// both re-arm: the marquee then advances twice per interval, and once more for
+// every further arming. That was son-2bi, caused by the single case that armed
+// without rolling.
+func (m Model) restart() tea.Cmd {
+	*m.scrollGen = nextGeneration()
+	*m.posGen = nextGeneration()
+	*m.fadeGen = nextGeneration()
+	*m.labelGen = nextGeneration()
+
 	var cmds []tea.Cmd
 	if m.playing {
 		cmds = append(cmds, m.spinner.Tick, positionTick(*m.posGen))
@@ -293,26 +306,17 @@ func (m Model) startCmds() tea.Cmd {
 }
 
 func (m Model) Init() tea.Cmd {
-	m.restartTicks()
-	return m.startCmds()
-}
-
-func (m Model) restartTicks() {
-	*m.scrollGen = nextGeneration()
-	*m.posGen = nextGeneration()
-	*m.fadeGen = nextGeneration()
-	*m.labelGen = nextGeneration()
+	return m.restart()
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case TrackMsg:
 		m = m.applyTrack(msg.Track)
-		m.restartTicks()
-		return m, m.startCmds()
+		return m, m.restart()
 	case VolumeMsg:
 		m = m.applyVolume(msg)
-		return m, m.startCmds()
+		return m, m.restart()
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
