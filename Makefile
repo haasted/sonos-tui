@@ -29,6 +29,10 @@ run: ## Run the CLI
 run-capture: ## Capture speaker data while running
 	go run ./cmd/sonos -capture=./captured-data
 
+run-nocache: ## Delete speaker cache prior to starting
+	rm -f ~/Library/Caches/sonos-sandbox/speakers.json
+	go run ./cmd/sonos
+
 tidy: ## Tidy go.mod/go.sum
 	go mod tidy
 
