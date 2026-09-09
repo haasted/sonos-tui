@@ -234,3 +234,38 @@ only when the queue source changes while already subscribed.
 **Captured bodies are double-escaped**: `LastChange` once, the DIDL inside it
 again. Two unescape passes to read one by eye; `parseDIDLTrack` already handles
 this.
+
+## The queue belongs to the speaker, not to what is playing
+
+Verified 2026-09-09 by browsing `Q:0` on a speaker playing DR P6.
+
+A speaker's queue survives being interrupted. Starting a radio station does not
+clear it, empty it, or hide it — `Browse` on `Q:0` returned twenty tracks that
+had been queued before the station started, while the station played on.
+
+That makes the queue a property of the *speaker*, not a description of what is
+currently coming out of it. `AVTransportURI` says what the source is; `Q:0` says
+what is queued, and the two are unrelated while a station is playing.
+
+**Two counts that only sometimes agree.** AVTransport reports `NumberOfTracks`
+and `CurrentTrack` for the *current source*. `Browse` reports what the queue
+holds. Observed simultaneously on one speaker:
+
+```
+source          x-sonosapi-hls:...     (DR P6)
+NumberOfTracks  1                      the stream is one "track"
+CurrentTrack    1
+Q:0 items       20                     a queue from before the station started
+```
+
+They agree only when `AVTransportURI` is `x-rincon-queue:` — i.e. when the queue
+*is* the source. Treating a mismatch as an error is wrong: for radio it is the
+normal state.
+
+**Queue item URIs name the music service, not the queue.** Every item came back
+as `x-sonos-http:song%3a<id>.mp4?sid=204&flags=8232&sn=2` — the same scheme an
+individually played track uses. `sid` identifies the service (204 here, against
+290 for the DR radio stream), so items from different services in one queue can
+be told apart. `flags` varies between items in the same queue, and what it means
+is not established.
+
