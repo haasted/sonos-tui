@@ -169,3 +169,33 @@ func keyCode(key string) rune {
 		return rune(key[0])
 	}
 }
+
+// Case: a single press, which must move the volume by exactly one. Nothing
+// asserted the magnitude before — every other test here references the
+// constants symbolically, so they would pass at any step size.
+func TestSpeaker_SinglePressMovesTheVolumeByOne(t *testing.T) {
+	if got := press(newTestSpeaker(), "up").pendingVolume; got != 1 {
+		t.Fatalf("one up press queued %+d, want +1", got)
+	}
+	if got := press(newTestSpeaker(), "down").pendingVolume; got != -1 {
+		t.Fatalf("one down press queued %+d, want -1", got)
+	}
+}
+
+// Case: both keys held. Up is capped and down is not, so the step size decides
+// whether they travel comparably: at a step of 2 a held down key moved -16 per
+// window against a capped +6, which is the asymmetry that prompted this change.
+func TestSpeaker_HeldKeysTravelSymmetrically(t *testing.T) {
+	up, down := newTestSpeaker(), newTestSpeaker()
+	for range 8 {
+		up = press(up, "up")
+		down = press(down, "down")
+	}
+
+	if up.pendingVolume != volumeUpMaxStep {
+		t.Fatalf("held up queued %+d, want the cap of %+d", up.pendingVolume, volumeUpMaxStep)
+	}
+	if gap := -down.pendingVolume - up.pendingVolume; gap > 2 {
+		t.Fatalf("held down ran away from up: %+d against %+d", down.pendingVolume, up.pendingVolume)
+	}
+}

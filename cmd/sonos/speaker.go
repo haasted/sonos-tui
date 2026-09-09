@@ -15,10 +15,14 @@ import (
 var _ tea.Model = &speakerModel{}
 
 const (
-	volumeDebounce  = 150 * time.Millisecond // how long one volume window stays open before committing
-	volumeStepUp    = 2                      // volume added per up press
-	volumeStepDown  = -2                     // volume removed per down press, negative by design
-	volumeUpMaxStep = 6                      // upper bound on how much volume can be increased in a time window
+	volumeDebounce = 150 * time.Millisecond // how long one volume window stays open before committing
+	volumeStepUp   = 1                      // volume added per up press
+	volumeStepDown = -1                     // volume removed per down press, negative by design
+
+	// volumeUpMaxStep bounds the TOTAL a window may raise the volume, not the
+	// number of presses, so it caps the rate a held key ramps at rather than
+	// how finely a tap moves. Down is deliberately uncapped: it is the escape.
+	volumeUpMaxStep = 6
 )
 
 var volumeGenerations atomic.Int64 // globally unique window ids, so one speaker's tick cannot fire another's
