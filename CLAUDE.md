@@ -28,6 +28,8 @@ Variable comments must be placed after the variable declaration with //. If the 
 
 ## Git
 
+Do not commit until explicity instructed to do so.
+
 Attempt to bundle related changes into the same commit. It is acceptable to create multiple commits in order to maintain this order. Keep commit messages brief. They MUST NOT excced 2 lines.
 
 ## Build & Test

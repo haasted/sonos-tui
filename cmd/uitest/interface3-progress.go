@@ -168,9 +168,8 @@ func (m progressContent) View() tea.View {
 	position := formatPosition(m.track.elapsed, m.track.duration)
 
 	gap := titleRowWidth - lipgloss.Width(left) - lipgloss.Width(position)
-	if gap < 1 {
-		gap = 1
-	}
+	gap = max(1, gap)
+
 	titleLine := left + strings.Repeat(" ", gap) + position
 
 	indent := strings.Repeat(" ", lipgloss.Width(spinnerGlyph)+1)
