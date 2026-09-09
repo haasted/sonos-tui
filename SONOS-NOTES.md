@@ -200,3 +200,36 @@ sequential because they arrive 82–167ms apart while each `loadRoom` takes
 until that deadline, so `discoveryDoneMsg` fires ~4.5s after everything is
 already on screen. ADR-0001 flags this same point as a "related, smaller
 optimization".
+
+## Radio: two schemes, and the station name lives in the URI metadata
+
+Verified 2026-09-09 against a 31-event capture (`cmd/sonos -capture`).
+
+`AVTransportURI` identifies what kind of thing is loaded, and there is more
+than one radio scheme:
+
+| Scheme | Example | What it is |
+|---|---|---|
+| `x-sonosapi-hls:` | DR P1, DR P6 | Broadcast radio |
+| `x-sonosapi-radio:` | "Akylas" | Algorithmic station |
+| `x-rincon-queue:` | `RINCON_...#0` | The speaker's own queue |
+| `x-sonos-http:`, `x-sonosprog-http:` | | Individual tracks |
+
+The station name is `dc:title` inside `AVTransportURIMetaData` (and inside
+`CurrentTrackMetaData`). No special parsing is needed — it is an ordinary DIDL
+`<item>`.
+
+**`r:streamContent` is not the live track.** One event in 31 had a non-empty
+value and it was `ZPSTR_CONNECTING`, a status sentinel. Both captured stations
+left it empty throughout, along with `dc:creator` and `upnp:album`: broadcast
+radio frequently carries **no per-track metadata at all**, just the station
+name and `CurrentTrackDuration` of `0:00:00`.
+
+**The queue has no name.** `x-rincon-queue:` carries no `dc:title`. The
+playlist a queue was populated *from* lives in `EnqueuedTransportURIMetaData`,
+which is **not** among the 25 fields of the SUBSCRIBE snapshot — it appears
+only when the queue source changes while already subscribed.
+
+**Captured bodies are double-escaped**: `LastChange` once, the DIDL inside it
+again. Two unescape passes to read one by eye; `parseDIDLTrack` already handles
+this.
