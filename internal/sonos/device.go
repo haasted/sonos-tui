@@ -36,6 +36,9 @@ type DeviceState struct {
 	// Source is what is loaded on the speaker — a queue, a station, a line-in.
 	// Distinct from Current, which is whatever is coming out of it right now.
 	Source SourceInfo
+
+	Track  int // 1-based position in the queue, as the speaker counts it
+	Tracks int // how many the speaker says the queue holds
 }
 
 // Live reports playback with no meaningful duration: a broadcast, or a station
@@ -121,6 +124,8 @@ func (d *Device) HandleAVTransportEvent(body []byte) error {
 		d.state.Source = parsed.Source
 	}
 	d.state.Current = parsed.Current
+	d.state.Track = parsed.Track
+	d.state.Tracks = parsed.NumberOfTracks
 	d.state.RelTime = relTime
 	snapshot := d.state
 	d.mu.Unlock()
@@ -245,6 +250,13 @@ func (d *Device) RefreshVolume() error {
 	d.state.Muted = muted
 	d.mu.Unlock()
 	return nil
+}
+
+// Queue reads the speaker's playback queue. Deliberately not stored on
+// DeviceState: nothing renders it yet, and a queue that went stale in state
+// would be worse than one fetched when asked for.
+func (d *Device) Queue() ([]QueueItem, error) {
+	return d.client.GetQueue()
 }
 
 func (d *Device) RefreshAll() error {

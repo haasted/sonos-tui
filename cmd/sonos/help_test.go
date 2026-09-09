@@ -63,6 +63,7 @@ var helpAliases = map[string]string{
 // not listed here has to appear in the popup.
 var helpOmissions = map[string]string{
 	"ctrl+c": "documented as q, the more discoverable alias for the same thing",
+	"Q":      "debug only — dumps the queue to the log until a queue view exists",
 }
 
 // boundKeys reads every key literal the app switches on, from all three layers
