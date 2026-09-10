@@ -2,13 +2,11 @@
 
 This file provides instructions and context for AI coding agents working on this project.
 
-## Task Tracking
+## Communication
 
-No dedicated issue tracker is configured for this project. Use TodoWrite for session-scoped task tracking as needed.
+Adhere to the ASD-STE100 standard for our communication, as well as for writing tasks, comments and git commits. Spelling can be a mix og American and British english. ADRs are exempt from this requirement.
 
-## Git
-
-Do not run git commits, pushes, or remote sync unless explicitly asked. At handoff, report changed files, validation performed, and suggested next commands; wait for approval before committing or pushing.
+If anything in a task or my instructions is ambigious or under-specifed, ask for clarifications.
 
 ## Architecture
 
@@ -18,9 +16,11 @@ If my instructions are vague, ambiguous or are over-looking something, feel free
 
 ## Go style
 
+When structuring a package, prefer to place constant, variable and type declarations at the top. Functions and member functions should come after that.
+
 When creating a test, prefer keeping the test functions at the top of the file and the helper functions below.
 
-If you cannot keep the comments brief and succint, refrain from commenting the code. A comment MUST NOT exceed 2 lines.
+If you cannot keep the comments brief and succint, refrain from commenting the code. A comment MUST NOT exceed 3 lines. If absolutely necessary, go beyond the ASD-STE100 standard.
 
 Comment functions for their purpose, structs for the conceptual meaning, variables for the state they hold and test functions for what case they exercise.
 
@@ -30,7 +30,9 @@ Variable comments must be placed after the variable declaration with //. If the 
 
 Do not commit until explicity instructed to do so.
 
-Attempt to bundle related changes into the same commit. It is acceptable to create multiple commits in order to maintain this order. Keep commit messages brief. They MUST NOT excced 2 lines.
+Attempt to bundle related changes into the same commit. It is acceptable to create multiple commits in order to maintain this order. Keep commit messages brief. They MUST NOT excced 5 lines.
+
+At handoff, report changed files, validation performed, and suggested next commands or beads task.
 
 ## Build & Test
 

@@ -18,6 +18,22 @@ type helpKey struct {
 	what string
 }
 
+const (
+	helpKeyColumn = 10 // width of the key column, so descriptions line up
+	helpColumnGap = 4
+)
+
+var (
+	helpSectionStyle = lipgloss.NewStyle().Bold(true).
+				Foreground(theme.LightDark(lipgloss.Color("#B45309"), lipgloss.Color("#FBBF24")))
+
+	helpKeyStyle = lipgloss.NewStyle().
+			Foreground(theme.LightDark(lipgloss.Color("#1F2937"), lipgloss.Color("#E5E7EB")))
+
+	helpWhatStyle = lipgloss.NewStyle().
+			Foreground(theme.LightDark(lipgloss.Color("#4A4A4A"), lipgloss.Color("#9B9B9B")))
+)
+
 // helpSections groups the bindings the way a reader looks for them, rather
 // than by which type happens to own them. Two columns so the whole table fits
 // a short terminal: a help popup that clips is worse than useless, and the App
@@ -45,7 +61,6 @@ var helpSections = [2][]struct {
 			{"0", "last room"},
 		}},
 		{"App", []helpKey{
-			{"?", "this help"},
 			{"esc", "close"},
 			{"q", "quit"},
 		}},
@@ -90,19 +105,3 @@ func padRight(s string, width int) string {
 	}
 	return s + " "
 }
-
-const (
-	helpKeyColumn = 10 // width of the key column, so descriptions line up
-	helpColumnGap = 4
-)
-
-var (
-	helpSectionStyle = lipgloss.NewStyle().Bold(true).
-				Foreground(theme.LightDark(lipgloss.Color("#B45309"), lipgloss.Color("#FBBF24")))
-
-	helpKeyStyle = lipgloss.NewStyle().
-			Foreground(theme.LightDark(lipgloss.Color("#1F2937"), lipgloss.Color("#E5E7EB")))
-
-	helpWhatStyle = lipgloss.NewStyle().
-			Foreground(theme.LightDark(lipgloss.Color("#4A4A4A"), lipgloss.Color("#9B9B9B")))
-)

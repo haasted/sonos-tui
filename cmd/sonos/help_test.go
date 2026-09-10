@@ -1,13 +1,14 @@
 package main
 
 import (
-	"charm.land/lipgloss/v2"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"strconv"
 	"strings"
 	"testing"
+
+	"charm.land/lipgloss/v2"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -64,6 +65,7 @@ var helpAliases = map[string]string{
 var helpOmissions = map[string]string{
 	"ctrl+c": "documented as q, the more discoverable alias for the same thing",
 	"Q":      "debug only — dumps the queue to the log until a queue view exists",
+	"?":      "Not showing the button that opened the list of keyboard shortcuts",
 }
 
 // boundKeys reads every key literal the app switches on, from all three layers
