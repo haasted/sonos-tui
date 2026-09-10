@@ -34,7 +34,7 @@ func (m modalDemo) View() tea.View {
 	}
 
 	lines := []string{
-		demoTitleStyle.Render("Modal prototype (son-911)"),
+		demoTitleStyle.Render("Modal prototype"),
 		"",
 		fmt.Sprintf("terminal      %d×%d", m.terminal[0], m.terminal[1]),
 		fmt.Sprintf("modal         %d×%d", m.box[0], m.box[1]),

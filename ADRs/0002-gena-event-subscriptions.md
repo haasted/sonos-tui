@@ -91,7 +91,7 @@ Two decisions were revised against what this ADR originally sketched, both for s
 - **Event delivery is a non-blocking send, not a blocking one.** `HandleEvent` runs on the listener's own request goroutine; a consumer that has stopped receiving (the UI shutting down) would wedge that goroutine and in turn stall `Shutdown`. State is applied before the send, so a dropped event costs a redraw, not correctness.
 - **The bridge to Bubbletea is a `tea.Cmd` that waits on the channel, not a goroutine calling `program.Send`.** Equivalent in effect, but it avoids handing a `*tea.Program` to code that constructs the model, which is awkward given the program needs the model to exist first.
 
-## Amendment: RenderingControl picked up (son-6f7)
+## Amendment: RenderingControl picked up
 
 The deferred `RenderingControl` scope above has been implemented. Two
 expectations recorded here proved right, one proved wrong.
@@ -142,12 +142,12 @@ with neither.
 
 `internal/sonos` gains real new complexity: an inbound HTTP surface, background goroutines (per-subscription renewal, the shared listener), and shutdown/cleanup concerns that don't exist anywhere else in the codebase yet. `Device`'s public API grows (an events channel alongside `State()`/`Refresh()`/`Play()`/`Pause()`), but nothing existing has to change — polling via `Refresh()` keeps working exactly as today for callers that don't care about live updates. `RenderingControl` eventing, once wanted, is expected to be a small addition on top of this same machinery.
 
-## Amendment: `cmd/listening` retired (son-cg8)
+## Amendment: `cmd/listening` retired
 
 This ADR built GENA eventing inside `cmd/listening` and describes it above as
 the verification harness. It was exactly that, and it is now gone.
 
-son-0rd moved the mechanics into `internal/sonos`, after which `cmd/listening`
+The mechanics later moved into `internal/sonos`, after which `cmd/listening`
 was a second implementation of subscription handling that nothing exercised.
 Every capability that justified it had moved to `cmd/sonos` — playback controls,
 live events, the speaker cache, and finally raw NOTIFY capture, which was the

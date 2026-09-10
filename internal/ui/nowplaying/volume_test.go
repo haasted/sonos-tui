@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-// Case: a mute after a stretch of playback. Regression for son-2wj, where a
-// full TrackMsg carried a stale RelTime and rewound the clock.
+// Case: a mute after a stretch of playback, which used to rewind the clock —
+// a full TrackMsg carried a stale RelTime along with the volume.
 func TestVolumeMsgLeavesTheClockAlone(t *testing.T) {
 	m := playingModel(90 * time.Second)
 	before := m.elapsed().Round(time.Second)

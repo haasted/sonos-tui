@@ -30,7 +30,7 @@ func newSimpleTabsModel(tabs panes.Tabs) simpleTabsModel {
 	return simpleTabsModel{tabs: tabs}
 }
 
-// withModal enables the son-911 overlay prototype, opened with "?". Opt-in so
+// withModal enables the overlay prototype, opened with "?". Opt-in so
 // the four other layouts sharing this shell are unaffected.
 func (m simpleTabsModel) withModal() simpleTabsModel {
 	m.hasModal = true
@@ -132,7 +132,7 @@ func runSimpleTabs(tabs panes.Tabs) {
 	runShell(newSimpleTabsModel(tabs))
 }
 
-// runSimpleTabsWithModal is runSimpleTabs with the son-911 overlay enabled.
+// runSimpleTabsWithModal is runSimpleTabs with the overlay prototype enabled.
 func runSimpleTabsWithModal(tabs panes.Tabs) {
 	runShell(newSimpleTabsModel(tabs).withModal())
 }

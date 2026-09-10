@@ -12,7 +12,7 @@ import (
 
 // Case: every state the player passes through on the way up. The inline frame
 // must be the same height in all of them — a frame that grows scrolls the
-// terminal, and that scroll is what son-5eb was.
+// terminal, and that scroll is unrecoverable.
 func TestView_HeightIsConstantAcrossStates(t *testing.T) {
 	for name, view := range playerStates(t) {
 		if got := lipgloss.Height(view); got != playerHeightRows {

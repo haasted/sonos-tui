@@ -16,7 +16,7 @@ const defaultCaptureDir = "captured-data"
 
 // captureDir is where raw NOTIFY bodies are written, empty when not
 // capturing. Accepts both "-capture" and "-capture=<dir>": a deliberate
-// capture session (son-9oq) wants its own directory, while the bare form
+// capture session wants its own directory, while the bare form
 // keeps the default the retired cmd/listening used.
 type captureDir string
 

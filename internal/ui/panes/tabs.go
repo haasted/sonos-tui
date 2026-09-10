@@ -229,7 +229,7 @@ func (t Tabs) RemoveTabAt(index int) Tabs {
 func (t Tabs) Init() tea.Cmd {
 	// Schedules against the generation NewTabs already assigned. A Tabs built
 	// as a literal has generation 0 and schedules with 0, which Update still
-	// accepts — degraded to the son-5cl cross-talk risk, but not silent.
+	// accepts — degraded to a cross-talk risk between Tabs, but not silent.
 	cmds := []tea.Cmd{scheduleDividerSweep(t.dividerGen)}
 	if len(t.Items) > 0 {
 		cmds = append(cmds, t.Items[t.Active].Content.Init())

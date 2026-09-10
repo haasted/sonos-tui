@@ -278,8 +278,7 @@ func (m Model) needsScroll() bool {
 // The two halves are one method deliberately. Arming without rolling first
 // leaves the previous chain valid, so both survive the generation guard and
 // both re-arm: the marquee then advances twice per interval, and once more for
-// every further arming. That was son-2bi, caused by the single case that armed
-// without rolling.
+// every further arming. That happened: one case armed without rolling first.
 func (m Model) restart() tea.Cmd {
 	*m.scrollGen = nextGeneration()
 	*m.posGen = nextGeneration()

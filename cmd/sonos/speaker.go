@@ -191,7 +191,7 @@ func (m speakerModel) to(msg tea.Msg) tea.Msg {
 
 // failed reports a command failure as an app-wide notice. Deliberately NOT
 // addressed to this speaker's tab: the user may be looking at another room,
-// and a failure they never see is the problem son-0n7 exists to fix.
+// and a failure they never see is the whole problem notices exist to fix.
 func (m speakerModel) failed(err error) tea.Msg {
 	return panes.NoticeMsg{
 		Level: panes.NoticeError,

@@ -60,7 +60,7 @@ which would need a second account on the same service:
 Nothing maps across *services* either way.
 
 This matters for anything that remembers tracks across sessions — playlists,
-"add this later", play history (see ADR-0003 and `son-3af`). A durable scheme
+"add this later", play history (see ADR-0003). A durable scheme
 needs both: the URI as a fast path for when service and account happen to
 match, and `(title, creator, album)` text for everything else. Text matching
 is fuzzy and imperfect, but it's the only service-independent handle Sonos
@@ -87,7 +87,7 @@ Unlike tracks, container objects *do* carry real DIDL `<item id>`s:
 
 The `000c0000` / `00060000` prefix is a Sonos-internal object-class namespace.
 
-**Relevant to `son-a30`** (the UPnP 701 "transition not available" bug on
+**Relevant to the UPnP 701 "transition not available" bug on
 previous-track): `AVTransportURI` is the diagnostic that issue calls decisive.
 `x-rincon-queue:` is a real queue where "previous" works; `x-sonosapi-radio:`
 is a forward-only station where it cannot. The field already arrives in every
@@ -119,7 +119,7 @@ again unprompted moments later. Three reasons that redundancy hasn't been
 removed:
 
 1. **AVTransport only.** Volume and mute belong to `RenderingControl`, a
-   separate service this program doesn't subscribe to yet (`son-yop`).
+   separate service this program doesn't subscribe to yet.
 2. **`RelativeTimePosition` is absent** from all 25 — playback position is
    never evented. `Device.HandleEvent` already compensates by calling
    `GetPositionInfo` whenever an event omits it, which is always.

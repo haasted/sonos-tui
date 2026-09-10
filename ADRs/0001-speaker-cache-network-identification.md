@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — implemented in `internal/sonos/cache.go` and wired into `cmd/sonos` (son-jgt).
+Accepted — implemented in `internal/sonos/cache.go` and wired into `cmd/sonos`.
 
 ## Context
 
@@ -69,9 +69,9 @@ flowchart TD
 
 The subnet mismatch and verification-failure paths both fall through to the same full `Discover` — the cache is never a hard dependency, only ever a shortcut around it.
 
-### Resolved during implementation (son-jgt)
+### Resolved during implementation
 
-**The rendering strategy was reversed.** This ADR, and son-jgt as filed, both
+**The rendering strategy was reversed.** This ADR, and the task as filed, both
 specified the conservative order: verify, *then* render. That was reconsidered
 against the goal of being ready as fast as possible, and the optimistic order
 was chosen instead — read the cache, render every speaker immediately,
@@ -121,12 +121,12 @@ single write at a single moment. Bubble Tea handles `q` and Ctrl+C gracefully,
 so only hard kills are affected.
 
 **Timeouts are hand-rolled, not context-threaded.** Verification uses its own
-short-timeout `http.Client` rather than waiting on son-5hy, which threads
+short-timeout `http.Client` rather than waiting on the work that threads
 `context.Context` through the whole SOAP client. That refactor should not block
 this feature, and the two calls here are the only ones needing a bound.
 
 **Storage is JSON**, deliberately, not SQLite — see ADR-0003, which decided the
-broader storage question separately. son-a3n tracks migrating this cache onto
+broader storage question separately. Migrating this cache onto
 that store once it exists.
 
 **The subnet fingerprint costs ~24µs**, measured. `GetLocalIP` was refactored to

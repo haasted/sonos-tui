@@ -13,8 +13,8 @@ import (
 )
 
 // Case: every key the app actually handles, which must be documented. The help
-// table is hand-written (son-506 decided against refactoring three layers onto
-// declarative bindings), so this reads the bindings out of the source instead —
+// table is hand-written rather than generated from declarative bindings, so
+// this reads the bindings out of the source instead —
 // adding one without documenting it fails here rather than silently rotting.
 func TestHelp_DocumentsEveryKeyTheAppHandles(t *testing.T) {
 	text := helpContent{}.View().Content
@@ -160,7 +160,7 @@ func TestHelp_QuestionMarkOpensAndCloses(t *testing.T) {
 
 // Case: keys pressed while help is open, which must not reach the player or
 // the tabs. Without this the arrow keys keep changing volume behind it, unseen
-// — the acceptance criterion son-quf could not test with no consumer.
+// — which the modal component itself could not test, having no consumer.
 func TestHelp_OwnsTheKeyboardWhileOpen(t *testing.T) {
 	m := sizedModel(t)
 	active := m.tabs.Active

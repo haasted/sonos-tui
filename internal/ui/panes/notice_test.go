@@ -78,7 +78,7 @@ func TestNotice_SuppressesTheDividerSweep(t *testing.T) {
 }
 
 // Case: a tick from a notice that has already been replaced, which must not
-// keep its successor alive — the son-5cl generation lesson.
+// keep its successor alive, which is what generations are for.
 func TestNotice_StaleTickIsIgnored(t *testing.T) {
 	tabs := noticeTabs()
 

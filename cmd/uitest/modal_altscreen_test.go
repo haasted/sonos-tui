@@ -128,7 +128,7 @@ func TestModal_HoverIsSmallerThanFullScreen(t *testing.T) {
 }
 
 // Case: hover mode, which sits over the app's own frame without claiming the
-// alt screen — and grows that frame, which is what son-5eb bites on.
+// alt screen — and grows that frame, which is what makes the terminal scroll.
 func TestModal_HoverKeepsTheAppVisibleAndGrowsTheFrame(t *testing.T) {
 	m := sizedShell(t)
 	inlineRows := lipgloss.Height(m.View().Content)
@@ -145,7 +145,7 @@ func TestModal_HoverKeepsTheAppVisibleAndGrowsTheFrame(t *testing.T) {
 		t.Fatalf("the app must still be visible around a hovering modal:\n%s", view.Content)
 	}
 	if lipgloss.Height(view.Content) <= inlineRows {
-		t.Fatal("test is not exercising frame growth, so it proves nothing about son-5eb")
+		t.Fatal("test is not exercising frame growth, so it proves nothing about scrolling")
 	}
 }
 

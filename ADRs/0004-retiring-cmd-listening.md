@@ -13,27 +13,25 @@ was the right shape for developing the feature — a place to watch real speaker
 without a UI in the way.
 
 The mechanics then had to move somewhere reusable, because `cmd/sonos` needed
-them too. son-0rd extracted them into `internal/sonos` as `EventManager`,
-`eventListener` and `Device.Handle*Event`, and deferred this ADR.
+them too. They were extracted into `internal/sonos` as `EventManager`,
+`eventListener` and `Device.Handle*Event`, with this ADR deferred until now.
 
 That extraction left `cmd/listening` as a **second implementation of the same
 thing**: it still carries its own `subscribe`, `renew`, `unsubscribe`,
 `handleNotify` and `http.Server`, and reaches into `internal/sonos` only for
 `Speaker`, `Discover` and `ParseAVTransportEvent`. Two copies of subscription
-handling, one of them exercised daily and one of them not.
+handling, one of them exercised on every run and one of them not at all.
 
 Meanwhile every capability that made it worth keeping moved into `cmd/sonos`:
 
-| Capability | Now in `cmd/sonos` via |
-|---|---|
-| Playback controls | son-uu4 / son-12v |
-| Live GENA events | son-0rd |
-| Speaker cache | son-jgt |
-| Raw NOTIFY capture | son-jjj |
+- Playback controls
+- Live GENA events
+- The speaker cache
+- Raw NOTIFY capture
 
 The last of those mattered most: `-capture` was the final thing `cmd/listening`
-could do that `cmd/sonos` could not, so until son-jjj landed, deleting it would
-have been a capability loss.
+could do that `cmd/sonos` could not, so until capture landed there, deleting it
+would have been a capability loss.
 
 ## Decision
 
@@ -50,12 +48,12 @@ distinguishing feature is that it does less. `cmd/uitest` earns its place by
 doing something `cmd/sonos` deliberately cannot — iterate on look and feel with
 disposable code. `cmd/listening` would earn its place only by being smaller.
 
-**The refactor-then-delete step is skipped.** son-cg8 originally specified
+**The refactor-then-delete step is skipped.** The plan originally specified
 refactoring `cmd/listening` onto `EventManager` first, as a behaviour-preserving
-check that son-0rd's extraction had not regressed anything, and only then
+check that the extraction had not regressed anything, and only then
 deleting it. That check has since been overtaken: `cmd/sonos` exercises
 `EventManager` against five real speakers with two subscriptions each, and the
-son-jjj capture corpus is direct evidence of NOTIFYs being routed and parsed
+capture corpus is direct evidence of NOTIFYs being routed and parsed
 correctly. Refactoring a command in order to delete it would produce work with
 no artifact and weaker evidence than already exists.
 
@@ -102,7 +100,7 @@ Three properties of that surface are deliberate:
 
 `cmd/listening` and its `main.go`, `cache.go`, `cache_test.go` and `prompt.go`
 are gone. Its JSON speaker cache was reimplemented properly in `internal/sonos`
-by son-jgt, and its capture ability by son-jjj; nothing else in it was unique.
+and its capture ability in `cmd/sonos`; nothing else in it was unique.
 
 ADR-0002's "`cmd/listening` — the verification harness" section is amended
 rather than rewritten. It records accurately what was decided at the time, and

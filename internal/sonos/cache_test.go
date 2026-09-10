@@ -86,7 +86,7 @@ func useTempCacheDir(t *testing.T) string {
 
 // Case: a cache written by a different layout version. The guard exists so a
 // format change is survivable, and this is the only thing that exercises it —
-// ported from cmd/listening before that command was deleted (son-cg8).
+// ported from cmd/listening before that command was deleted.
 func TestLoadCacheRejectsAnotherVersion(t *testing.T) {
 	useTempCacheDir(t)
 	require.NoError(t, sonos.SaveCache([]sonos.Speaker{

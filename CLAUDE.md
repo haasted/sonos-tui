@@ -36,7 +36,7 @@ Attempt to bundle related changes into the same commit. It is acceptable to crea
 
 Prefer Makefile targets over raw command-line invocations for building and testing (e.g. `make test` over `go test ./...`). Only fall back to the command line when no target covers what's needed.
 
-Current targets: `build`, `vet`, `test`, `test-verbose`, `test-race`, `test-live`, `run`, `tidy`, `adr-html` — see `Makefile`.
+Current targets: `build`, `fmt`, `vet`, `test`, `test-verbose`, `test-race`, `test-live`, `run`, `run-capture`, `run-nocache`, `tidy`, `adr-html`, `help` — see `Makefile`.
 
 `adr-html` renders each `ADRs/*.md` to a full standalone HTML page (`ADRs/html/<adr-basename>/index.html`) with diagrams rendered as linked SVGs (via `mmdc` + `npx marked`, not inlined, no Docker, no publishing).
 
@@ -50,6 +50,8 @@ Always ask me if there's any ambiguity to the instructions or tasks I've given. 
 ## Beads Issue Tracker
 
 This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
+
+bd is initialized in stealth mode, so is local to this repo and is not available to anyone else. Do not reference beads tasks in ADRs, comments or commit messages.
 
 ### Quick Reference
 
