@@ -154,11 +154,13 @@ speaker proves an entry is still good.
 | `Tab` | `ui/panes/tabs.go` | One entry: title, content model, playing flag |
 | `Modal` | `ui/panes/modal.go` | An overlay, hovering or full-screen |
 | `NoticeMsg` / `notice` | `ui/panes/notice.go` | A transient message set into the divider rule |
+| `NoticeEntrance` | `ui/panes/notice.go` | Whether a notice opens out of the rule, and in which style |
 | `Model` | `ui/nowplaying/nowplaying.go` | The now-playing widget |
 | `Track` | `ui/nowplaying/nowplaying.go` | What the widget renders — *not* a domain type |
 | `TrackMsg` / `VolumeMsg` | `ui/nowplaying/nowplaying.go` | Updates to the widget |
 | `Line` | `ui/marquee/marquee.go` | Text plus a window, scrolled by advancing an offset |
 | `Ramp` | `ui/flashsweep/flashsweep.go` | The base and flash colours a glint travels between |
+| `Reveal` / `RevealStyle` | `ui/flashsweep/reveal.go` | A centre-out text entrance, and which of four looks it wears |
 
 **`nowplaying.Track` is a projection, not a domain object.** It looks like
 `TrackMetadata` and is not: it holds a `StreamLabel`, a `Volume` and durations

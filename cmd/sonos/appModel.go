@@ -37,6 +37,10 @@ type appModel struct {
 	quitting      bool
 	help          panes.Modal
 
+	// hintDone records that the help hint has had its moment — shown, or
+	// retired by a keypress or by a real notice claiming the rule first.
+	hintDone bool
+
 	// frameRows is the tallest the inline frame has ever needed to be. It
 	// only ever grows: see growFrame.
 	frameRows int
@@ -107,7 +111,7 @@ func (m appModel) hasSpeaker(ip string) bool {
 // Init starts the tabs and, when seeded from the cache, verifies every cached
 // speaker concurrently behind the already-rendered tabs.
 func (m appModel) Init() tea.Cmd {
-	cmds := []tea.Cmd{m.tabs.Init()}
+	cmds := []tea.Cmd{m.tabs.Init(), hintTimer()}
 	for i, speaker := range m.cached {
 		device, ok := m.deviceFor(speaker.IP)
 		if !ok {
@@ -202,6 +206,8 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.tabs.Width = msg.Width
 		m.help = m.help.SetSize(msg.Width, msg.Height)
 	case tea.KeyMsg:
+		m.hintDone = true // the user has found the keyboard; nothing left to hint
+
 		// An open modal owns the keyboard: without this the arrow keys would
 		// still be changing volume behind it, unseen.
 		if m.help.IsOpen() {
@@ -258,6 +264,13 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case discoveryDoneMsg:
 		m.discoveryDone = true
 		return m, nil
+	case hintTickMsg:
+		return m.applyHintTick()
+	case panes.NoticeMsg:
+		// A degraded speaker surfaces in the same seconds the hint would, and a
+		// hint replacing it would bury the one message that mattered. Falls
+		// through to Tabs, which owns the rule.
+		m.hintDone = true
 	}
 
 	tabs, cmd := m.tabs.Update(msg)
@@ -294,8 +307,14 @@ func (m appModel) applyVerified(msg speakerVerifiedMsg) (tea.Model, tea.Cmd) {
 // notify raises an app-wide notice. panes.Tabs handles NoticeMsg itself, so
 // this only has to reach the fallthrough at the end of update.
 func notify(level panes.NoticeLevel, text string) tea.Cmd {
+	return notifyEntrance(level, text, panes.NoticeAppear)
+}
+
+// notifyEntrance is notify for a notice that has to be noticed rather than
+// merely shown — one the user did not ask for and is not expecting.
+func notifyEntrance(level panes.NoticeLevel, text string, entrance panes.NoticeEntrance) tea.Cmd {
 	return func() tea.Msg {
-		return panes.NoticeMsg{Level: level, Text: text}
+		return panes.NoticeMsg{Level: level, Text: text, Entrance: entrance}
 	}
 }
 

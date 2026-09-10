@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/haasted/sonos-sandbox/internal/ui/flashsweep"
 	"github.com/haasted/sonos-sandbox/internal/ui/theme"
 )
 
@@ -28,8 +29,37 @@ const (
 	noticeHold     = 4 * time.Second        // fully lit before it starts to go
 	noticeFade     = 900 * time.Millisecond // eased fade back to the plain rule
 	noticeInterval = 40 * time.Millisecond  // repaint rate while fading
-	noticeLead     = 4                      // rule drawn before the label starts
+	noticeFramed   = 16 * time.Millisecond  // repaint rate while a notice is opening or collapsing
+	noticeLead     = 4                      // shortest run of rule left either side of the label
+	noticeRule     = '─'                    // the glyph the divider is drawn from
 )
+
+// NoticeEntrance is how a notice arrives. The zero value, NoticeAppear, is no
+// animation at all — a warning should not perform, since the thing it warns
+// about is what deserves the attention.
+type NoticeEntrance int
+
+const (
+	NoticeAppear NoticeEntrance = iota
+	NoticeMirror
+	NoticePrism
+	NoticeBloom
+	NoticeSplit
+)
+
+// style maps an entrance onto the component that draws it.
+func (e NoticeEntrance) style() flashsweep.RevealStyle {
+	switch e {
+	case NoticePrism:
+		return flashsweep.RevealPrism
+	case NoticeBloom:
+		return flashsweep.RevealBloom
+	case NoticeSplit:
+		return flashsweep.RevealSplit
+	default:
+		return flashsweep.RevealMirror
+	}
+}
 
 // NoticeMsg shows a notice. Sending one replaces whatever is currently
 // showing: the newest problem is the one worth reading, and the log remains
@@ -37,6 +67,11 @@ const (
 type NoticeMsg struct {
 	Level NoticeLevel
 	Text  string
+
+	// Entrance opens the notice out of the rule and collapses it back into the
+	// rule when it goes, rather than simply appearing and fading. Reserve it
+	// for a notice nobody asked for, which has to earn its glance.
+	Entrance NoticeEntrance
 }
 
 // noticeTickMsg is one frame of a notice's fade.
@@ -50,29 +85,44 @@ var noticeGenerations atomic.Int64
 // process, so a tick from a replaced notice cannot drive its successor.
 func nextNoticeGen() int { return int(noticeGenerations.Add(1)) }
 
-func noticeTick(gen int) tea.Cmd {
-	return tea.Tick(noticeInterval, func(time.Time) tea.Msg {
+func noticeTick(gen int, every time.Duration) tea.Cmd {
+	return tea.Tick(every, func(time.Time) tea.Msg {
 		return noticeTickMsg{gen: gen}
 	})
 }
 
-// notice is the message currently set into the divider rule, if any.
-type notice struct {
-	text    string
-	level   NoticeLevel
-	shownAt time.Time // zero when nothing is showing
+// interval is how often this notice needs repainting: an entrance moves per
+// frame, where a plain fade is only a colour easing over most of a second.
+func (n notice) interval() time.Duration {
+	if n.entrance == NoticeAppear {
+		return noticeInterval
+	}
+	return noticeFramed
 }
 
-// strength is 1 while held, eased to 0 across the fade, and 0 once done.
+// notice is the message currently set into the divider rule, if any.
+type notice struct {
+	text     string
+	level    NoticeLevel
+	entrance NoticeEntrance
+	shownAt  time.Time // zero when nothing is showing
+}
+
+// strength is 1 while opening and held, eased to 0 across the exit, and 0 once
+// done. An entrance shifts the whole schedule later rather than eating into
+// the hold: the text is only readable once it has finished opening.
 func (n notice) strength() float64 {
 	if n.shownAt.IsZero() {
 		return 0
 	}
 	since := time.Since(n.shownAt)
-	if since < noticeHold {
+
+	lit := n.openDuration() + noticeHold
+	if since < lit {
 		return 1
 	}
-	left := noticeHold + noticeFade - since
+
+	left := lit + noticeFade - since
 	if left <= 0 {
 		return 0
 	}
@@ -80,8 +130,43 @@ func (n notice) strength() float64 {
 	return t * t * (3 - 2*t) // smoothstep, matching the volume and mute fades
 }
 
-// render sets the notice into a plain rule of the given width, leaving the
+// label is the notice as it wants to be drawn, before any truncation.
+func (n notice) label() string {
+	return " " + noticeGlyph(n.level) + " " + n.text + " "
+}
+
+// openDuration is how long the entrance runs, and zero when there is none. It
+// is measured on the untruncated label: a narrow terminal only shortens what is
+// drawn, so the opening finishes early rather than being cut off.
+func (n notice) openDuration() time.Duration {
+	if n.entrance == NoticeAppear {
+		return 0
+	}
+	return n.reveal(1).Duration(n.label())
+}
+
+// reveal configures the component for this notice, with the divider's own rule
+// as the fill so the text parts the rule and the rule closes over it again.
+func (n notice) reveal(strength float64) flashsweep.Reveal {
+	return flashsweep.Reveal{
+		Style:     n.entrance.style(),
+		Fill:      noticeRule,
+		FillColor: flashsweep.FromColor(separatorColor),
+		Ramp: flashsweep.Ramp{
+			Base:  flashsweep.FromColor(blendToward(separatorColor, noticeColor(n.level), strength)),
+			Flash: flashsweep.FromColor(blendToward(separatorColor, noticeFlash, strength)),
+		},
+	}
+}
+
+// render centres the notice in a plain rule of the given width, leaving the
 // rule visible either side so the line still reads as a divider.
+//
+// Centred rather than set near the left edge, for two reasons. It gives the
+// line an axis of its own instead of a ragged start that lines up with nothing
+// above it, and an entrance opens from the middle of the text — so a centred
+// label opens from the middle of the divider, where a left-set one would
+// appear to burst from an arbitrary point a third of the way across.
 func (n notice) render(run string) string {
 	strength := n.strength()
 	if strength <= 0 {
@@ -91,10 +176,38 @@ func (n notice) render(run string) string {
 	width := lipgloss.Width(run)
 	label := truncate(" "+noticeGlyph(n.level)+" "+n.text+" ", width-noticeLead)
 
-	trailing := max(width-noticeLead-lipgloss.Width(label), 0)
-	return separatorStyle.Render(strings.Repeat("─", noticeLead)) +
-		noticeStyle(n.level, strength).Render(label) +
-		separatorStyle.Render(strings.Repeat("─", trailing))
+	// Centred where there is room, and otherwise pushed as far left as the
+	// minimum lead allows: a long notice keeps its text rather than losing
+	// characters to a margin it cannot afford.
+	lead := max((width-lipgloss.Width(label))/2, noticeLead)
+	trailing := max(width-lead-lipgloss.Width(label), 0)
+
+	return separatorStyle.Render(strings.Repeat(string(noticeRule), lead)) +
+		n.body(label, strength) +
+		separatorStyle.Render(strings.Repeat(string(noticeRule), trailing))
+}
+
+// body draws the label itself: plainly for a notice that just appears, and
+// otherwise mid-opening, held open, or mid-collapse.
+func (n notice) body(label string, strength float64) string {
+	if n.entrance == NoticeAppear {
+		return noticeStyle(n.level, strength).Render(label)
+	}
+
+	var (
+		r     = n.reveal(strength)
+		since = time.Since(n.shownAt)
+		open  = n.openDuration()
+	)
+
+	switch {
+	case since < open:
+		return r.Open(label, float32(since)/float32(open))
+	case since < open+noticeHold:
+		return r.Open(label, 1)
+	default:
+		return r.Close(label, float32(since-open-noticeHold)/float32(noticeFade))
+	}
 }
 
 // truncate clips to a display width, marking the cut with an ellipsis. It
@@ -140,6 +253,10 @@ func noticeStyle(level NoticeLevel, strength float64) lipgloss.Style {
 	return lipgloss.NewStyle().Bold(strength > 0.5).
 		Foreground(blendToward(separatorColor, noticeColor(level), strength))
 }
+
+// noticeFlash is the hot end of an entrance. It brightens on a dark ground and
+// deepens on a light one: flashing toward white on white erases the text.
+var noticeFlash = theme.LightDark(lipgloss.Color("#0F172A"), lipgloss.Color("#FFFFFF"))
 
 func noticeColor(level NoticeLevel) color.Color {
 	switch level {

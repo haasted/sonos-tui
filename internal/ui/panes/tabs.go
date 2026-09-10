@@ -241,9 +241,9 @@ func (t Tabs) Init() tea.Cmd {
 func (t Tabs) Update(msg tea.Msg) (Tabs, tea.Cmd) {
 	switch msg := msg.(type) {
 	case NoticeMsg:
-		t.notice = notice{text: msg.Text, level: msg.Level, shownAt: time.Now()}
+		t.notice = notice{text: msg.Text, level: msg.Level, entrance: msg.Entrance, shownAt: time.Now()}
 		t.noticeGen = nextNoticeGen()
-		return t, noticeTick(t.noticeGen)
+		return t, noticeTick(t.noticeGen, t.notice.interval())
 
 	case noticeTickMsg:
 		if msg.gen != t.noticeGen {
@@ -253,7 +253,7 @@ func (t Tabs) Update(msg tea.Msg) (Tabs, tea.Cmd) {
 			t.notice = notice{}
 			return t, nil
 		}
-		return t, noticeTick(msg.gen)
+		return t, noticeTick(msg.gen, t.notice.interval())
 
 	case dividerScheduleMsg:
 		if msg.gen != t.dividerGen {
