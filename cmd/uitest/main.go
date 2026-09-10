@@ -24,6 +24,7 @@ var layouts = map[string]layout{
 	"interface1":  layoutInterface1,
 	"interface2":  layoutInterface2,
 	"interface3":  layoutInterface3,
+	"reveal":      layoutNoticeReveal,
 }
 
 func main() {

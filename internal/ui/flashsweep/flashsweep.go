@@ -59,7 +59,11 @@ type Ramp struct {
 }
 
 func (r Ramp) at(burst float32) movy.Rgb {
-	return r.Base.Lerp(r.Flash, burst).ToRgb()
+	return r.blend(burst).ToRgb()
+}
+
+func (r Ramp) blend(burst float32) movy.V3 {
+	return r.Base.Lerp(r.Flash, burst)
 }
 
 func Glint(text string, progress float32, fg Ramp) string {
@@ -74,12 +78,9 @@ func Glint(text string, progress float32, fg Ramp) string {
 	var b strings.Builder
 	for i, ch := range runes {
 		d := float32(i) - lightPos
-		burst := glintWeight * float32(math.Exp(float64(-(d*d)/(2*glintSigma*glintSigma))))
-
-		c := fg.at(burst)
-		fmt.Fprintf(&b, "\x1b[38;2;%d;%d;%dm%c", c.R, c.G, c.B, ch)
+		writeCell(&b, fg.blend(glintWeight*gauss(d, glintSigma)), ch)
 	}
-	b.WriteString("\x1b[0m")
+	b.WriteString(reset)
 	return b.String()
 }
 
@@ -94,12 +95,62 @@ func Line(text string, lightPos float32, base, flash movy.V3) string {
 			continue
 		}
 
-		burst := float32(math.Exp(float64(-(d * d) / (2 * sigma * sigma))))
-		col := base.Scale(dimFloor).Lerp(base, reveal).Lerp(flash, burst*flashWeight)
-
-		rgb := col.ToRgb()
-		fmt.Fprintf(&b, "\x1b[38;2;%d;%d;%dm%c", rgb.R, rgb.G, rgb.B, ch)
+		col := base.Scale(dimFloor).Lerp(base, reveal).Lerp(flash, gauss(d, sigma)*flashWeight)
+		writeCell(&b, col, ch)
 	}
-	b.WriteString("\x1b[0m")
+	b.WriteString(reset)
 	return b.String()
+}
+
+// reset closes a run of per-cell colour. One trailing reset is enough: every
+// cell sets its own foreground, so none inherits the previous cell's.
+const reset = "\x1b[0m"
+
+// writeCell emits one rune in a truecolor foreground, the raw-ANSI approach
+// this package uses throughout — see the README for why not lipgloss.
+func writeCell(b *strings.Builder, c movy.V3, ch rune) {
+	rgb := c.ToRgb()
+	fmt.Fprintf(b, "\x1b[38;2;%d;%d;%dm%c", rgb.R, rgb.G, rgb.B, ch)
+}
+
+// gauss is the falloff every travelling light in this package uses: 1 at the
+// wavefront, decaying either side over sigma cells.
+func gauss(d, sigma float32) float32 {
+	return float32(math.Exp(float64(-(d * d) / (2 * sigma * sigma))))
+}
+
+func abs32(v float32) float32 { return float32(math.Abs(float64(v))) }
+
+func wrap01(v float32) float32 { return v - float32(math.Floor(float64(v))) }
+
+func round(v float32) int { return int(math.Round(float64(v))) }
+
+func easeOutCubic(t float32) float32 {
+	u := 1 - t
+	return 1 - u*u*u
+}
+
+// hsv converts a hue/saturation/value triple to linear colour, so a style can
+// travel the colour wheel without a hard-coded ramp per step.
+func hsv(h, s, v float32) movy.V3 {
+	i := math.Floor(float64(h * 6))
+	f := h*6 - float32(i)
+	p := v * (1 - s)
+	q := v * (1 - f*s)
+	t := v * (1 - (1-f)*s)
+
+	switch int(i) % 6 {
+	case 0:
+		return movy.V3{R: v, G: t, B: p}
+	case 1:
+		return movy.V3{R: q, G: v, B: p}
+	case 2:
+		return movy.V3{R: p, G: v, B: t}
+	case 3:
+		return movy.V3{R: p, G: q, B: v}
+	case 4:
+		return movy.V3{R: t, G: p, B: v}
+	default:
+		return movy.V3{R: v, G: p, B: q}
+	}
 }
