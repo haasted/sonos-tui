@@ -114,6 +114,28 @@ func (m Modal) allowance() (width, height int) {
 		min(clamp(m.height-modalMarginY, modalMinHeight, modalMaxHeight), m.height)
 }
 
+// ContentRows is the most rows of content the modal will show. Content that
+// scrolls needs this: the modal clips whatever goes past it, so a list has to
+// know how much of itself to draw.
+func (m Modal) ContentRows() int {
+	if m.Mode == ModalFullScreen {
+		return max(m.height-modalFrameHeight, 0)
+	}
+	_, allowed := m.allowance()
+	return max(allowed-modalFrameHeight, 0)
+}
+
+// ContentColumns is the widest the modal will draw content, for content that
+// lays out its own columns. It is an upper bound, not a demand: a modal still
+// shrinks to what its content actually renders.
+func (m Modal) ContentColumns() int {
+	if m.Mode == ModalFullScreen {
+		return max(m.width-modalFrameWidth, 0)
+	}
+	allowed, _ := m.allowance()
+	return max(allowed-modalFrameWidth, 0)
+}
+
 // contentSize is the outer size the content would like, its frame included.
 func (m Modal) contentSize() (width, height int) {
 	if m.Content == nil {
