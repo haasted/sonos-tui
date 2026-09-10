@@ -47,6 +47,7 @@ var helpSections = [2][]struct {
 			{"p  k", "play / pause"},
 			{"j", "previous track"},
 			{"l", "next track"},
+			{"enter", "show the queue"},
 		}},
 		{"Sound", []helpKey{
 			{"↑  ↓", "volume"},
@@ -97,11 +98,13 @@ func (helpContent) View() tea.View {
 		columns[0], strings.Repeat(" ", helpColumnGap), columns[1]))
 }
 
-// padRight pads to a display width, so the descriptions line up whatever the
-// keys are. lipgloss.Width rather than len: the arrow glyphs are multi-byte.
+// padRight pads to exactly a display width, so a column lines up whatever it
+// holds. A string already at or past the width is returned untouched: adding a
+// space to it would push that one row out of line with every other.
+// lipgloss.Width rather than len, because the arrow glyphs are multi-byte.
 func padRight(s string, width int) string {
 	if pad := width - lipgloss.Width(s); pad > 0 {
 		return s + strings.Repeat(" ", pad)
 	}
-	return s + " "
+	return s
 }

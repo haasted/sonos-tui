@@ -36,6 +36,7 @@ type appModel struct {
 	cached        []sonos.Speaker
 	quitting      bool
 	help          panes.Modal
+	queue         panes.Modal
 
 	// hintDone records that the help hint has had its moment — shown, or
 	// retired by a keypress or by a real notice claiming the rule first.
@@ -57,7 +58,11 @@ func newAppModel(ctx context.Context, events *sonos.EventManager, cached []sonos
 	help := panes.NewModal(helpContent{})
 	help.Mode = panes.ModalHover
 
-	m := appModel{ctx: ctx, tabs: tabs, eventManager: events, fromCache: len(cached) > 0, help: help}
+	queue := panes.NewModal(queueContent{})
+	queue.Mode = panes.ModalHover
+
+	m := appModel{ctx: ctx, tabs: tabs, eventManager: events, fromCache: len(cached) > 0,
+		help: help, queue: queue}
 	for _, speaker := range cached {
 		m = m.insertSpeaker(speaker.IP, speaker.DisplayName(), newSpeakerModel(sonos.NewDevice(speaker)))
 	}
@@ -173,8 +178,11 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // closing a modal would leave a copy of it behind, once per cycle.
 func (m appModel) growFrame() appModel {
 	needed := playerHeightRows
-	if m.help.IsOpen() {
-		if _, height := m.help.BoxSize(); height > needed {
+	for _, modal := range []panes.Modal{m.help, m.queue} {
+		if !modal.IsOpen() {
+			continue
+		}
+		if _, height := modal.BoxSize(); height > needed {
 			needed = height
 		}
 	}
@@ -205,6 +213,8 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.tabs.Width = msg.Width
 		m.help = m.help.SetSize(msg.Width, msg.Height)
+		m.queue = m.queue.SetSize(msg.Width, msg.Height)
+		m = m.resizeQueue()
 	case tea.KeyMsg:
 		m.hintDone = true // the user has found the keyboard; nothing left to hint
 
@@ -220,6 +230,15 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
+		// The queue modal claims the keyboard the same way, and takes the
+		// arrow keys with it: up and down scroll the list, not the volume.
+
+		if m.queue.IsOpen() {
+			queue, cmd := m.queue.Update(msg)
+			m.queue = queue
+			return m, cmd
+		}
+
 		switch msg.String() {
 		case "q", "ctrl+c":
 			m.quitting = true
@@ -227,6 +246,8 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "?":
 			m.help = m.help.Open()
 			return m, nil
+		case "enter":
+			return m.openQueue()
 		}
 	case speakerFoundMsg:
 		if m.hasSpeaker(msg.speaker.IP) {
@@ -266,6 +287,8 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case hintTickMsg:
 		return m.applyHintTick()
+	case queueLoadedMsg:
+		return m.applyQueueLoaded(msg)
 	case panes.NoticeMsg:
 		// A degraded speaker surfaces in the same seconds the hint would, and a
 		// hint replacing it would bury the one message that mattered. Falls
@@ -404,7 +427,8 @@ func (m appModel) View() tea.View {
 
 	// Pad first, so the modal composites onto a backdrop already at the frame's
 	// full height and the frame itself never changes size while it is open.
-	return tea.NewView(m.help.ViewOver(padToHeight(content, max(m.frameRows, playerHeightRows))))
+	framed := padToHeight(content, max(m.frameRows, playerHeightRows))
+	return tea.NewView(m.queue.ViewOver(m.help.ViewOver(framed)))
 }
 
 // padToHeight grows content to exactly rows lines. It never truncates: losing
@@ -415,4 +439,17 @@ func padToHeight(content string, rows int) string {
 		return content + strings.Repeat("\n", missing)
 	}
 	return content
+}
+
+// resizeQueue tells the queue list how many rows it may draw. The modal clips
+// anything past that, so a list which does not know cannot scroll correctly.
+func (m appModel) resizeQueue() appModel {
+	content, ok := m.queue.Content.(queueContent)
+	if !ok {
+		return m
+	}
+	content.rows = m.queue.ContentRows()
+	content.width = m.queue.ContentColumns()
+	m.queue.Content = content
+	return m
 }

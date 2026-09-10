@@ -44,7 +44,7 @@ func TestHelp_PromisesNothingTheAppIgnores(t *testing.T) {
 		bound[key] = true
 	}
 
-	for _, key := range []string{"?", "q", "p", "j", "l", "m"} {
+	for _, key := range []string{"?", "q", "p", "j", "l", "m", "enter"} {
 		if !bound[key] {
 			t.Errorf("the help popup documents %q, which nothing handles", key)
 		}
@@ -242,6 +242,10 @@ func keyMsgFor(key string) tea.KeyMsg {
 		return tea.KeyPressMsg{Code: tea.KeyRight}
 	case "down":
 		return tea.KeyPressMsg{Code: tea.KeyDown}
+	case "up":
+		return tea.KeyPressMsg{Code: tea.KeyUp}
+	case "enter":
+		return tea.KeyPressMsg{Code: tea.KeyEnter}
 	default:
 		return tea.KeyPressMsg{Code: rune(key[0]), Text: key}
 	}
