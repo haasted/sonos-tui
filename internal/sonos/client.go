@@ -75,6 +75,10 @@ type soapFault struct {
 	} `xml:"Body>Fault>detail"`
 }
 
+// UPnPTransitionNotAvailable is the code a speaker answers with when an action
+// does not apply to what is loaded, such as a previous track on a station.
+const UPnPTransitionNotAvailable = 701
+
 // UPnPError is the decoded contents of a SOAP fault. Sonos reports refused
 // actions as HTTP 500 with the reason in the body, so callers wanting to
 // react to a specific failure should match on Code with errors.As.

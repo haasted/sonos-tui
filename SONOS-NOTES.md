@@ -90,8 +90,13 @@ The `000c0000` / `00060000` prefix is a Sonos-internal object-class namespace.
 **Relevant to the UPnP 701 "transition not available" bug on
 previous-track): `AVTransportURI` is the diagnostic that issue calls decisive.
 `x-rincon-queue:` is a real queue where "previous" works; `x-sonosapi-radio:`
-is a forward-only station where it cannot. The field already arrives in every
-event — `ParseAVTransportEvent` currently parses and then discards it.
+is a forward-only station where it cannot. The field arrives in every event and
+now reaches `DeviceState.Source`, where `Kind()` classifies it.
+
+Confirmed on hardware 2026-09-11. A personalised station on a SYMFONISK Picture
+frame answered `Previous` with UPnP 701, "transition not available", while
+`Next` worked. The official Sonos app greys its back button out for the same
+station, so the speaker is refusing correctly rather than failing.
 
 ## SUBSCRIBE returns a full state snapshot
 

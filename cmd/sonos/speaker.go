@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"log/slog"
 	"sync/atomic"
 	"time"
@@ -15,6 +16,12 @@ import (
 var _ tea.Model = &speakerModel{}
 
 const (
+	// The playback commands, named so a refusal can say what was refused.
+	actionPrevious = "previous track"
+	actionNext     = "next track"
+	actionPlay     = "play"
+	actionPause    = "pause"
+
 	volumeDebounce = 150 * time.Millisecond // how long one volume window stays open before committing
 	volumeStepUp   = 1                      // volume added per up press
 	volumeStepDown = -1                     // volume removed per down press, negative by design
@@ -163,9 +170,9 @@ func (m speakerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "p", "P", "k", "K":
 			return m, m.togglePlayback()
 		case "j", "J":
-			return m, m.deviceCommand((*sonos.Device).Previous)
+			return m, m.deviceCommand(actionPrevious, (*sonos.Device).Previous)
 		case "l", "L":
-			return m, m.deviceCommand((*sonos.Device).Next)
+			return m, m.deviceCommand(actionNext, (*sonos.Device).Next)
 		case "m", "M":
 			return m, m.toggleMute()
 		case "up":
@@ -184,6 +191,43 @@ func (m speakerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // deliver it to whichever tab the user switched to in the meantime.
 func (m speakerModel) to(msg tea.Msg) tea.Msg {
 	return speakerMsg{device: m.device, msg: msg}
+}
+
+// refused reports a failed command, saying what is true rather than what broke
+// when the speaker is answering correctly.
+func (m speakerModel) refused(name string, err error, state sonos.DeviceState) tea.Msg {
+	because, ok := plainRefusal(name, err, state)
+	if !ok {
+		return m.failed(err)
+	}
+
+	// Info, not Error, and unnamed. The speaker did the right thing, and this
+	// is the answer to a key just pressed on the tab in front of the reader —
+	// unlike a fault, which can arrive from a room nobody is watching.
+	return panes.NoticeMsg{Level: panes.NoticeInfo, Text: because}
+}
+
+// plainRefusal turns a speaker's refusal into a sentence a person would write.
+// It reports false for any failure it cannot explain, which then keeps the
+// speaker's own words: a guess is worse than a technical truth.
+func plainRefusal(name string, err error, state sonos.DeviceState) (string, bool) {
+	var upnp *sonos.UPnPError
+	if !errors.As(err, &upnp) || upnp.Code != sonos.UPnPTransitionNotAvailable {
+		return "", false
+	}
+
+	forwardOnly := state.Source.Kind() == sonos.SourceStation ||
+		state.Source.Kind() == sonos.SourceBroadcast
+
+	switch {
+	case name == actionPrevious && forwardOnly:
+		return "a station plays forward only", true
+	case name == actionPrevious && state.Track <= 1:
+		return "first track in the queue", true
+	case name == actionNext && state.Tracks > 0 && state.Track >= state.Tracks:
+		return "last track in the queue", true
+	}
+	return "", false
 }
 
 // failed reports a command failure as an app-wide notice. Deliberately NOT
@@ -215,9 +259,9 @@ func (m speakerModel) queueVolume(delta int) (tea.Model, tea.Cmd) {
 func (m speakerModel) togglePlayback() tea.Cmd {
 	return func() tea.Msg {
 		if m.device.State().Playing() {
-			return m.runDeviceAction((*sonos.Device).Pause)
+			return m.runDeviceAction(actionPause, (*sonos.Device).Pause)
 		}
-		return m.runDeviceAction((*sonos.Device).Play)
+		return m.runDeviceAction(actionPlay, (*sonos.Device).Play)
 	}
 }
 
@@ -246,19 +290,27 @@ func (m speakerModel) toggleMute() tea.Cmd {
 	}
 }
 
-// deviceCommand wraps a device action as a Bubbletea command.
-func (m speakerModel) deviceCommand(action func(*sonos.Device) error) tea.Cmd {
+// deviceCommand wraps a device action as a Bubbletea command. The name travels
+// with it so a refusal can say which command the speaker would not run.
+func (m speakerModel) deviceCommand(name string, action func(*sonos.Device) error) tea.Cmd {
 	return func() tea.Msg {
-		return m.runDeviceAction(action)
+		return m.runDeviceAction(name, action)
 	}
 }
 
 // runDeviceAction runs action, mapping failure to an error message and success
 // to a refreshed track.
-func (m speakerModel) runDeviceAction(action func(*sonos.Device) error) tea.Msg {
+func (m speakerModel) runDeviceAction(name string, action func(*sonos.Device) error) tea.Msg {
 	if err := action(m.device); err != nil {
-		slog.Warn("playback command failed", "speaker", m.device.Speaker, "err", err)
-		return m.failed(err)
+		state := m.device.State()
+
+		// The source and the position are what make a refusal readable later.
+		// Without them every UPnP 701 in the log looks the same.
+		slog.Warn("playback command failed",
+			"speaker", m.device.Speaker, "action", name, "err", err,
+			"source", state.Source.URI, "track", state.Track, "tracks", state.Tracks)
+
+		return m.refused(name, err, state)
 	}
 	return m.to(nowplaying.TrackMsg{Track: trackFromState(m.device.State())})
 }
