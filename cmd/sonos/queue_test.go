@@ -293,3 +293,92 @@ func TestQueue_ArtistColumnStartsAtOneOffset(t *testing.T) {
 			offsets[0], offsets[1])
 	}
 }
+
+// Case: the height of the list, from the top of a queue to the bottom. A
+// reserved line that empties at an edge used to cost the modal a row, so the
+// box jumped on the last press.
+func TestQueue_KeepsOneHeightWhileScrolling(t *testing.T) {
+	q := queueContent{room: "Køkken", items: queueItems(32), playing: 3, rows: 9, width: 70}
+	want := lipgloss.Height(q.View().Content)
+
+	for step := range 40 {
+		q.offset = step
+		if got := lipgloss.Height(q.View().Content); got != want {
+			t.Fatalf("the list is %d lines at offset %d, want a steady %d", got, step, want)
+		}
+	}
+}
+
+// Case: the top of the list, which must carry an item rather than a blank line
+// held open for a count that is not there.
+func TestQueue_TopRowHoldsAnItem(t *testing.T) {
+	q := queueContent{room: "Køkken", items: queueItems(32), rows: 9, width: 70}
+
+	first := strings.Split(plain(q.View().Content), "\n")[2]
+	if strings.TrimSpace(first) == "" {
+		t.Fatal("the first row below the rule is blank")
+	}
+	if !strings.Contains(first, "Track 1") {
+		t.Fatalf("the first row is %q, want the first track", first)
+	}
+}
+
+// Case: the two marks on one row. The play marker owns the column left of the
+// title, so a scroll arrow in that cell would hide it.
+func TestQueue_PlayMarkerAndArrowBothFitOnARow(t *testing.T) {
+	q := queueContent{room: "Køkken", items: queueItems(32), playing: 3, rows: 9, width: 70, offset: 2}
+
+	row := strings.Split(plain(q.View().Content), "\n")[2]
+	if !strings.Contains(row, "▶") || !strings.Contains(row, "↑") {
+		t.Fatalf("the playing track at the top of the window lost a mark: %q", row)
+	}
+}
+
+// Case: the width of the list while the reader scrolls. The heading carries a
+// range whose numbers grow, so a list measured against the heading on screen
+// would widen as the reader moved down it.
+//
+// The titles here are one character, which is what makes the heading the widest
+// thing in the box. With real titles the rows govern and the fault is hidden.
+func TestQueue_KeepsOneWidthWhileScrolling(t *testing.T) {
+	items := queueItems(124)
+	for i := range items {
+		items[i].Title, items[i].Artist = "A", "B"
+	}
+	q := queueContent{room: "Køkken", items: items, rows: 9, width: 70}
+
+	want := lipgloss.Width(q.View().Content)
+	for _, offset := range []int{0, 1, 9, 60, 999} {
+		q.offset = offset
+		if got := lipgloss.Width(q.View().Content); got != want {
+			t.Fatalf("the list is %d columns at offset %d, want a steady %d: %q",
+				got, offset, want, q.heading())
+		}
+	}
+}
+
+// Case: the heading itself, which a reader looks at. Padding the two numbers to
+// one width holds the box steady but puts a gap either side of the dash, which
+// reads as a fault rather than as alignment.
+func TestQueue_HeadingRangeHasNoStrayPadding(t *testing.T) {
+	q := queueContent{room: "Køkken", items: queueItems(124), rows: 9, width: 70, offset: 3}
+
+	if got := q.heading(); strings.Contains(got, " -") || strings.Contains(got, "- ") {
+		t.Fatalf("the heading %q pads around the dash", got)
+	}
+}
+
+// Case: the two ends of the queue. An arrow at an edge with nothing past it
+// promises more than the queue holds.
+func TestQueue_NoArrowWhereTheQueueEnds(t *testing.T) {
+	q := queueContent{room: "Køkken", items: queueItems(32), rows: 9, width: 70}
+
+	if got := plain(q.View().Content); strings.Contains(got, "↑") {
+		t.Fatalf("an up arrow at the top of the queue:\n%s", got)
+	}
+
+	q.offset = 99 // clamped to the last window
+	if got := plain(q.View().Content); strings.Contains(got, "↓") {
+		t.Fatalf("a down arrow at the end of the queue:\n%s", got)
+	}
+}

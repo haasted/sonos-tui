@@ -14,9 +14,9 @@ import (
 
 const (
 	queueHeaderRows = 2 // the room line and the rule below it
-	queueMarkerRows = 2 // the "more above" and "more below" lines
 	queueMarkWidth  = 2 // the playing marker and the space after it
-	queueGap        = 2 // between the title and the artist
+	queueArrowWidth = 1 // the scroll arrow at the right edge of a row
+	queueGap        = 2 // between one column and the next
 
 	// The floors the two columns keep when the modal cannot hold them both.
 	// Below these a column stops carrying information and only carries an
@@ -82,14 +82,8 @@ func (q queueContent) View() tea.View {
 	}
 
 	first, last := q.window()
-	if q.overflows() {
-		b.WriteString(q.marker(first, "↑") + "\n")
-	}
-	for _, item := range q.items[first:last] {
-		b.WriteString(q.row(item, title, artist) + "\n")
-	}
-	if q.overflows() {
-		b.WriteString(q.marker(len(q.items)-last, "↓"))
+	for i, item := range q.items[first:last] {
+		b.WriteString(q.row(item, title, artist, q.arrow(first, last, i)) + "\n")
 	}
 
 	return tea.NewView(strings.TrimRight(b.String(), "\n"))
@@ -105,6 +99,9 @@ func (q queueContent) columns() (title, artist int) {
 	}
 
 	room := q.width - queueMarkWidth - queueGap
+	if q.overflows() {
+		room -= queueGap + queueArrowWidth
+	}
 	if room <= 0 || title+artist <= room {
 		return title, artist
 	}
@@ -119,9 +116,13 @@ func (q queueContent) columns() (title, artist int) {
 // ruleWidth spans the widest thing under it, so the rule marks the list out
 // rather than stopping short of it or running past.
 func (q queueContent) ruleWidth(title, artist int) int {
-	widest := max(lipgloss.Width(q.heading()), lipgloss.Width(q.note()))
+	widest := max(q.widestHeading(), lipgloss.Width(q.note()))
 	if len(q.items) > 0 {
-		widest = max(widest, queueMarkWidth+title+queueGap+artist)
+		row := queueMarkWidth + title + queueGap + artist
+		if q.overflows() {
+			row += queueGap + queueArrowWidth
+		}
+		widest = max(widest, row)
 	}
 	return widest
 }
@@ -130,13 +131,32 @@ func (q queueContent) ruleWidth(title, artist int) int {
 // they are looking at and how much of it they can see.
 func (q queueContent) heading() string {
 	switch {
-	case q.loading:
+	case q.loading, len(q.items) == 0:
 		return q.room
+	case q.overflows():
+		first, last := q.window()
+		return q.room + " · " + q.rangeLabel(first, last)
 	case len(q.items) == 1:
 		return q.room + " · 1 track"
 	default:
 		return fmt.Sprintf("%s · %d tracks", q.room, len(q.items))
 	}
+}
+
+// rangeLabel says which part of the queue is on screen.
+func (q queueContent) rangeLabel(first, last int) string {
+	return fmt.Sprintf("%d-%d of %d", first+1, last, len(q.items))
+}
+
+// widestHeading is how wide the heading can ever get for this queue. Both
+// numbers in the range only grow, so the last window is the longest one. The
+// rule measures against this rather than the heading on screen, which holds
+// the box at one width while leaving the heading itself unpadded.
+func (q queueContent) widestHeading() int {
+	if !q.overflows() {
+		return lipgloss.Width(q.heading())
+	}
+	return lipgloss.Width(q.room + " · " + q.rangeLabel(q.maxOffset(), len(q.items)))
 }
 
 // note is the whole body when there are no rows to draw, and empty otherwise.
@@ -160,15 +180,10 @@ func (q queueContent) window() (first, last int) {
 	return first, min(first+q.visibleRows(), len(q.items))
 }
 
-// visibleRows is how many items fit. A queue that overflows spends two of its
-// rows on the markers; one that fits keeps them, so a short list has no gap
-// above and below it.
+// visibleRows is how many items fit. Every row below the heading holds an item,
+// so the count does not change with where the reader has scrolled to.
 func (q queueContent) visibleRows() int {
-	room := q.rows - queueHeaderRows
-	if len(q.items) > room {
-		room -= queueMarkerRows
-	}
-	return max(room, 1)
+	return max(q.rows-queueHeaderRows, 1)
 }
 
 // overflows reports whether the queue is longer than the window.
@@ -180,21 +195,26 @@ func (q queueContent) maxOffset() int {
 	return max(len(q.items)-q.visibleRows(), 0)
 }
 
-// marker reports how many items lie past the edge of the window. It keeps its
-// line at zero, so the rows below it do not shift as the reader scrolls to an
-// edge and away again.
-func (q queueContent) marker(hidden int, arrow string) string {
-	if hidden <= 0 {
-		return ""
+// arrow is the mark at the right edge of one visible row. It sits on the first
+// and the last row of the window, and only where the queue really goes on past
+// that edge. Rows carry it rather than lines of their own, so the list keeps
+// one height from the top of a queue to the bottom.
+func (q queueContent) arrow(first, last, row int) string {
+	switch {
+	case row == 0 && first > 0:
+		return "↑"
+	case row == last-first-1 && last < len(q.items):
+		return "↓"
+	default:
+		return " "
 	}
-	return queueNoteStyle().Render(fmt.Sprintf("  %s %d more", arrow, hidden))
 }
 
 // row draws one queue item: the title and the artist, and a marker on the one
 // that is playing. The speaker's own position is held on the item but not
 // drawn — it is what the highlight matches on, and what a later "jump to
 // track" will need.
-func (q queueContent) row(item sonos.QueueItem, title, artist int) string {
+func (q queueContent) row(item sonos.QueueItem, title, artist int, arrow string) string {
 	mark := " "
 	if q.isPlaying(item) {
 		mark = "▶"
@@ -203,6 +223,12 @@ func (q queueContent) row(item sonos.QueueItem, title, artist int) string {
 	line := fmt.Sprintf("%s %s  %s", mark,
 		padRight(clip(item.Title, title), title),
 		clip(item.Artist, artist))
+
+	// The arrow column exists only where the queue overflows, so a short queue
+	// draws no trailing space and the modal still shrinks to it.
+	if q.overflows() {
+		line = fmt.Sprintf("%s  %s", padRight(line, queueMarkWidth+title+queueGap+artist), arrow)
+	}
 
 	if q.isPlaying(item) {
 		return queuePlayingStyle().Render(line)
