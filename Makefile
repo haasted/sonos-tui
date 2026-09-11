@@ -2,26 +2,31 @@
 
 .DEFAULT_GOAL := help
 
+# Every Go module in the repository. The experiments are a module of their own,
+# so ./... from the root does not reach them and each target must say so.
+MODULES := . ./experiments
+
 build: ## Build the binary
 	CGO_ENABLED=0 go build ./cmd/sonos
 
 fmt: ## Format all Go files in place (gofmt -w), listing any it touched
-	gofmt -l -w $$(go list -f '{{.Dir}}' ./... | sort -u)
+	@for m in $(MODULES); do (cd $$m && gofmt -l -w $$(go list -f '{{.Dir}}' ./... | sort -u)) || exit 1; done
 
 vet: ## Run go vet
-	go vet ./...
+	@for m in $(MODULES); do (cd $$m && go vet ./...) || exit 1; done
 
 test: ## Run tests (never cached)
-	go test -count=1 ./...
+	@for m in $(MODULES); do (cd $$m && go test -count=1 ./...) || exit 1; done
 
 test-verbose: ## Run tests with output enabled
-	go test ./... -v
+	@for m in $(MODULES); do (cd $$m && go test ./... -v) || exit 1; done
 
 test-race: ## Run tests with the race detector
-	go test ./... -race
+	@for m in $(MODULES); do (cd $$m && go test ./... -race) || exit 1; done
 
 test-live: ## Run tests requiring a real network with real Sonos speakers
-	go test ./internal/sonos/... ./internal/experiments/ssdp/... -live -v
+	go test ./internal/sonos/... -live -v
+	cd experiments && go test ./ssdp/... -live -v
 
 run: ## Run the CLI
 	go run ./cmd/sonos
@@ -34,7 +39,7 @@ run-nocache: ## Delete speaker cache prior to starting
 	go run ./cmd/sonos
 
 tidy: ## Tidy go.mod/go.sum
-	go mod tidy
+	@for m in $(MODULES); do (cd $$m && go mod tidy) || exit 1; done
 
 adr-html: ## Render ADRs/*.md to standalone HTML pages with diagrams in ADRs/html/.
 	./scripts/render_adr_html.sh

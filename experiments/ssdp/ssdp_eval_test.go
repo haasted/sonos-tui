@@ -21,7 +21,7 @@ import (
 )
 
 // live gates tests that require a real network with real Sonos speakers.
-// Run with: go test ./internal/experiments/ssdp/... -live -v (or make test-live).
+// Run with: cd experiments && go test ./ssdp/... -live -v (or make test-live).
 var live = flag.Bool("live", false, "run tests against real network devices")
 
 // sonosZonePlayerST is the SSDP search target for Sonos speakers, same as discovery.go's ssdpST.

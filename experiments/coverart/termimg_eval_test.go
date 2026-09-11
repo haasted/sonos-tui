@@ -30,7 +30,7 @@ var fixtureNames = []string{
 // fixturePath returns the path to a named cover art file in data/.
 func fixturePath(t *testing.T, name string) string {
 	t.Helper()
-	path := filepath.Join("..", "..", "..", "data", name)
+	path := filepath.Join("..", "data", name)
 	_, err := os.Stat(path)
 	require.NoError(t, err, "test fixture missing: %s", path)
 	return path
