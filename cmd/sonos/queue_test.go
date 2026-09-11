@@ -3,12 +3,16 @@ package main
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
 	"github.com/haasted/sonos-sandbox/internal/sonos"
+	"github.com/haasted/sonos-sandbox/internal/ui/flashsweep"
 )
 
 // Case: the trigger and the dismissal, which are the whole feature at its
@@ -381,4 +385,141 @@ func TestQueue_NoArrowWhereTheQueueEnds(t *testing.T) {
 	if got := plain(q.View().Content); strings.Contains(got, "↓") {
 		t.Fatalf("a down arrow at the end of the queue:\n%s", got)
 	}
+}
+
+// Case: the breath starting. A queue with an arrow needs a repaint chain, and
+// one without an arrow would repaint a still picture.
+func TestQueue_TheBreathRunsOnlyWhereThereIsAnArrow(t *testing.T) {
+	// The queue arriving is what starts the chain, so the test has to watch the
+	// command that delivery returns, not only the one a later tick returns.
+	if _, cmd := deliverQueue(t, 40); cmd == nil {
+		t.Fatal("a list with an arrow never starts breathing")
+	}
+	if _, cmd := deliverQueue(t, 2); cmd != nil {
+		t.Fatal("a list with no arrow starts breathing anyway")
+	}
+
+	long := openWithQueue(t, 40)
+	if !queueOf(t, long).overflows() {
+		t.Fatal("a 40-item queue should overflow the modal, or this proves nothing")
+	}
+	if _, cmd := long.Update(queueTickMsg{gen: long.queueGen}); cmd == nil {
+		t.Fatal("a list with an arrow stops repainting")
+	}
+
+	short := openWithQueue(t, 2)
+	if _, cmd := short.Update(queueTickMsg{gen: short.queueGen}); cmd != nil {
+		t.Fatal("a list with no arrow repaints anyway")
+	}
+}
+
+// deliverQueue opens the list and hands it a queue, keeping the command that
+// delivery returns.
+func deliverQueue(t *testing.T, items int) (appModel, tea.Cmd) {
+	t.Helper()
+
+	m := pressKey(sizedModel(t), "enter")
+	speaker, ok := m.activeSpeaker()
+	if !ok {
+		t.Fatal("no speaker on screen")
+	}
+
+	updated, cmd := m.Update(queueLoadedMsg{
+		device: speaker.device,
+		room:   speaker.device.DisplayName(),
+		items:  queueItems(items),
+	})
+	return updated.(appModel), cmd
+}
+
+// Case: a tick from a closed list. Three faults in this project came from a
+// chain that outlived what began it.
+func TestQueue_TheBreathDiesWithTheList(t *testing.T) {
+	m := openWithQueue(t, 40)
+	gen := m.queueGen
+
+	m = pressKey(m, "esc")
+	if m.queue.IsOpen() {
+		t.Fatal("esc did not close the list")
+	}
+
+	if _, cmd := m.Update(queueTickMsg{gen: gen}); cmd != nil {
+		t.Fatal("a tick from the closed list started another chain")
+	}
+	if m.queueGen == gen {
+		t.Fatal("closing the list left its generation in place")
+	}
+}
+
+// Case: two opens in a row, which must not leave two chains running.
+func TestQueue_ASecondOpenDoesNotRunTwoBreaths(t *testing.T) {
+	first := openWithQueue(t, 40)
+	firstGen := first.queueGen
+
+	second := openWithQueue(t, 40)
+	if second.queueGen == firstGen {
+		t.Fatal("the second open reused the first generation")
+	}
+
+	if _, cmd := second.Update(queueTickMsg{gen: firstGen}); cmd != nil {
+		t.Fatal("the first chain is still running behind the second")
+	}
+}
+
+// Case: the arrow itself, which must change colour as the breath runs. The
+// row beside it must not.
+func TestQueue_TheArrowChangesColourAndTheRowDoesNot(t *testing.T) {
+	q := queueContent{room: "Køkken", items: queueItems(40), rows: 9, width: 70}
+
+	q.openedAt = time.Now()
+	atRest := q.View().Content
+
+	q.openedAt = time.Now().Add(-flashsweep.BreathPeriod * 42 / 100) // the peak
+	atPeak := q.View().Content
+
+	if atRest == atPeak {
+		t.Fatal("the arrow looks the same at the bottom and the top of a breath")
+	}
+	if plain(atRest) != plain(atPeak) {
+		t.Fatal("the breath changed the text, not only its colour")
+	}
+}
+
+// Case: how far the arrow travels between rest and the top of a breath. A
+// narrow swing is found only by a reader who already knows to look for it.
+func TestQueue_TheArrowSwingIsWideEnoughToNotice(t *testing.T) {
+	const leastSwing = 120 // of 255. The first attempt managed 74 and went unseen.
+
+	rest := arrowBrightness(t, 0)
+	lit := arrowBrightness(t, flashsweep.BreathPeriod*42/100) // the peak
+
+	if swing := abs(lit - rest); swing < leastSwing {
+		t.Fatalf("the arrow moves %d of 255 between rest and the top of a breath, want at least %d",
+			swing, leastSwing)
+	}
+}
+
+// arrowBrightness renders the arrow at a point in its breath and reports the
+// red channel, which is enough: both ends of the range are grey.
+func arrowBrightness(t *testing.T, at time.Duration) int {
+	t.Helper()
+
+	rendered := queueArrowStyle(time.Now().Add(-at)).Render("↓")
+	m := regexp.MustCompile(`38;2;(\d+);`).FindStringSubmatch(rendered)
+	if m == nil {
+		t.Fatalf("the arrow carries no truecolor foreground: %q", rendered)
+	}
+
+	value, err := strconv.Atoi(m[1])
+	if err != nil {
+		t.Fatalf("unreadable colour %q", m[1])
+	}
+	return value
+}
+
+func abs(v int) int {
+	if v < 0 {
+		return -v
+	}
+	return v
 }

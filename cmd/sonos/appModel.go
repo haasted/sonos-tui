@@ -38,6 +38,10 @@ type appModel struct {
 	help          panes.Modal
 	queue         panes.Modal
 
+	// queueGen guards the queue arrows' breath. A new generation on every open
+	// and every close, so a tick from a closed list drives nothing.
+	queueGen int
+
 	// hintDone records that the help hint has had its moment — shown, or
 	// retired by a keypress or by a real notice claiming the rule first.
 	hintDone bool
@@ -244,6 +248,9 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.queue.IsOpen() {
 			queue, cmd := m.queue.Update(msg)
 			m.queue = queue
+			if !m.queue.IsOpen() {
+				m.queueGen = nextQueueGen() // the breath dies with the list
+			}
 			return m, cmd
 		}
 
@@ -294,6 +301,8 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.applyHintTick()
 	case queueLoadedMsg:
 		return m.applyQueueLoaded(msg)
+	case queueTickMsg:
+		return m.applyQueueTick(msg)
 	case panes.NoticeMsg:
 		// A degraded speaker surfaces in the same seconds the hint would, and a
 		// hint replacing it would bury the one message that mattered. Falls

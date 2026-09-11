@@ -2,13 +2,17 @@ package main
 
 import (
 	"fmt"
+	"image/color"
 	"log/slog"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
 	"github.com/haasted/sonos-sandbox/internal/sonos"
+	"github.com/haasted/sonos-sandbox/internal/ui/flashsweep"
 	"github.com/haasted/sonos-sandbox/internal/ui/theme"
 )
 
@@ -23,7 +27,26 @@ const (
 	// ellipsis.
 	queueTitleMin  = 20
 	queueArtistMin = 12
+
+	// queuePulseInterval is how often the arrows repaint. A breath takes five
+	// seconds, so twenty frames a second is more than the eye asks for.
+	queuePulseInterval = 50 * time.Millisecond
 )
+
+// queueTickMsg is one frame of the arrows' breath. The generation dies with the
+// modal, so a chain cannot outlive the list that began it.
+type queueTickMsg struct{ gen int }
+
+var queueGenerations atomic.Int64
+
+// nextQueueGen returns a generation unique across the process.
+func nextQueueGen() int { return int(queueGenerations.Add(1)) }
+
+func queueTick(gen int) tea.Cmd {
+	return tea.Tick(queuePulseInterval, func(time.Time) tea.Msg {
+		return queueTickMsg{gen: gen}
+	})
+}
 
 // queueLoadedMsg carries a speaker's queue back to the modal that asked for it.
 type queueLoadedMsg struct {
@@ -43,9 +66,10 @@ type queueContent struct {
 	err     error
 	loading bool
 
-	offset int // first visible item
-	rows   int // how many rows the modal will show, its frame excluded
-	width  int // how many columns it will show, likewise
+	offset   int       // first visible item
+	rows     int       // how many rows the modal will show, its frame excluded
+	width    int       // how many columns it will show, likewise
+	openedAt time.Time // when the list appeared, which is when the breath began
 }
 
 var _ tea.Model = queueContent{}
@@ -220,20 +244,26 @@ func (q queueContent) row(item sonos.QueueItem, title, artist int, arrow string)
 		mark = "▶"
 	}
 
-	line := fmt.Sprintf("%s %s  %s", mark,
+	body := fmt.Sprintf("%s %s  %s", mark,
 		padRight(clip(item.Title, title), title),
 		clip(item.Artist, artist))
 
-	// The arrow column exists only where the queue overflows, so a short queue
-	// draws no trailing space and the modal still shrinks to it.
-	if q.overflows() {
-		line = fmt.Sprintf("%s  %s", padRight(line, queueMarkWidth+title+queueGap+artist), arrow)
+	style := queueRowStyle()
+	if q.isPlaying(item) {
+		style = queuePlayingStyle()
 	}
 
-	if q.isPlaying(item) {
-		return queuePlayingStyle().Render(line)
+	// The arrow column exists only where the queue overflows, so a short queue
+	// draws no trailing space and the modal still shrinks to it. The arrow
+	// carries its own colour, which breathes, so it is styled apart from the row.
+	if !q.overflows() {
+		return style.Render(body)
 	}
-	return queueRowStyle().Render(line)
+
+	full := queueMarkWidth + title + queueGap + artist
+	return style.Render(padRight(body, full)) +
+		strings.Repeat(" ", queueGap) +
+		queueArrowStyle(q.openedAt).Render(arrow)
 }
 
 // isPlaying guards the zero as well as matching the position. A queue counts
@@ -253,10 +283,11 @@ func (m appModel) openQueue() (tea.Model, tea.Cmd) {
 
 	m.queue = m.queue.Open()
 	m.queue.Content = queueContent{
-		room:    speaker.device.DisplayName(),
-		loading: true,
-		rows:    m.queue.ContentRows(),
-		width:   m.queue.ContentColumns(),
+		room:     speaker.device.DisplayName(),
+		loading:  true,
+		rows:     m.queue.ContentRows(),
+		width:    m.queue.ContentColumns(),
+		openedAt: time.Now(),
 	}
 	return m, readQueue(speaker.device)
 }
@@ -309,7 +340,24 @@ func (m appModel) applyQueueLoaded(msg queueLoadedMsg) (tea.Model, tea.Cmd) {
 	content.width = m.queue.ContentColumns()
 
 	m.queue.Content = content
-	return m, nil
+
+	// The breath starts only once there is an arrow to breathe. A queue that
+	// fits draws none, and a chain for it would repaint a still picture.
+	if !content.overflows() {
+		return m, nil
+	}
+	m.queueGen = nextQueueGen()
+	return m, queueTick(m.queueGen)
+}
+
+// applyQueueTick repaints the arrows. It re-arms only while the same modal is
+// open and still has an arrow, so the chain cannot outlive either.
+func (m appModel) applyQueueTick(msg queueTickMsg) (tea.Model, tea.Cmd) {
+	content, ok := m.queue.Content.(queueContent)
+	if msg.gen != m.queueGen || !m.queue.IsOpen() || !ok || !content.overflows() {
+		return m, nil
+	}
+	return m, queueTick(msg.gen)
 }
 
 // activeSpeaker is the speaker whose tab is on screen.
@@ -356,6 +404,25 @@ func queueRowStyle() lipgloss.Style {
 func queuePlayingStyle() lipgloss.Style {
 	return lipgloss.NewStyle().Bold(true).
 		Foreground(theme.LightDark(lipgloss.Color("#1D4ED8"), lipgloss.Color("#93C5FD")))
+}
+
+// queueArrowStyle breathes the arrow from near the colour of the rule to the
+// far end of the palette. A wide swing on purpose: the arrow is one character,
+// so a narrow one is only found by a reader who already knows to look.
+func queueArrowStyle(since time.Time) lipgloss.Style {
+	return lipgloss.NewStyle().
+		Foreground(flashsweep.BreathAt(time.Since(since), themedArrowRest(), themedArrowLit()))
+}
+
+func themedArrowRest() color.Color {
+	return theme.LightDark(lipgloss.Color("#C4C4C4"), lipgloss.Color("#5A5A5A"))
+}
+
+// themedArrowLit brightens on a dark ground and deepens on a light one. The
+// same pair the notice entrance uses, for the same reason: a light that flashes
+// toward white on white erases itself.
+func themedArrowLit() color.Color {
+	return theme.LightDark(lipgloss.Color("#0F172A"), lipgloss.Color("#FFFFFF"))
 }
 
 func queueNoteStyle() lipgloss.Style {

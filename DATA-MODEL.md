@@ -160,6 +160,7 @@ speaker proves an entry is still good.
 | `TrackMsg` / `VolumeMsg` | `ui/nowplaying/nowplaying.go` | Updates to the widget |
 | `Line` | `ui/marquee/marquee.go` | Text plus a window, scrolled by advancing an offset |
 | `Ramp` | `ui/flashsweep/flashsweep.go` | The base and flash colours a glint travels between |
+| `Breath` | `ui/flashsweep/breath.go` | A breathing light, as a pair of gaussians rather than a sine |
 | `Reveal` / `RevealStyle` | `ui/flashsweep/reveal.go` | A centre-out text entrance, and which of four looks it wears |
 
 **`nowplaying.Track` is a projection, not a domain object.** It looks like

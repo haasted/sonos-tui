@@ -67,6 +67,23 @@ just erases the text. `theme.LightDark` can supply a different `Flash` for each.
 Give the enclosing style's own colour as `Base` — ideally the very same variable —
 so the glint settles into the static style with no visible jump when it ends.
 
+`Breath` is the odd one out: no light travels, and nothing is revealed. It is the
+brightness of a light that breathes, from 0 at rest to 1 at the top of a breath,
+for a mark that should be noticed without asking to be looked at.
+
+It is a pair of gaussians rather than a sine. A sine turns too sharply at both
+ends, where a breath pauses, and the two halves differ: breathing in is quicker
+than breathing out, so the light fills in about two seconds and empties in about
+three. The fall's width is derived from the rise's rather than chosen, so a cycle
+ends at exactly the value it began at and the wrap cannot be seen.
+
+The period is five seconds, about twelve breaths a minute, which is a person at
+rest. Modelled on the sleep light of an older Mac (US patent 6,658,577), at the
+slower rate those machines actually used rather than the one the patent states.
+
+`BreathAt` gives the colour directly, for a caller that wants to set a style
+rather than do the mixing itself.
+
 `FromColor` converts any `color.Color` (a lipgloss colour, say) into movy's `V3`,
 so callers can feed `theme.LightDark` straight into either function.
 
