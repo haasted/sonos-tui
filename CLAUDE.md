@@ -48,6 +48,14 @@ Current targets: `build`, `fmt`, `vet`, `test`, `test-verbose`, `test-race`, `te
 
 Always ask me if there's any ambiguity to the instructions or tasks I've given. It's more important to get things correct than being fast.
 
+## Task hierarchy
+
+Use a parent for containment. Use a dependency for order.
+
+A parent says "this is part of that epic". A dependency says "this must wait for that". Do not use a dependency to record that two tasks belong to one piece of work.
+
+Start an epic when new work splits into several tasks. Do not make an epic out of tasks that already exist: a reparented task keeps its old id, so its id and its place in the tree disagree from then on.
+
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:6cd5cc61 -->
 ## Beads Issue Tracker
 
