@@ -20,6 +20,7 @@ type layout struct {
 // layouts are the UI variants selectable by the first argument.
 var layouts = map[string]layout{
 	"blank":       {"a placeholder to start a new iteration from", layoutBlank},
+	"breathe":     {"the breathing light, against a plain sine", layoutBreathe},
 	"tabs":        {"the tab bar, with its divider and animations", layoutTabs},
 	"tabs-bottom": {"the same tab bar along the bottom edge", layoutTabsBottom},
 	"volume":      {"volume readouts, in every style and fade", layoutVolume},
