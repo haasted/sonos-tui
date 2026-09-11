@@ -1,4 +1,4 @@
-.PHONY: build fmt vet test test-verbose test-race test-live run tidy adr-html help
+.PHONY: build fmt vet test test-verbose test-race test-live run uitest tidy adr-html help
 
 .DEFAULT_GOAL := help
 
@@ -30,6 +30,22 @@ test-live: ## Run tests requiring a real network with real Sonos speakers
 
 run: ## Run the CLI
 	go run ./cmd/sonos
+
+# make uitest <name> reads the name as a second goal. Turn any word after
+# uitest into the demo to run, and into a target that does nothing, so make does
+# not then look for a rule for it. Guarded on uitest being the FIRST goal, so a
+# mistyped target anywhere else still fails as it should.
+ifeq (uitest,$(firstword $(MAKECMDGOALS)))
+UITEST_LAYOUT := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+$(eval $(UITEST_LAYOUT):;@:)
+endif
+
+uitest: ## Show a UI demo: make uitest <name>. Without a name, the demos are listed.
+	@cd experiments && if [ -z "$(UITEST_LAYOUT)" ]; then \
+	  go run ./uitest 2>&1 | grep -v '^exit status'; \
+	else \
+	  go run ./uitest $(UITEST_LAYOUT); \
+	fi
 
 run-capture: ## Capture speaker data while running
 	go run ./cmd/sonos -capture=./captured-data

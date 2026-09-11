@@ -186,7 +186,7 @@ in this project's history were exactly that failure.
 
 ## 7. Effects core — `internal/ui/movy`
 
-Vendored from movy-go (MIT), used by the `cmd/uitest` effect demos.
+Vendored from movy-go (MIT), used by the `experiments/uitest` effect demos.
 
 | Type | What it is |
 |---|---|
@@ -242,9 +242,9 @@ routes it by pointer.
 exit, so they never interleave with the TUI) and `ElapsedHandler` (a `slog`
 handler stamping time since start).
 
-`cmd/uitest` defines around thirty structs — `…Effect` types, mock tracks, demo
+`experiments/uitest` defines around thirty structs — `…Effect` types, mock tracks, demo
 root models. They are a playground for iterating on look and feel, deliberately
-disposable, and nothing outside `cmd/uitest` depends on them.
+disposable, and nothing outside `experiments/uitest` depends on them.
 
 `cmd/listening`, an earlier event-listening prototype with its own subscription
 and cache types, has been deleted — see ADR-0004. Everything it did now lives in

@@ -1,5 +1,5 @@
 // Package panes holds reusable Bubbletea UI components shared across the
-// real app and the cmd/uitest playground.
+// real app and the experiments/uitest playground.
 package panes
 
 import (

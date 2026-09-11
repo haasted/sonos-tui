@@ -23,7 +23,7 @@ Still a sandbox — it is also where the local Sonos API gets mapped out, and
 | `internal/sonos` | The domain: discovery, SOAP, GENA events, device state, the speaker cache |
 | `internal/ui/…` | Reusable terminal components — tabs, the now-playing panel, marquee, effects |
 | `internal/log` | Logging buffered in memory, so it never interleaves with the UI |
-| `cmd/uitest` | A playground for iterating on look and feel, deliberately disposable |
+| `experiments/` | A module of its own: the UI demos, and library evaluations whose dependencies stay out of the client |
 
 `internal/ui` knows nothing about Sonos and `internal/sonos` knows nothing about
 terminals; `cmd/sonos` is the only place that knows both. `DATA-MODEL.md` maps
@@ -35,6 +35,7 @@ the types and their relationships.
 make run            # discover your speakers and start the client
 make test           # run everything (never cached)
 make build          # build the binary
+make uitest         # list the UI demos; make uitest <name> runs one
 make help           # every target
 ```
 

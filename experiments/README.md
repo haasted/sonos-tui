@@ -28,11 +28,24 @@ stops the pattern, and a workspace does not change that. So every Makefile
 target names this directory as well, through the `MODULES` variable. A target
 that forgets it goes green while running none of these tests.
 
+## What is here
+
+`uitest` is the playground for look and feel — a harness of disposable demos
+that draw the real components against mock data. It lives here rather than
+beside the client because it is not the client, and because `termenv` has no
+reader outside it.
+
+`coverart` and `ssdp` are library evaluations, run against the images in
+`data/` and against real speakers respectively.
+
 ## Running them
 
-    make test          from the root, which covers this tree too
-    make test-live     the SSDP evaluation, which needs real speakers
+    make uitest                   list the demos
+    make uitest reveal            run one
+    make test                     from the root, which covers this tree too
+    make test-live                the SSDP evaluation, which needs real speakers
 
 Or directly:
 
     cd experiments && go test ./...
+    cd experiments && go run ./uitest reveal
