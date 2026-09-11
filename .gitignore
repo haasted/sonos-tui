@@ -13,5 +13,7 @@ ADRs/html/
 .beads-credential-key
 .beads/proxieddb/
 
+/worktrees/
+
 # Binaries
 /sonos

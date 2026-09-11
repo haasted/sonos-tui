@@ -34,6 +34,8 @@ Attempt to bundle related changes into the same commit. It is acceptable to crea
 
 At handoff, report changed files, validation performed, and suggested next commands or beads task.
 
+If you are a subagent working on a task that makes code changes, create a worktree like this `git worktree add ./worktrees/son-XXX -b branch-name`. The directory should be named for the beads task that is being worked on, while the branch should be named for the contents. This is the one exception to the rule above: A subagent commits in its own worktree without being asked.
+
 ## Build & Test
 
 Prefer Makefile targets over raw command-line invocations for building and testing (e.g. `make test` over `go test ./...`). Only fall back to the command line when no target covers what's needed.
