@@ -20,7 +20,7 @@ const (
 	shutdownTimeout = 5 * time.Second
 )
 
-var logsFlag = flag.Bool("logs", true, "capture and print log output once the program exits; set to false to discard all logs")
+var logsFlag = flag.Bool("logs", false, "capture and print log output once the program exits; set to false to discard all logs")
 
 func main() {
 	flag.Parse()
