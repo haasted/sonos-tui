@@ -64,7 +64,6 @@ var helpAliases = map[string]string{
 // not listed here has to appear in the popup.
 var helpOmissions = map[string]string{
 	"ctrl+c": "documented as q, the more discoverable alias for the same thing",
-	"Q":      "debug only — dumps the queue to the log until a queue view exists",
 	"?":      "Not showing the button that opened the list of keyboard shortcuts",
 }
 

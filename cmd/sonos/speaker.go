@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log/slog"
 	"sync/atomic"
 	"time"
@@ -169,8 +168,6 @@ func (m speakerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.deviceCommand((*sonos.Device).Next)
 		case "m", "M":
 			return m, m.toggleMute()
-		case "Q":
-			return m, m.logQueue()
 		case "up":
 			return m.queueVolume(volumeStepUp)
 		case "down":
@@ -246,45 +243,6 @@ func (m speakerModel) toggleMute() tea.Cmd {
 		}
 		state := m.device.State()
 		return m.to(nowplaying.VolumeMsg{Volume: state.Volume, Muted: state.Muted})
-	}
-}
-
-// logQueue dumps the speaker's queue to the log. Debug-only while there is no
-// queue UI: it is how the shape of real queues gets looked at at all.
-func (m speakerModel) logQueue() tea.Cmd {
-	return func() tea.Msg {
-		queue, err := m.device.Queue()
-		if err != nil {
-			slog.Warn("reading queue", "speaker", m.device.Speaker, "err", err)
-			return m.failed(err)
-		}
-
-		state := m.device.State()
-		slog.Info("queue",
-			"speaker", m.device.DisplayName(),
-			"items", len(queue),
-			"playing", state.Track,
-			// AVTransport's own count. It matches len(queue) only while the
-			// queue IS the source: a station reports one track while a queue
-			// of twenty sits untouched behind it.
-			"transportTracks", state.Tracks,
-			"sourceIsQueue", state.Source.Kind() == sonos.SourceTrack,
-			"source", state.Source.URI)
-
-		for _, item := range queue {
-			slog.Info("queue item",
-				"n", item.Position,
-				"title", item.Title,
-				"artist", item.Artist,
-				"album", item.Album,
-				"duration", item.Duration,
-				"uri", item.URI)
-		}
-
-		return panes.NoticeMsg{
-			Level: panes.NoticeInfo,
-			Text:  fmt.Sprintf("%s: %d queued — see the log", m.device.DisplayName(), len(queue)),
-		}
 	}
 }
 
