@@ -34,7 +34,7 @@ Attempt to bundle related changes into the same commit. It is acceptable to crea
 
 At handoff, report changed files, validation performed, and suggested next commands or beads task.
 
-If you are a subagent working on a task that makes code changes, create a worktree like this `git worktree add ./worktrees/son-XXX -b branch-name`. The directory should be named for the beads task that is being worked on, while the branch should be named for the contents. This is the one exception to the rule above: A subagent commits in its own worktree without being asked.
+If you are a subagent working on a task that makes code changes, create a worktree like this `git worktree add ./worktrees/son-XXX -b branch-name`. The directory should be named for the beads task that is being worked on, while the branch should be named for the contents. This is the one exception to the rule above: A subagent commits in its own worktree without being asked. Do not ever merge to main repository.
 
 ## Build & Test
 
