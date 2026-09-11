@@ -218,6 +218,15 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		m.hintDone = true // the user has found the keyboard; nothing left to hint
 
+		// Quitting is global, and comes before any modal. The help popup
+		// documents q as quit, so a modal that swallows it makes the popup
+		// tell the reader something untrue.
+		switch msg.String() {
+		case "q", "ctrl+c":
+			m.quitting = true
+			return m, tea.Sequence(tea.ClearScreen, tea.Quit)
+		}
+
 		// An open modal owns the keyboard: without this the arrow keys would
 		// still be changing volume behind it, unseen.
 		if m.help.IsOpen() {
@@ -232,7 +241,6 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// The queue modal claims the keyboard the same way, and takes the
 		// arrow keys with it: up and down scroll the list, not the volume.
-
 		if m.queue.IsOpen() {
 			queue, cmd := m.queue.Update(msg)
 			m.queue = queue
@@ -240,9 +248,6 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.String() {
-		case "q", "ctrl+c":
-			m.quitting = true
-			return m, tea.Sequence(tea.ClearScreen, tea.Quit)
 		case "?":
 			m.help = m.help.Open()
 			return m, nil
