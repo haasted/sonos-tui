@@ -1,6 +1,7 @@
 package sonos
 
 import (
+	"bytes"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -26,19 +27,17 @@ func NewClient(ip string) *SonosClient {
 	}
 }
 
-// soapEnvelope wraps an action body in a SOAP envelope.
-const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
-<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
-            s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-  <s:Body>%s</s:Body>
-</s:Envelope>`
-
-// Do sends a raw SOAP request and returns the response body.
-func (c *SonosClient) Do(path, serviceURN, action, body string) ([]byte, error) {
-	envelope := fmt.Sprintf(soapEnvelope, body)
+// Do sends a SOAP request built from payload and returns the response body.
+// The payload is a tagged struct rather than a string, so the marshaller
+// escapes its values — see soap.go.
+func (c *SonosClient) Do(path, serviceURN, action string, payload any) ([]byte, error) {
+	body, err := marshalRequest(payload)
+	if err != nil {
+		return nil, err
+	}
 	soapAction := fmt.Sprintf(`"%s#%s"`, serviceURN, action)
 
-	req, err := http.NewRequest(http.MethodPost, c.BaseURL+path, strings.NewReader(envelope))
+	req, err := http.NewRequest(http.MethodPost, c.BaseURL+path, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("building request: %w", err)
 	}

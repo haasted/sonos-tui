@@ -16,41 +16,41 @@ const (
 
 const avtransportPath = "/MediaRenderer/AVTransport/Control"
 
-func (c *SonosClient) avTransport(action, body string) ([]byte, error) {
-	return c.Do(avtransportPath, avtransportService, action, body)
+func (c *SonosClient) avTransport(action string, payload any) ([]byte, error) {
+	return c.Do(avtransportPath, avtransportService, action, payload)
 }
 
 // Play starts or resumes playback.
 func (c *SonosClient) Play() error {
-	_, err := c.avTransport("Play", fmt.Sprintf(
-		`<u:Play xmlns:u="%s">
-      <InstanceID>0</InstanceID>
-      <Speed>1</Speed>
-    </u:Play>`, avtransportService))
+	_, err := c.avTransport("Play", playAction{
+		XMLName:   xml.Name{Local: "u:Play"},
+		Namespace: avtransportService,
+		Speed:     1,
+	})
 	return err
 }
 
 // Pause pauses playback.
 func (c *SonosClient) Pause() error {
-	_, err := c.avTransport("Pause", simplePayload(avtransportService, "Pause"))
+	_, err := c.avTransport("Pause", instancePayload(avtransportService, "Pause"))
 	return err
 }
 
 // Stop stops playback.
 func (c *SonosClient) Stop() error {
-	_, err := c.avTransport("Stop", simplePayload(avtransportService, "Stop"))
+	_, err := c.avTransport("Stop", instancePayload(avtransportService, "Stop"))
 	return err
 }
 
 // Next skips to the next track.
 func (c *SonosClient) Next() error {
-	_, err := c.avTransport("Next", simplePayload(avtransportService, "Next"))
+	_, err := c.avTransport("Next", instancePayload(avtransportService, "Next"))
 	return err
 }
 
 // Previous goes back to the previous track.
 func (c *SonosClient) Previous() error {
-	_, err := c.avTransport("Previous", simplePayload(avtransportService, "Previous"))
+	_, err := c.avTransport("Previous", instancePayload(avtransportService, "Previous"))
 	return err
 }
 
@@ -64,15 +64,9 @@ type TransportInfo struct {
 	Speed  string // "1"
 }
 
-// simplePayload builds a SOAP body for actions whose only argument is
-// InstanceID, e.g. <u:Pause xmlns:u="service"><InstanceID>0</InstanceID></u:Pause>.
-func simplePayload(service, action string) string {
-	return fmt.Sprintf(`<u:%[2]s xmlns:u="%[1]s"><InstanceID>0</InstanceID></u:%[2]s>`, service, action)
-}
-
 // GetTransportInfo returns the current playback state of the speaker.
 func (c *SonosClient) GetTransportInfo() (*TransportInfo, error) {
-	data, err := c.avTransport("GetTransportInfo", simplePayload(avtransportService, "GetTransportInfo"))
+	data, err := c.avTransport("GetTransportInfo", instancePayload(avtransportService, "GetTransportInfo"))
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +103,7 @@ type TrackInfo struct {
 
 // GetPositionInfo returns the current track position and metadata.
 func (c *SonosClient) GetPositionInfo() (*TrackInfo, error) {
-	data, err := c.avTransport("GetPositionInfo", simplePayload(avtransportService, "GetPositionInfo"))
+	data, err := c.avTransport("GetPositionInfo", instancePayload(avtransportService, "GetPositionInfo"))
 	if err != nil {
 		return nil, err
 	}
@@ -159,17 +153,17 @@ func (c *SonosClient) GetPositionInfo() (*TrackInfo, error) {
 
 const renderingPath = "/MediaRenderer/RenderingControl/Control"
 
-func (c *SonosClient) rendering(action, body string) ([]byte, error) {
-	return c.Do(renderingPath, renderingService, action, body)
+func (c *SonosClient) rendering(action string, payload any) ([]byte, error) {
+	return c.Do(renderingPath, renderingService, action, payload)
 }
 
 // GetVolume returns the current Master volume (0–100).
 func (c *SonosClient) GetVolume() (int, error) {
-	data, err := c.rendering("GetVolume", fmt.Sprintf(
-		`<u:GetVolume xmlns:u="%s">
-      <InstanceID>0</InstanceID>
-      <Channel>Master</Channel>
-    </u:GetVolume>`, renderingService))
+	data, err := c.rendering("GetVolume", channelAction{
+		XMLName:   xml.Name{Local: "u:GetVolume"},
+		Namespace: renderingService,
+		Channel:   masterChannel,
+	})
 	if err != nil {
 		return 0, err
 	}
@@ -188,22 +182,22 @@ func (c *SonosClient) SetVolume(level int) error {
 	if level < 0 || level > 100 {
 		return fmt.Errorf("volume must be between 0 and 100, got %d", level)
 	}
-	_, err := c.rendering("SetVolume", fmt.Sprintf(
-		`<u:SetVolume xmlns:u="%s">
-      <InstanceID>0</InstanceID>
-      <Channel>Master</Channel>
-      <DesiredVolume>%d</DesiredVolume>
-    </u:SetVolume>`, renderingService, level))
+	_, err := c.rendering("SetVolume", setVolumeAction{
+		XMLName:   xml.Name{Local: "u:SetVolume"},
+		Namespace: renderingService,
+		Channel:   masterChannel,
+		Desired:   level,
+	})
 	return err
 }
 
 func (c *SonosClient) SetRelativeVolume(adjustment int) (int, error) {
-	data, err := c.rendering("SetRelativeVolume", fmt.Sprintf(
-		`<u:SetRelativeVolume xmlns:u="%s">
-      <InstanceID>0</InstanceID>
-      <Channel>Master</Channel>
-      <Adjustment>%d</Adjustment>
-    </u:SetRelativeVolume>`, renderingService, adjustment))
+	data, err := c.rendering("SetRelativeVolume", setRelativeVolumeAction{
+		XMLName:    xml.Name{Local: "u:SetRelativeVolume"},
+		Namespace:  renderingService,
+		Channel:    masterChannel,
+		Adjustment: adjustment,
+	})
 	if err != nil {
 		return 0, err
 	}
@@ -219,11 +213,11 @@ func (c *SonosClient) SetRelativeVolume(adjustment int) (int, error) {
 
 // GetMute returns true if the speaker is muted.
 func (c *SonosClient) GetMute() (bool, error) {
-	data, err := c.rendering("GetMute", fmt.Sprintf(
-		`<u:GetMute xmlns:u="%s">
-      <InstanceID>0</InstanceID>
-      <Channel>Master</Channel>
-    </u:GetMute>`, renderingService))
+	data, err := c.rendering("GetMute", channelAction{
+		XMLName:   xml.Name{Local: "u:GetMute"},
+		Namespace: renderingService,
+		Channel:   masterChannel,
+	})
 	if err != nil {
 		return false, err
 	}
@@ -243,11 +237,11 @@ func (c *SonosClient) SetMute(muted bool) error {
 	if muted {
 		val = 1
 	}
-	_, err := c.rendering("SetMute", fmt.Sprintf(
-		`<u:SetMute xmlns:u="%s">
-      <InstanceID>0</InstanceID>
-      <Channel>Master</Channel>
-      <DesiredMute>%d</DesiredMute>
-    </u:SetMute>`, renderingService, val))
+	_, err := c.rendering("SetMute", setMuteAction{
+		XMLName:   xml.Name{Local: "u:SetMute"},
+		Namespace: renderingService,
+		Channel:   masterChannel,
+		Desired:   val,
+	})
 	return err
 }

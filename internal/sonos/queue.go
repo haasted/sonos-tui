@@ -75,16 +75,17 @@ type browsePage struct {
 }
 
 func (c *SonosClient) browseQueue(start, count int) (browsePage, error) {
-	body := fmt.Sprintf(`<u:Browse xmlns:u="%s">
-      <ObjectID>%s</ObjectID>
-      <BrowseFlag>BrowseDirectChildren</BrowseFlag>
-      <Filter>*</Filter>
-      <StartingIndex>%d</StartingIndex>
-      <RequestedCount>%d</RequestedCount>
-      <SortCriteria></SortCriteria>
-    </u:Browse>`, contentDirectoryService, queueObjectID, start, count)
-
-	data, err := c.Do(contentDirectoryPath, contentDirectoryService, "Browse", body)
+	// ObjectID is a constant today, but it is the field that becomes a playlist
+	// identifier later. Marshalling escapes it, where a format string would not.
+	data, err := c.Do(contentDirectoryPath, contentDirectoryService, "Browse", browseAction{
+		XMLName:        xml.Name{Local: "u:Browse"},
+		Namespace:      contentDirectoryService,
+		ObjectID:       queueObjectID,
+		BrowseFlag:     "BrowseDirectChildren",
+		Filter:         "*",
+		StartingIndex:  start,
+		RequestedCount: count,
+	})
 	if err != nil {
 		return browsePage{}, fmt.Errorf("browsing queue: %w", err)
 	}
