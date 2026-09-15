@@ -13,6 +13,7 @@ import (
 
 	"github.com/haasted/sonos-sandbox/internal/sonos"
 	"github.com/haasted/sonos-sandbox/internal/ui/flashsweep"
+	"github.com/haasted/sonos-sandbox/internal/ui/panes"
 )
 
 // Case: the trigger and the dismissal, which are the whole feature at its
@@ -522,4 +523,228 @@ func abs(v int) int {
 		return -v
 	}
 	return v
+}
+
+// Case: the two walls. Pressing against an end must say so, because a key that
+// does nothing cannot be told from a program that has stopped answering.
+func TestQueue_PressingAgainstAnEndLightsThatEnd(t *testing.T) {
+	m := openWithQueue(t, 40)
+
+	top := queueOf(t, pressKey(m, "up"))
+	if !top.bumping() || top.edge != bumpTop {
+		t.Fatal("up at the top of the list did not light the top")
+	}
+
+	atEnd := m
+	for range 60 {
+		atEnd = pressKey(atEnd, "down")
+	}
+	bottom := queueOf(t, atEnd)
+	if !bottom.bumping() || bottom.edge != bumpBottom {
+		t.Fatal("down at the end of the list did not light the bottom")
+	}
+}
+
+// Case: a press that has somewhere to go. It must scroll and stay quiet, or
+// every keypress lights the list up.
+func TestQueue_ScrollingDoesNotLightAnything(t *testing.T) {
+	m := pressKey(openWithQueue(t, 40), "down")
+
+	content := queueOf(t, m)
+	if content.offset != 1 {
+		t.Fatalf("down from the top scrolled to %d, want 1", content.offset)
+	}
+	if content.bumping() {
+		t.Fatal("an ordinary scroll lit the list")
+	}
+}
+
+// Case: which border carries the light. The end the reader pressed against is
+// the one that answers, and the other must stay quiet.
+func TestQueue_TheLitBorderIsTheOneAtThatEnd(t *testing.T) {
+	q := queueContent{room: "Køkken", items: queueItems(40), rows: 7, width: 60}
+
+	top := q.bump(bumpTop).borderLight()
+	if (top(panes.ModalTop, 0) == panes.BorderCell{}) {
+		t.Fatal("a bump against the top left the top border unlit")
+	}
+	if (top(panes.ModalBottom, 0) != panes.BorderCell{}) {
+		t.Fatal("a bump against the top lit the bottom border as well")
+	}
+
+	bottom := q.bump(bumpBottom).borderLight()
+	if (bottom(panes.ModalBottom, 0) == panes.BorderCell{}) {
+		t.Fatal("a bump against the end left the bottom border unlit")
+	}
+	if (bottom(panes.ModalTop, 0) != panes.BorderCell{}) {
+		t.Fatal("a bump against the end lit the top border as well")
+	}
+}
+
+// Case: the pulse itself. It starts at the centre of the border and runs out to
+// the corners, rather than lighting the whole edge at once.
+func TestQueue_TheLightTravelsFromTheCentreOutward(t *testing.T) {
+	q := queueContent{room: "Køkken", items: queueItems(40), rows: 7, width: 60}.bump(bumpTop)
+
+	at := func(age time.Duration, fromCentre float32) bool {
+		lit := q
+		lit.bumpedAt = time.Now().Add(-age)
+		paint := lit.borderLight()
+		return paint != nil && paint(panes.ModalTop, fromCentre) != panes.BorderCell{}
+	}
+
+	if !at(0, 0) {
+		t.Error("the pulse does not start at the centre")
+	}
+	if at(0, 1) {
+		t.Error("the corners are lit before the pulse reaches them")
+	}
+	if !at(bumpDuration/2, 1) {
+		t.Error("the pulse never reaches the corners")
+	}
+	if at(bumpDuration/2, 0) {
+		t.Error("the centre is still lit once the pulse has moved on")
+	}
+}
+
+// Case: the light going out. It answers a keypress and then leaves, rather
+// than staying on the screen as a warning would.
+func TestQueue_TheLightCoolsToNothing(t *testing.T) {
+	q := queueContent{room: "Køkken", items: queueItems(40), rows: 7, width: 60}.bump(bumpTop)
+
+	if q.heat() < 0.9 {
+		t.Fatalf("a fresh bump starts at %.2f, want close to 1", q.heat())
+	}
+
+	q.bumpedAt = time.Now().Add(-bumpDuration)
+	if q.heat() != 0 {
+		t.Fatalf("the bump still reads %.2f after its whole duration", q.heat())
+	}
+	if q.bumping() {
+		t.Fatal("a cooled bump still reports itself lit")
+	}
+
+	// And the border asks for no colour of its own, so the modal draws its.
+	if q.borderLight() != nil {
+		t.Fatal("the border is still painted after the bump ended")
+	}
+}
+
+// Case: a held key, which repeats about thirty times a second. Each press
+// restarts the light, so the edge stays lit until the reader lets go.
+func TestQueue_AHeldKeyHoldsTheLightOn(t *testing.T) {
+	q := queueContent{room: "Køkken", items: queueItems(40), rows: 7, width: 60}.bump(bumpTop)
+
+	q.bumpedAt = time.Now().Add(-bumpDuration * 9 / 10) // nearly cooled
+	faded := q.heat()
+
+	q = q.bump(bumpTop) // the key repeats
+	if q.heat() <= faded {
+		t.Fatalf("a repeat left the light at %.2f, having been %.2f — it must restart",
+			q.heat(), faded)
+	}
+}
+
+// Case: a queue entirely on screen. Pressing down still does nothing, so it
+// still needs an answer, even though there is no hidden end.
+func TestQueue_AQueueThatFitsStillBumps(t *testing.T) {
+	m := openWithQueue(t, 2)
+	if queueOf(t, m).overflows() {
+		t.Fatal("a two-item queue should fit the modal, or this proves nothing")
+	}
+
+	m = pressKey(m, "down")
+	if !queueOf(t, m).bumping() {
+		t.Fatal("a queue that fits gave no answer to a key that does nothing")
+	}
+}
+
+// Case: the repaint chain behind a bump. A queue that fits runs no chain of its
+// own, so without one the light would freeze at full brightness.
+func TestQueue_ABumpStartsARepaintChain(t *testing.T) {
+	m := openWithQueue(t, 2)
+
+	updated, cmd := m.Update(keyMsgFor("down"))
+	if cmd == nil {
+		t.Fatal("a bump on a queue that fits started no repaint chain")
+	}
+
+	m = updated.(appModel)
+	if _, again := m.Update(queueTickMsg{gen: m.queueGen}); again == nil {
+		t.Fatal("the chain stopped while the light was still lit")
+	}
+
+	// And it stops once the light is out, rather than repainting a still list.
+	content := queueOf(t, m)
+	content.bumpedAt = time.Now().Add(-bumpDuration)
+	m.queue.Content = content
+	if _, stopped := m.Update(queueTickMsg{gen: m.queueGen}); stopped != nil {
+		t.Fatal("the chain kept repainting a list with nothing moving")
+	}
+}
+
+// Case: the list under the border. A bump answers on the frame, so the list
+// itself must not change at all — not its size, and not its colours.
+func TestQueue_ABumpLeavesTheListAlone(t *testing.T) {
+	q := queueContent{room: "Køkken", items: queueItems(40), rows: 7, width: 60}
+
+	before := q.View().Content
+	lit := q.bump(bumpTop).View().Content
+
+	if before != lit {
+		t.Fatalf("the bump reached the list:\nbefore %q\nafter  %q", before, lit)
+	}
+}
+
+// Case: the weight of the line. Colour alone spread the pulse into a smear of
+// close shades and was hard to see, so the front thickens the border glyph.
+func TestQueue_ThePulseThickensTheLine(t *testing.T) {
+	q := queueContent{room: "Køkken", items: queueItems(40), rows: 7, width: 60}.bump(bumpTop)
+
+	weight := func(age time.Duration, fromCentre float32) bool {
+		lit := q
+		lit.bumpedAt = time.Now().Add(-age)
+		return lit.borderLight()(panes.ModalTop, fromCentre).Heavy
+	}
+
+	if !weight(0, 0) {
+		t.Error("the centre does not thicken when the pulse starts there")
+	}
+	if weight(0, 1) {
+		t.Error("the corners thicken before the pulse reaches them")
+	}
+	if !weight(bumpDuration/2, 1) {
+		t.Error("the corners never thicken")
+	}
+	if weight(bumpDuration/2, 0) {
+		t.Error("the centre stays thick after the pulse has moved on")
+	}
+}
+
+// Case: the shape of the front. The heavy core must be narrower than the
+// coloured run, so the pulse has an edge and a fainter tail behind it. A run
+// that is heavy wherever it is coloured is the wide blur this replaced.
+func TestQueue_TheHeavyCoreIsNarrowerThanTheGlow(t *testing.T) {
+	q := queueContent{room: "Køkken", items: queueItems(40), rows: 7, width: 60}.bump(bumpTop)
+	q.bumpedAt = time.Now().Add(-bumpDuration / 3)
+	paint := q.borderLight()
+
+	var coloured, weighted int
+	for i := range 41 {
+		switch cell := paint(panes.ModalTop, float32(i)/40); {
+		case cell.Heavy:
+			weighted++
+			coloured++
+		case cell != panes.BorderCell{}:
+			coloured++
+		}
+	}
+
+	if weighted == 0 || coloured == 0 {
+		t.Fatalf("nothing is lit a third of the way through: %d heavy, %d coloured", weighted, coloured)
+	}
+	if weighted >= coloured {
+		t.Fatalf("%d of %d lit runes are heavy; the front needs a fainter tail behind it",
+			weighted, coloured)
+	}
 }

@@ -13,6 +13,7 @@ import (
 
 	"github.com/haasted/sonos-sandbox/internal/sonos"
 	"github.com/haasted/sonos-sandbox/internal/ui/flashsweep"
+	"github.com/haasted/sonos-sandbox/internal/ui/panes"
 	"github.com/haasted/sonos-sandbox/internal/ui/theme"
 )
 
@@ -31,6 +32,28 @@ const (
 	// queuePulseInterval is how often the arrows repaint. A breath takes five
 	// seconds, so twenty frames a second is more than the eye asks for.
 	queuePulseInterval = 50 * time.Millisecond
+
+	// bumpDuration is how long the edge stays lit after the reader presses
+	// against it. Short: it answers a keypress and then gets out of the way.
+	bumpDuration = 320 * time.Millisecond
+
+	// bumpVisibleAt is the point below which a rune is left in the border's own
+	// colour, rather than painted a shade indistinguishable from it.
+	bumpVisibleAt = 0.08
+
+	// bumpHeavyAt is where the line thickens. Colour alone spreads the pulse
+	// into a smear of close shades; the weight gives it an edge the eye finds
+	// without looking for it.
+	bumpHeavyAt = 0.35
+)
+
+// bumpEdge is which end of the list the reader pressed against.
+type bumpEdge int
+
+const (
+	bumpNone bumpEdge = iota
+	bumpTop
+	bumpBottom
 )
 
 // queueTickMsg is one frame of the arrows' breath. The generation dies with the
@@ -70,6 +93,9 @@ type queueContent struct {
 	rows     int       // how many rows the modal will show, its frame excluded
 	width    int       // how many columns it will show, likewise
 	openedAt time.Time // when the list appeared, which is when the breath began
+
+	edge     bumpEdge  // which end the reader last pressed against
+	bumpedAt time.Time // when they did; zero when nothing is lit
 }
 
 var _ tea.Model = queueContent{}
@@ -86,11 +112,39 @@ func (q queueContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch key.String() {
 	case "up":
-		q.offset = max(q.offset-1, 0)
+		if q.offset == 0 {
+			return q.bump(bumpTop), nil
+		}
+		q.offset--
 	case "down":
-		q.offset = min(q.offset+1, q.maxOffset())
+		if q.offset >= q.maxOffset() {
+			return q.bump(bumpBottom), nil
+		}
+		q.offset++
 	}
 	return q, nil
+}
+
+// bump lights the end the reader pressed against. Every press restarts it, so
+// a held key holds the edge lit and it cools once the key is released.
+func (q queueContent) bump(edge bumpEdge) queueContent {
+	q.edge, q.bumpedAt = edge, time.Now()
+	return q
+}
+
+// bumping reports whether an edge is still lit.
+func (q queueContent) bumping() bool { return q.heat() > 0 }
+
+// heat is how lit the bumped edge is, from 1 at the press to 0 once cooled.
+func (q queueContent) heat() float32 {
+	if q.bumpedAt.IsZero() {
+		return 0
+	}
+	left := bumpDuration - time.Since(q.bumpedAt)
+	if left <= 0 {
+		return 0
+	}
+	return float32(left) / float32(bumpDuration)
 }
 
 func (q queueContent) View() tea.View {
@@ -273,6 +327,59 @@ func (q queueContent) isPlaying(item sonos.QueueItem) bool {
 	return q.playing > 0 && item.Position == q.playing
 }
 
+// borderLight is the pulse that answers a press against an end of the list. It
+// leaves the centre of that border and runs out to both corners, which is the
+// language the notice entrance already speaks. Nil when nothing is lit, so the
+// modal draws its own resting colour.
+func (q queueContent) borderLight() panes.BorderLight {
+	heat := q.heat()
+	if heat <= 0 {
+		return nil
+	}
+	progress := 1 - heat
+
+	return func(edge panes.ModalEdge, fromCentre float32) panes.BorderCell {
+		if !q.lights(edge) {
+			return panes.BorderCell{}
+		}
+
+		lit := flashsweep.Spread(fromCentre, progress)
+		if lit < bumpVisibleAt {
+			return panes.BorderCell{} // the modal keeps its own border here
+		}
+		return panes.BorderCell{Color: bumpColour(lit), Heavy: lit >= bumpHeavyAt}
+	}
+}
+
+// lights reports whether a border carries the pulse. The end the reader pressed
+// against is the one that answers.
+func (q queueContent) lights(edge panes.ModalEdge) bool {
+	return (q.edge == bumpTop && edge == panes.ModalTop) ||
+		(q.edge == bumpBottom && edge == panes.ModalBottom)
+}
+
+// bumpColour is one rune of the pulse: the scheme's own base at the faint end
+// of the light, and white at its front.
+//
+// The blend never passes through the border's resting colour. That colour is
+// amber, and a gradient from amber to blue crosses grey — the pulse would read
+// as the border going muddy rather than as a light on it. Below bumpVisibleAt
+// the rune is left alone instead, so the handover is a step and not a smear.
+func bumpColour(lit float32) color.Color {
+	base := flashsweep.FromColor(themedBumpBase())
+	peak := flashsweep.FromColor(themedBumpPeak())
+
+	mixed := base.Lerp(peak, smoothstep01(bumpVisibleAt, 1, lit))
+	return lipgloss.Color(mixed.ToRgb().String())
+}
+
+// smoothstep01 eases between two edges, so the front of the pulse rounds into
+// white rather than arriving at it in a straight line.
+func smoothstep01(edge0, edge1, x float32) float32 {
+	t := min(max((x-edge0)/(edge1-edge0), 0), 1)
+	return t * t * (3 - 2*t)
+}
+
 // openQueue asks the selected speaker for its queue. Every open fetches again:
 // the queue changes underneath us, and a stale list is worse than a short wait.
 func (m appModel) openQueue() (tea.Model, tea.Cmd) {
@@ -354,10 +461,24 @@ func (m appModel) applyQueueLoaded(msg queueLoadedMsg) (tea.Model, tea.Cmd) {
 // open and still has an arrow, so the chain cannot outlive either.
 func (m appModel) applyQueueTick(msg queueTickMsg) (tea.Model, tea.Cmd) {
 	content, ok := m.queue.Content.(queueContent)
-	if msg.gen != m.queueGen || !m.queue.IsOpen() || !ok || !content.overflows() {
+	if msg.gen != m.queueGen || !m.queue.IsOpen() || !ok {
+		return m, nil
+	}
+
+	// The arrows breathe while the queue overflows, and a bumped edge cools
+	// whether it does or not. Neither is true: nothing on screen is moving.
+	if !content.overflows() && !content.bumping() {
 		return m, nil
 	}
 	return m, queueTick(msg.gen)
+}
+
+// restartQueueChain begins a fresh repaint chain and abandons any running one.
+// A bump on a queue that fits has no chain to ride, and taking a generation
+// each time is what keeps exactly one of them alive.
+func (m appModel) restartQueueChain() (appModel, tea.Cmd) {
+	m.queueGen = nextQueueGen()
+	return m, queueTick(m.queueGen)
 }
 
 // activeSpeaker is the speaker whose tab is on screen.
@@ -422,6 +543,21 @@ func themedArrowRest() color.Color {
 // same pair the notice entrance uses, for the same reason: a light that flashes
 // toward white on white erases itself.
 func themedArrowLit() color.Color {
+	return theme.LightDark(lipgloss.Color("#0F172A"), lipgloss.Color("#FFFFFF"))
+}
+
+func themedBorder() color.Color {
+	return theme.LightDark(lipgloss.Color("#B45309"), lipgloss.Color("#FBBF24"))
+}
+
+// themedBumpBase and themedBumpPeak are the pulse's two colours. Sky into white
+// on a dark ground, and the same pair inverted on a light one, where a white
+// front would vanish into the page.
+func themedBumpBase() color.Color {
+	return theme.LightDark(lipgloss.Color("#0369A1"), lipgloss.Color("#38BDF8"))
+}
+
+func themedBumpPeak() color.Color {
 	return theme.LightDark(lipgloss.Color("#0F172A"), lipgloss.Color("#FFFFFF"))
 }
 

@@ -250,6 +250,10 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.queue = queue
 			if !m.queue.IsOpen() {
 				m.queueGen = nextQueueGen() // the breath dies with the list
+				return m, cmd
+			}
+			if content, ok := m.queue.Content.(queueContent); ok && content.bumping() {
+				return m.restartQueueChain()
 			}
 			return m, cmd
 		}
@@ -441,8 +445,16 @@ func (m appModel) View() tea.View {
 
 	// Pad first, so the modal composites onto a backdrop already at the frame's
 	// full height and the frame itself never changes size while it is open.
+	// The border light is read fresh each frame: it depends on when the reader
+	// last pressed against an end, which changes under the modal rather than
+	// on it.
+	queue := m.queue
+	if content, ok := queue.Content.(queueContent); ok {
+		queue.Light = content.borderLight()
+	}
+
 	framed := padToHeight(content, max(m.frameRows, playerHeightRows))
-	return tea.NewView(m.queue.ViewOver(m.help.ViewOver(framed)))
+	return tea.NewView(queue.ViewOver(m.help.ViewOver(framed)))
 }
 
 // padToHeight grows content to exactly rows lines. It never truncates: losing
