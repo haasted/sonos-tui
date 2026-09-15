@@ -1,6 +1,7 @@
 package panes
 
 import (
+	"image/color"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -42,12 +43,41 @@ const (
 	modalFrameHeight = 2 // the border's two rows; Padding is horizontal only
 )
 
+// ModalEdge names one of the horizontal borders of the box.
+type ModalEdge int
+
+const (
+	ModalTop ModalEdge = iota
+	ModalBottom
+)
+
+// BorderCell is how one rune of a lit border is drawn. The zero value leaves
+// the rune exactly as the resting border draws it.
+type BorderCell struct {
+	// Color, when set, replaces the border's resting colour.
+	Color color.Color
+
+	// Heavy swaps the rune for the thicker glyph of its own box-drawing
+	// family. A terminal cannot draw a thicker line, so weight is the only
+	// way a border can look raised rather than merely recoloured.
+	Heavy bool
+}
+
+// BorderLight draws the runes of the top and bottom borders. It is called for
+// each rune with the edge that rune sits on, and how far the rune sits from the
+// centre of that edge — 0 in the middle, 1 at a corner.
+//
+// The modal offers the geometry and knows which glyphs its border owns. What
+// the light means, and when it runs, belong to the caller.
+type BorderLight func(edge ModalEdge, fromCentre float32) BorderCell
+
 // Modal is an overlay drawn on top of another view. It owns only its own
 // framing, sizing and dismissal; what it contains, when it opens, and what the
 // caller does underneath are all the caller's business.
 type Modal struct {
 	Content tea.Model // rendered inside the box; nil renders an empty modal
 	Mode    ModalMode
+	Light   BorderLight // nil leaves the border in one resting colour
 
 	open   bool
 	width  int // terminal width, not the box's
@@ -209,12 +239,97 @@ func (m Modal) box() string {
 
 	// Width counts the border, Height does not — an asymmetry in lipgloss
 	// that silently costs two columns if the box is sized as if they matched.
-	return modalStyle.Width(width).Height(inner).Render(body)
+	box := modalStyle.Width(width).Height(inner).Render(body)
+	if m.Light == nil {
+		return box
+	}
+	return m.lit(box)
+}
+
+// lit replaces the two horizontal borders with ones the caller has coloured.
+// The rows are rebuilt from the border runes rather than recoloured in place:
+// a rendered line carries its own escapes, and parsing those back out would be
+// guesswork about how lipgloss chose to write them.
+func (m Modal) lit(box string) string {
+	lines := strings.Split(box, "\n")
+	if len(lines) < 2 {
+		return box
+	}
+
+	width := lipgloss.Width(box)
+	lines[0] = m.edge(ModalTop, width)
+	lines[len(lines)-1] = m.edge(ModalBottom, width)
+	return strings.Join(lines, "\n")
+}
+
+// edge draws one horizontal border, asking the caller for each rune's colour.
+func (m Modal) edge(which ModalEdge, width int) string {
+	border := lipgloss.RoundedBorder()
+	left, fill, right := border.TopLeft, border.Top, border.TopRight
+	if which == ModalBottom {
+		left, fill, right = border.BottomLeft, border.Bottom, border.BottomRight
+	}
+
+	runes := []rune(left + strings.Repeat(fill, max(width-2, 0)) + right)
+	centre := float32(len(runes)-1) / 2
+
+	var b strings.Builder
+	for i, r := range runes {
+		cell := m.Light(which, abs32(float32(i)-centre)/max(centre, 1))
+
+		if cell.Heavy {
+			r = heavy(r)
+		}
+		style := modalBorderStyle()
+		if cell.Color != nil {
+			style = lipgloss.NewStyle().Foreground(cell.Color)
+		}
+		b.WriteString(style.Render(string(r)))
+	}
+	return b.String()
+}
+
+// heavy is the thicker glyph of a box-drawing rune's own family, and the rune
+// itself when it has none. The rounded corners have no heavy form of their own,
+// so they square off — which reads as the corner taking the weight rather than
+// as a different border.
+func heavy(r rune) rune {
+	switch r {
+	case '─':
+		return '━'
+	case '│':
+		return '┃'
+	case '╭', '┌':
+		return '┏'
+	case '╮', '┐':
+		return '┓'
+	case '╰', '└':
+		return '┗'
+	case '╯', '┘':
+		return '┛'
+	default:
+		return r
+	}
+}
+
+func abs32(v float32) float32 {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 func clamp(v, lo, hi int) int { return min(max(v, lo), hi) }
 
 var modalStyle = lipgloss.NewStyle().
 	Border(lipgloss.RoundedBorder()).
-	BorderForeground(theme.LightDark(lipgloss.Color("#B45309"), lipgloss.Color("#FBBF24"))).
+	BorderForeground(modalBorderColor()).
 	Padding(0, 1)
+
+func modalBorderColor() color.Color {
+	return theme.LightDark(lipgloss.Color("#B45309"), lipgloss.Color("#FBBF24"))
+}
+
+func modalBorderStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(modalBorderColor())
+}

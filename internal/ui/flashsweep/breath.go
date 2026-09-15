@@ -52,3 +52,24 @@ func BreathAt(elapsed time.Duration, rest, lit color.Color) color.Color {
 	ramp := Ramp{Base: FromColor(rest), Flash: FromColor(lit)}
 	return lipgloss.Color(ramp.at(Breath(elapsed)).String())
 }
+
+const (
+	// spreadSigma is how wide the travelling light is, as a share of the
+	// distance from a centre to an edge.
+	spreadSigma = 0.22
+
+	// spreadTail is how far past the edge the light runs before it is gone.
+	// Three sigma, so nothing of it is left when the pulse ends.
+	spreadTail = 3 * spreadSigma
+)
+
+// Spread is how lit a point is as a pulse travels out from a centre, for a
+// surface that should answer once and then be quiet.
+//
+// pos is how far the point sits from the centre: 0 in the middle, 1 at an edge.
+// progress is how far the pulse has run: 0 with the light still at the centre,
+// 1 once it has passed the edge and faded.
+func Spread(pos, progress float32) float32 {
+	front := clamp(progress, 0, 1) * (1 + spreadTail)
+	return gauss(pos-front, spreadSigma)
+}

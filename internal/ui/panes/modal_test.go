@@ -157,3 +157,65 @@ func (c countingContent) Update(tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (c countingContent) View() tea.View { return tea.NewView("counting") }
+
+// Case: a lit border, as a caller sees it. A terminal cannot draw a thicker
+// line, so weight is the only way the border can look raised rather than
+// merely recoloured.
+func TestModal_AHeavyBorderSwapsTheGlyphs(t *testing.T) {
+	m := panes.NewModal(panes.StaticContent("body"))
+	m.Mode = panes.ModalHover
+	m = m.SetSize(40, 12).Open()
+
+	resting := strings.Split(stripANSI(m.ViewOver(backdrop(40, 12))), "\n")
+
+	// Light every rune of the top edge, and nothing of the bottom.
+	m.Light = func(edge panes.ModalEdge, _ float32) panes.BorderCell {
+		return panes.BorderCell{Heavy: edge == panes.ModalTop}
+	}
+	lit := strings.Split(stripANSI(m.ViewOver(backdrop(40, 12))), "\n")
+
+	top, bottom := borderRows(t, resting)
+	litTop, litBottom := borderRows(t, lit)
+
+	assert.Equal(t, bottom, litBottom, "the unlit edge must keep its own glyphs")
+	assert.NotEqual(t, top, litTop, "a heavy edge must not look like a resting one")
+
+	assert.Contains(t, litTop, "━", "the horizontal run should thicken")
+	assert.Contains(t, litTop, "┏", "the left corner should take the weight")
+	assert.Contains(t, litTop, "┓", "the right corner should take the weight")
+}
+
+// Case: a modal with no light, which is every modal today. It must render
+// exactly as it did before the hook existed.
+func TestModal_AnUnlitBorderIsUntouched(t *testing.T) {
+	m := panes.NewModal(panes.StaticContent("body"))
+	m.Mode = panes.ModalHover
+	m = m.SetSize(40, 12).Open()
+
+	plain := stripANSI(m.ViewOver(backdrop(40, 12)))
+	for _, heavy := range []string{"━", "┃", "┏", "┓", "┗", "┛"} {
+		assert.NotContains(t, plain, heavy, "an unlit border drew a heavy glyph")
+	}
+}
+
+func backdrop(w, h int) string {
+	return lipgloss.NewStyle().Width(w).Height(h).Render("")
+}
+
+// borderRows returns the first and last lines that carry a box-drawing corner.
+func borderRows(t *testing.T, lines []string) (top, bottom string) {
+	t.Helper()
+
+	for _, line := range lines {
+		if strings.ContainsAny(line, "\u256d\u250f\u2570\u2517") {
+			if top == "" {
+				top = line
+			}
+			bottom = line
+		}
+	}
+	if top == "" || top == bottom {
+		t.Fatalf("expected two border rows, found %q and %q", top, bottom)
+	}
+	return top, bottom
+}
