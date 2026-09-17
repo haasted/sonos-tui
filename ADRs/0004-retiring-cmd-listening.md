@@ -107,5 +107,4 @@ rather than rewritten. It records accurately what was decided at the time, and
 this ADR is the successor.
 
 The repository now has one entrypoint that talks to speakers, `cmd/sonos`, and
-one playground that does not, `cmd/uitest`. Any future harness should be a flag
-on the former rather than a new command — as `-capture` already is.
+one playground that does not, `experiments/uitest`.
