@@ -24,7 +24,8 @@ func ScrollGen(m Model) int { return *m.scrollGen }
 func NewScrollTick(gen int) tea.Msg { return scrollTickMsg{gen: gen} }
 
 // VisibleTitle is the marquee's current window on its own, isolated from the
-// rest of the row — the clock and the volume readout share that line.
+// rest of the panel — the clock and the volume readout share its line, and a
+// resting speaker's glyph changes colour on every frame.
 func VisibleTitle(m Model) string { return m.title.Render(lipgloss.NewStyle()) }
 
 // FadeGen is the generation the mute/volume fade chain carries.

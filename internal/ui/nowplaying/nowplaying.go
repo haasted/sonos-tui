@@ -99,6 +99,16 @@ func labelTick(gen int) tea.Cmd {
 	return tea.Tick(labelSweepInterval, func(time.Time) tea.Msg { return labelTickMsg{gen: gen} })
 }
 
+type breathTickMsg struct {
+	gen int
+}
+
+func breathTick(gen int) tea.Cmd {
+	return tea.Tick(breathInterval, func(time.Time) tea.Msg {
+		return breathTickMsg{gen: gen}
+	})
+}
+
 const positionTickInterval = time.Second
 
 type positionTickMsg struct {
@@ -115,8 +125,10 @@ type Model struct {
 	spinner spinner.Model
 	playing bool
 
-	muted   bool
-	mutedAt time.Time // when mute last switched on, driving the flash fade
+	muted bool
+
+	restingSince time.Time // when the speaker last began to wait, giving the breath its phase
+	breathGen    *int      // drives the resting glyph's breath
 
 	volume            int
 	volumeKnown       bool      // suppresses the readout on the first track, which has no previous level
@@ -124,7 +136,7 @@ type Model struct {
 	volumeDirectional bool      // false when shown on arrival, where no arrow applies
 	volumeShownAt     time.Time // when the readout last appeared, driving its fade
 
-	fadeGen *int // one ticker drives both the mute and volume fades
+	fadeGen *int // drives the volume readout's fade
 
 	title  marquee.Line
 	artist marquee.Line
@@ -147,7 +159,8 @@ func New(track Track) Model {
 	s := spinner.New()
 	s.Spinner = spinners.Equalizer
 
-	m := Model{spinner: s, scrollGen: new(int), posGen: new(int), fadeGen: new(int), labelGen: new(int)}
+	m := Model{spinner: s, scrollGen: new(int), posGen: new(int), fadeGen: new(int),
+		labelGen: new(int), breathGen: new(int)}
 	return m.applyTrack(track)
 }
 
@@ -162,14 +175,9 @@ func (m Model) applyTrack(track Track) Model {
 	m.volume = track.Volume
 	m.volumeKnown = true
 
-	if track.Muted && !m.muted {
-		m.mutedAt = time.Now()
-	}
-	if !track.Muted {
-		m.mutedAt = time.Time{}
-	}
 	m.muted = track.Muted
 	m.playing = track.Playing
+	m = m.markResting()
 	m.title = marquee.NewLine(track.Title, longTitleWindowWidth)
 	m.artist = marquee.NewLine(track.Artist, metaWindowWidth)
 	m.album = marquee.NewLine(track.Album, metaWindowWidth)
@@ -192,9 +200,28 @@ func (m Model) elapsed() time.Duration {
 	return e
 }
 
-// muteFlash is 1 while the flash is held, easing to 0 across the fade.
-func (m Model) muteFlash() float64 {
-	return easedFlash(m.mutedAt, muteFlashHold, muteFlashFade)
+// resting reports a speaker that waits rather than plays. Muted counts even
+// while playing: the speaker runs, but nothing comes out of it.
+func (m Model) resting() bool {
+	return m.muted || !m.playing
+}
+
+// markResting starts the breath's clock on entry and clears it on exit. It
+// reads whether the wait had already begun from the clock itself, so mute
+// arriving at an already-paused speaker carries the same breath on instead of
+// dropping it back to the trough.
+//
+// The clock is therefore set exactly while resting() holds. Deriving that from
+// a snapshot taken before the update instead gets a fresh Model wrong, whose
+// playing field is false before any track has arrived.
+func (m Model) markResting() Model {
+	switch {
+	case !m.resting():
+		m.restingSince = time.Time{}
+	case m.restingSince.IsZero():
+		m.restingSince = time.Now()
+	}
+	return m
 }
 
 // easedFlash holds at 1 for hold, then smoothsteps to 0 across fade.
@@ -225,14 +252,8 @@ func (m Model) applyVolume(msg VolumeMsg) Model {
 	m.volume = msg.Volume
 	m.volumeKnown = true
 
-	if msg.Muted && !m.muted {
-		m.mutedAt = time.Now()
-	}
-	if !msg.Muted {
-		m.mutedAt = time.Time{}
-	}
 	m.muted = msg.Muted
-	return m
+	return m.markResting()
 }
 
 // volumeFlash is 1 while the readout is held, easing to 0 across its fade.
@@ -242,7 +263,7 @@ func (m Model) volumeFlash() float64 {
 
 // fading reports whether any transient overlay still needs redrawing.
 func (m Model) fading() bool {
-	return m.muteFlash() > 0 || m.volumeFlash() > 0
+	return m.volumeFlash() > 0
 }
 
 // labelProgress is how far the current glint has travelled, and whether one
@@ -284,6 +305,7 @@ func (m Model) restart() tea.Cmd {
 	*m.posGen = nextGeneration()
 	*m.fadeGen = nextGeneration()
 	*m.labelGen = nextGeneration()
+	*m.breathGen = nextGeneration()
 
 	var cmds []tea.Cmd
 	if m.playing {
@@ -297,6 +319,9 @@ func (m Model) restart() tea.Cmd {
 	}
 	if m.streamLabel != "" {
 		cmds = append(cmds, scheduleLabelSweep(*m.labelGen))
+	}
+	if m.resting() {
+		cmds = append(cmds, breathTick(*m.breathGen))
 	}
 	if len(cmds) == 0 {
 		return nil
@@ -320,6 +345,17 @@ func (m Model) restartFade() tea.Cmd {
 	return fadeTick(*m.fadeGen)
 }
 
+// restartBreath rolls the breath generation and arms a chain while the speaker
+// waits. Scoped like restartFade, and for the same reason: a mute must not
+// reset the marquee or the clock.
+func (m Model) restartBreath() tea.Cmd {
+	*m.breathGen = nextGeneration()
+	if !m.resting() {
+		return nil
+	}
+	return breathTick(*m.breathGen)
+}
+
 func (m Model) Init() tea.Cmd {
 	return m.restart()
 }
@@ -331,7 +367,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, m.restart()
 	case VolumeMsg:
 		m = m.applyVolume(msg)
-		return m, m.restartFade()
+		return m, tea.Batch(m.restartFade(), m.restartBreath())
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
@@ -341,6 +377,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, fadeTick(msg.gen)
+	case breathTickMsg:
+		if msg.gen != *m.breathGen || !m.resting() {
+			return m, nil
+		}
+		return m, breathTick(msg.gen)
 	case positionTickMsg:
 		if msg.gen != *m.posGen || !m.playing {
 			return m, nil
@@ -385,11 +426,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 func (m Model) View() string {
 	spinnerGlyph := m.spinner.View()
-	if !m.playing {
-		spinnerGlyph = pausedGlyph
-	}
-	if m.muted {
-		spinnerGlyph = muteGlyphStyle(m.muteFlash()).Render(mutedGlyph)
+	if m.resting() {
+		spinnerGlyph = m.restingGlyph()
 	}
 	left := lipgloss.JoinHorizontal(lipgloss.Top, spinnerGlyph, " ", m.title.Render(trackStyle))
 	position := formatPosition(m.elapsed(), m.duration)
@@ -420,6 +458,20 @@ func (m Model) View() string {
 		albumLine,
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
+}
+
+// restingGlyph is the breathing mark of a speaker that waits. Muted beats
+// paused: a muted speaker makes no sound whether or not it plays.
+//
+// The breath starts at its peak rather than its trough, so pressing mute lights
+// the glyph at once instead of leaving it dark for two seconds.
+func (m Model) restingGlyph() string {
+	glyph, lit := pausedGlyph, pausedBreathLit()
+	if m.muted {
+		glyph, lit = mutedGlyph, mutedBreathLit()
+	}
+	elapsed := time.Since(m.restingSince) + flashsweep.BreathLit
+	return restingGlyphStyle(elapsed, lit).Render(glyph)
 }
 
 // volumeReadout is the level, prefixed with a direction arrow only when the

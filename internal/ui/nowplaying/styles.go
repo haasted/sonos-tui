@@ -16,16 +16,19 @@ const (
 	longTitleWindowWidth = 35
 )
 
-const pausedGlyph = "⣿"
+// pausedGlyph is the pause mark every player uses, which a reader knows
+// without being taught. It leaves the spinner's braille family for that
+// reason. One cell only, as mutedGlyph explains.
+const pausedGlyph = "‖"
 
-// mutedGlyph replaces the playing/paused glyph while muted. One cell only:
-// View derives its indent from this width. Swap freely to taste.
-const mutedGlyph = "X"
+// mutedGlyph replaces the playing/paused glyph while muted. It leaves the
+// braille family on purpose: a muted speaker is not the equalizer at rest, it
+// is sound refused. One cell only: View derives its indent from this width.
+const mutedGlyph = "⊘"
 
-const (
-	muteFlashHold = 250 * time.Millisecond  // full-strength flash before it starts fading
-	muteFlashFade = 1200 * time.Millisecond // fade from flash to the terminal background
-)
+// breathInterval is how often a resting glyph repaints. A breath takes five
+// seconds, so this is already more than the eye asks for.
+const breathInterval = 50 * time.Millisecond
 
 const (
 	volumeHold = 1400 * time.Millisecond // readout stays at full strength this long
@@ -63,9 +66,6 @@ var (
 			Faint(true).
 			Foreground(theme.LightDark(lipgloss.Color("#4A4A4A"), lipgloss.Color("#9B9B9B")))
 
-	muteFlashColor = lipgloss.Color("#C01C28") // background the mute glyph flashes on activation
-	muteGlyphColor = lipgloss.Color("#FFFFFF") // glyph stays legible against the flash
-
 	volumeAccent = theme.LightDark(lipgloss.Color("#B45309"), lipgloss.Color("#FBBF24"))
 )
 
@@ -75,15 +75,27 @@ func volumeStyle(strength float64) lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(blend(terminalBackground(), volumeAccent, strength))
 }
 
-// muteGlyphStyle keeps the glyph legible and flashes its background, fading
-// that background toward the terminal's own so the block disappears.
-func muteGlyphStyle(strength float64) lipgloss.Style {
-	if strength <= 0 {
-		return lipgloss.NewStyle()
-	}
-	return lipgloss.NewStyle().
-		Foreground(muteGlyphColor).
-		Background(blend(terminalBackground(), muteFlashColor, strength))
+// restingGlyphStyle breathes the glyph of a speaker that waits, from a tone
+// near the dim rows below it up to lit. A wide swing on purpose, for the
+// reason the queue arrows need one: the glyph is a single character.
+func restingGlyphStyle(elapsed time.Duration, lit color.Color) lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(flashsweep.BreathAt(elapsed, restingBreathBase(), lit))
+}
+
+func restingBreathBase() color.Color {
+	return theme.LightDark(lipgloss.Color("#C4C4C4"), lipgloss.Color("#5A5A5A"))
+}
+
+// pausedBreathLit deepens on a light ground and brightens on a dark one, the
+// pair every other light in this program breathes toward.
+func pausedBreathLit() color.Color {
+	return theme.LightDark(lipgloss.Color("#0F172A"), lipgloss.Color("#FFFFFF"))
+}
+
+// mutedBreathLit keeps the red the removed flash used. Silence is the one
+// resting state worth a warning colour.
+func mutedBreathLit() color.Color {
+	return theme.LightDark(lipgloss.Color("#C01C28"), lipgloss.Color("#F87171"))
 }
 
 // terminalBackground is the terminal's own background, or a themed stand-in

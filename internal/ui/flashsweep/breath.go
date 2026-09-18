@@ -46,6 +46,11 @@ func Breath(elapsed time.Duration) float32 {
 	return clamp((gauss(t-breathPeak, sigma)-floor)/(1-floor), 0, 1)
 }
 
+// BreathLit is how far into a cycle the breath is fullest. Offset an elapsed
+// time by it to start a breath lit rather than dark, for a light that must
+// answer at once and then settle.
+const BreathLit = time.Duration(breathPeak * float64(BreathPeriod))
+
 // BreathAt mixes two colours by the breath at a point in its cycle, for a
 // caller that wants a colour rather than a number.
 func BreathAt(elapsed time.Duration, rest, lit color.Color) color.Color {

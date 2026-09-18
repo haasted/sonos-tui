@@ -61,18 +61,18 @@ func TestVolumeMsgSurfacesAChangedLevel(t *testing.T) {
 	}
 }
 
-// Case: mute arriving by VolumeMsg, which must still drive the glyph flash.
-func TestVolumeMsgDrivesTheMuteFlash(t *testing.T) {
+// Case: mute arriving by VolumeMsg, which must still drive the glyph breath.
+func TestVolumeMsgDrivesTheMuteBreath(t *testing.T) {
 	m := playingModel(0)
 
 	m, _ = m.Update(VolumeMsg{Volume: 40, Muted: true})
-	if m.muteFlash() <= 0 {
-		t.Fatal("muting via VolumeMsg should start the glyph flash")
+	if m.restingSince.IsZero() {
+		t.Fatal("muting via VolumeMsg should start the glyph breath")
 	}
 
 	m, _ = m.Update(VolumeMsg{Volume: 40})
-	if m.muteFlash() != 0 {
-		t.Fatal("unmuting should clear the flash")
+	if !m.restingSince.IsZero() {
+		t.Fatal("unmuting a playing speaker should end the breath")
 	}
 }
 

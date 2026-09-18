@@ -72,21 +72,21 @@ func TestModel_Init_InvalidatesPreviousTickChain(t *testing.T) {
 		Duration: time.Minute,
 	})
 
-	staleCmd := m.Init()
-	require.NotNil(t, staleCmd)
+	require.NotNil(t, m.Init())
+	stale := nowplaying.ScrollGen(m)
 
-	currentCmd := m.Init()
-	require.NotNil(t, currentCmd)
+	require.NotNil(t, m.Init())
+	current := nowplaying.ScrollGen(m)
+	require.NotEqual(t, stale, current, "a second Init() must roll the scroll generation")
 
-	viewBefore := m.View()
+	windowBefore := nowplaying.VisibleTitle(m)
 
-	staleMsg := staleCmd()
-	mAfterStale, cmdAfterStale := m.Update(staleMsg)
+	mAfterStale, cmdAfterStale := m.Update(nowplaying.NewScrollTick(stale))
 	assert.Nil(t, cmdAfterStale, "a tick from a chain started by an earlier Init() must not perpetuate itself")
-	assert.Equal(t, viewBefore, mAfterStale.View(), "a tick from a stale chain must not mutate scroll state")
+	assert.Equal(t, windowBefore, nowplaying.VisibleTitle(mAfterStale),
+		"a tick from a stale chain must not mutate scroll state")
 
-	currentMsg := currentCmd()
-	_, cmdAfterCurrent := m.Update(currentMsg)
+	_, cmdAfterCurrent := m.Update(nowplaying.NewScrollTick(current))
 	assert.NotNil(t, cmdAfterCurrent, "a tick from the chain started by the latest Init() must keep ticking")
 }
 
@@ -101,7 +101,7 @@ func TestModel_ScrollTicksDoNotCrossBetweenModels(t *testing.T) {
 	require.NotNil(t, m.Init())
 
 	foreignTick := otherCmd()
-	viewBefore := m.View()
+	windowBefore := nowplaying.VisibleTitle(m)
 
 	for range nowplaying.ScrollDelayTicks * 2 {
 		var cmd tea.Cmd
@@ -109,7 +109,8 @@ func TestModel_ScrollTicksDoNotCrossBetweenModels(t *testing.T) {
 		assert.Nil(t, cmd, "a foreign model's tick must not re-arm this model's chain")
 	}
 
-	assert.Equal(t, viewBefore, m.View(), "a foreign model's ticks must not advance this model's marquee")
+	assert.Equal(t, windowBefore, nowplaying.VisibleTitle(m),
+		"a foreign model's ticks must not advance this model's marquee")
 }
 
 func TestModel_Elapsed_ClampsToDuration(t *testing.T) {
