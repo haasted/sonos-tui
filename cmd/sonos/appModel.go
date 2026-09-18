@@ -59,7 +59,7 @@ func newAppModel(ctx context.Context, events *sonos.EventManager, cached []sonos
 	tabs.Position = panes.Bottom
 	tabs.HideBorder = true
 
-	help := panes.NewModal(helpContent{})
+	help := panes.NewModal(helpContent{table: playerHelp})
 	help.Mode = panes.ModalHover
 
 	queue := panes.NewModal(queueContent{})
@@ -246,6 +246,9 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The queue modal claims the keyboard the same way, and takes the
 		// arrow keys with it: up and down scroll the list, not the volume.
 		if m.queue.IsOpen() {
+			if msg.String() == "?" {
+				return m.openHelp(queueHelp), nil
+			}
 			queue, cmd := m.queue.Update(msg)
 			m.queue = queue
 			if !m.queue.IsOpen() {
@@ -260,8 +263,7 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg.String() {
 		case "?":
-			m.help = m.help.Open()
-			return m, nil
+			return m.openHelp(playerHelp), nil
 		case "enter":
 			return m.openQueue()
 		}
@@ -454,7 +456,17 @@ func (m appModel) View() tea.View {
 	}
 
 	framed := padToHeight(content, max(m.frameRows, playerHeightRows))
-	return tea.NewView(queue.ViewOver(m.help.ViewOver(framed)))
+	// Help draws over the queue, not under it. The two can be open together
+	// now: "?" inside the queue explains the queue.
+	return tea.NewView(m.help.ViewOver(queue.ViewOver(framed)))
+}
+
+// openHelp shows the popup with the table for wherever the reader is. The
+// modal is reused rather than duplicated, so only one of them is ever open.
+func (m appModel) openHelp(table helpTable) appModel {
+	m.help.Content = helpContent{table: table}
+	m.help = m.help.Open()
+	return m
 }
 
 // padToHeight grows content to exactly rows lines. It never truncates: losing

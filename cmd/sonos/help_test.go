@@ -18,7 +18,7 @@ import (
 // this reads the bindings out of the source instead —
 // adding one without documenting it fails here rather than silently rotting.
 func TestHelp_DocumentsEveryKeyTheAppHandles(t *testing.T) {
-	text := helpContent{}.View().Content
+	documented := helpKeySet(playerHelp, queueHelp)
 
 	for _, key := range boundKeys(t) {
 		if why, omitted := helpOmissions[key]; omitted {
@@ -30,7 +30,7 @@ func TestHelp_DocumentsEveryKeyTheAppHandles(t *testing.T) {
 		if alias, ok := helpAliases[key]; ok {
 			want = alias
 		}
-		if !strings.Contains(text, want) {
+		if !documented[want] {
 			t.Errorf("key %q is handled but not in the help popup (looked for %q)", key, want)
 		}
 	}
@@ -51,13 +51,61 @@ func TestHelp_PromisesNothingTheAppIgnores(t *testing.T) {
 	}
 }
 
+// Case: the rule that each popup earns its place -- it shows the keys that work
+// where the reader is. A queue key in the player's popup promises something
+// that does nothing until the queue is open.
+func TestHelp_ThePlayerPopupHoldsNoQueueKeys(t *testing.T) {
+	documented := helpKeySet(playerHelp)
+
+	// k and j are left out: they are bound in both places, meaning play/pause
+	// and previous track here, and one row up or down inside the list.
+	for _, key := range []string{"pgup", "pgdn", "spc", "^u", "^d", "home", "end", "G", "b", "f"} {
+		if documented[key] {
+			t.Errorf("the player popup shows %q, which only moves the queue", key)
+		}
+	}
+}
+
+// Case: the queue's own popup, which must say how to move the list and how to
+// leave it.
+func TestHelp_TheQueuePopupCoversTheList(t *testing.T) {
+	documented := helpKeySet(queueHelp)
+
+	for _, key := range []string{"pgup", "pgdn", "^u", "^d", "home", "end", "esc"} {
+		if !documented[key] {
+			t.Errorf("the queue popup leaves out %q", key)
+		}
+	}
+}
+
+// helpKeySet is every key the tables document, as whole words. Searching the
+// rendered popup for a substring instead lets a one-letter binding pass on any
+// word holding that letter: "b" matched both "Playback" and "tab".
+func helpKeySet(tables ...helpTable) map[string]bool {
+	documented := map[string]bool{}
+	for _, table := range tables {
+		for _, column := range table {
+			for _, section := range column {
+				for _, key := range section.keys {
+					for _, word := range strings.Fields(key.keys) {
+						documented[word] = true
+					}
+				}
+			}
+		}
+	}
+	return documented
+}
+
 // helpAliases maps a binding to the text that documents it, where the two
-// differ: uppercase variants are covered by their lowercase form, and the
-// arrow keys are drawn as glyphs.
+// differ: uppercase variants are covered by their lowercase form, the arrow
+// keys are drawn as glyphs, and the queue's keys are abbreviated to fit the
+// key column.
 var helpAliases = map[string]string{
 	"P": "p", "K": "k", "J": "j", "L": "l", "M": "m",
 	"up": "↑", "down": "↓",
 	"right": "→", "left": "←", "shift+tab": "⇧tab",
+	"pgdown": "pgdn", "space": "spc", "ctrl+u": "^u", "ctrl+d": "^d",
 }
 
 // helpOmissions are bindings deliberately left out, with the reason. Anything
@@ -245,6 +293,20 @@ func keyMsgFor(key string) tea.KeyMsg {
 		return tea.KeyPressMsg{Code: tea.KeyUp}
 	case "enter":
 		return tea.KeyPressMsg{Code: tea.KeyEnter}
+	case "left":
+		return tea.KeyPressMsg{Code: tea.KeyLeft}
+	case "pgup":
+		return tea.KeyPressMsg{Code: tea.KeyPgUp}
+	case "pgdown":
+		return tea.KeyPressMsg{Code: tea.KeyPgDown}
+	case "home":
+		return tea.KeyPressMsg{Code: tea.KeyHome}
+	case "end":
+		return tea.KeyPressMsg{Code: tea.KeyEnd}
+	case "space":
+		return tea.KeyPressMsg{Code: tea.KeySpace}
+	case "ctrl+u", "ctrl+d":
+		return tea.KeyPressMsg{Code: rune(key[len(key)-1]), Mod: tea.ModCtrl}
 	default:
 		return tea.KeyPressMsg{Code: rune(key[0]), Text: key}
 	}

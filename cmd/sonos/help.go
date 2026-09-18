@@ -19,7 +19,7 @@ type helpKey struct {
 }
 
 const (
-	helpKeyColumn = 10 // width of the key column, so descriptions line up
+	helpKeyColumn = 11 // width of the key column, so descriptions line up
 	helpColumnGap = 4
 )
 
@@ -34,14 +34,20 @@ var (
 			Foreground(theme.LightDark(lipgloss.Color("#4A4A4A"), lipgloss.Color("#9B9B9B")))
 )
 
-// helpSections groups the bindings the way a reader looks for them, rather
-// than by which type happens to own them. Two columns so the whole table fits
-// a short terminal: a help popup that clips is worse than useless, and the App
-// section holding "?" and "q" is the part that would go first.
-var helpSections = [2][]struct {
+// helpSection is one titled group of keys.
+type helpSection struct {
 	title string
 	keys  []helpKey
-}{
+}
+
+// helpTable is a whole popup, as columns of sections. A popup that clips is
+// worse than useless, so a table wide enough to need two columns says so here
+// rather than being wrapped at render time.
+type helpTable [][]helpSection
+
+// playerHelp is what "?" shows over the player. It holds no queue keys: those
+// mean nothing until the queue is open, and the queue carries its own table.
+var playerHelp = helpTable{
 	{
 		{"Playback", []helpKey{
 			{"p  k", "play / pause"},
@@ -68,8 +74,28 @@ var helpSections = [2][]struct {
 	},
 }
 
-// helpContent renders the shortcut table as modal content.
-type helpContent struct{}
+// queueHelp is what "?" shows over the queue. One column: the list holds one
+// kind of key, and a second column would only spread six rows thinner.
+var queueHelp = helpTable{
+	{
+		{"Queue", []helpKey{
+			{"↑ ↓  k j", "move a row"},
+			{"pgup  b", "page up"},
+			{"pgdn f spc", "page down"},
+			{"^u  ^d", "half a page"},
+			{"home  g", "to the top"},
+			{"end  G", "to the end"},
+			{"esc", "close"},
+		}},
+	},
+}
+
+// helpContent renders one shortcut table as modal content. Which table it
+// holds is the caller's choice, so the popup shows the keys that work where
+// the reader is rather than every key the program has.
+type helpContent struct {
+	table helpTable
+}
 
 var _ tea.Model = helpContent{}
 
@@ -77,9 +103,9 @@ func (helpContent) Init() tea.Cmd { return nil }
 
 func (h helpContent) Update(tea.Msg) (tea.Model, tea.Cmd) { return h, nil }
 
-func (helpContent) View() tea.View {
-	columns := make([]string, len(helpSections))
-	for i, sections := range helpSections {
+func (h helpContent) View() tea.View {
+	columns := make([]string, 0, len(h.table))
+	for _, sections := range h.table {
 		var b strings.Builder
 		for j, section := range sections {
 			if j > 0 {
@@ -91,11 +117,20 @@ func (helpContent) View() tea.View {
 					helpWhatStyle.Render(key.what) + "\n")
 			}
 		}
-		columns[i] = strings.TrimRight(b.String(), "\n")
+		columns = append(columns, strings.TrimRight(b.String(), "\n"))
 	}
 
-	return tea.NewView(lipgloss.JoinHorizontal(lipgloss.Top,
-		columns[0], strings.Repeat(" ", helpColumnGap), columns[1]))
+	// Interleaved rather than joined with a separator: JoinHorizontal lays each
+	// argument out as its own block, and one pre-joined string would lose that.
+	gap := strings.Repeat(" ", helpColumnGap)
+	blocks := make([]string, 0, 2*len(columns))
+	for i, column := range columns {
+		if i > 0 {
+			blocks = append(blocks, gap)
+		}
+		blocks = append(blocks, column)
+	}
+	return tea.NewView(lipgloss.JoinHorizontal(lipgloss.Top, blocks...))
 }
 
 // padRight pads to exactly a display width, so a column lines up whatever it
