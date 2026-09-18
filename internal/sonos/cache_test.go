@@ -35,7 +35,7 @@ func TestCacheRoundTrip(t *testing.T) {
 	desc, ok := rebuilt[0].Description()
 	require.True(t, ok, "a rebuilt speaker should already carry its description")
 	assert.Equal(t, "Kitchen", desc.RoomName)
-	assert.Equal(t, "Kitchen", rebuilt[0].DisplayName())
+	assert.Equal(t, "Kitchen", rebuilt[0].RoomName())
 }
 
 // Case: no cache file at all, the first-ever run.

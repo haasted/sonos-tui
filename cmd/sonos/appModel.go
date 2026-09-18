@@ -68,7 +68,7 @@ func newAppModel(ctx context.Context, events *sonos.EventManager, cached []sonos
 	m := appModel{ctx: ctx, tabs: tabs, eventManager: events, fromCache: len(cached) > 0,
 		help: help, queue: queue}
 	for _, speaker := range cached {
-		m = m.insertSpeaker(speaker.IP, speaker.DisplayName(), newSpeakerModel(sonos.NewDevice(speaker)))
+		m = m.insertSpeaker(speaker.IP, speaker.RoomName(), newSpeakerModel(sonos.NewDevice(speaker)))
 	}
 	for i, ip := range m.ips {
 		if usnFor(cached, ip) == selectedUSN && selectedUSN != "" {

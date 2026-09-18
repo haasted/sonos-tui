@@ -136,8 +136,8 @@ func verifyCachedSpeaker(ctx context.Context, events *sonos.EventManager, speake
 			degraded = append(degraded, "no live updates")
 		}
 		return speakerVerifiedMsg{
-			ip: speaker.IP, title: speaker.DisplayName(), speaker: device,
-			degraded: degradedText(speaker.DisplayName(), degraded),
+			ip: speaker.IP, title: speaker.RoomName(), speaker: device,
+			degraded: degradedText(speaker.RoomName(), degraded),
 		}
 	}
 }
@@ -176,8 +176,8 @@ func discoverSpeakers(ctx context.Context, program *tea.Program) {
 // loadSpeaker builds a speaker's tab: fetch its state, then subscribe to its events.
 func loadSpeaker(ctx context.Context, events *sonos.EventManager, speaker sonos.Speaker) tea.Cmd {
 	return func() tea.Msg {
-		slog.Debug("starting loadSpeaker", "speaker", speaker.DisplayName())
-		defer slog.Debug("ending loadSpeaker", "speaker", speaker.DisplayName())
+		slog.Debug("starting loadSpeaker", "speaker", speaker.RoomName())
+		defer slog.Debug("ending loadSpeaker", "speaker", speaker.RoomName())
 
 		device := sonos.NewDevice(speaker)
 
@@ -192,8 +192,8 @@ func loadSpeaker(ctx context.Context, events *sonos.EventManager, speaker sonos.
 		}
 
 		return speakerReadyMsg{
-			title: speaker.DisplayName(), ip: speaker.IP, speaker: newSpeakerModel(device),
-			degraded: degradedText(speaker.DisplayName(), degraded),
+			title: speaker.RoomName(), ip: speaker.IP, speaker: newSpeakerModel(device),
+			degraded: degradedText(speaker.RoomName(), degraded),
 		}
 	}
 }

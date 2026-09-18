@@ -87,7 +87,7 @@ func TestRefusal_ArrivesUnnamedAndAFaultNamesItsRoom(t *testing.T) {
 	if !ok || refusal.Level != panes.NoticeInfo {
 		t.Fatalf("a refusal arrived at level %v, want info", refusal.Level)
 	}
-	if strings.Contains(refusal.Text, m.device.DisplayName()) {
+	if strings.Contains(refusal.Text, m.device.RoomName()) {
 		t.Fatalf("a refusal named its room: %q", refusal.Text)
 	}
 
@@ -95,7 +95,7 @@ func TestRefusal_ArrivesUnnamedAndAFaultNamesItsRoom(t *testing.T) {
 	if !ok || fault.Level != panes.NoticeError {
 		t.Fatalf("a fault arrived at level %v, want error", fault.Level)
 	}
-	if !strings.Contains(fault.Text, m.device.DisplayName()) {
+	if !strings.Contains(fault.Text, m.device.RoomName()) {
 		t.Fatalf("a fault did not name its room: %q", fault.Text)
 	}
 }

@@ -172,7 +172,7 @@ func openWithQueue(t *testing.T, items int) appModel {
 
 	updated, _ := m.Update(queueLoadedMsg{
 		device:  speaker.device,
-		room:    speaker.device.DisplayName(),
+		room:    speaker.device.RoomName(),
 		items:   queueItems(items),
 		playing: 1,
 	})
@@ -427,7 +427,7 @@ func deliverQueue(t *testing.T, items int) (appModel, tea.Cmd) {
 
 	updated, cmd := m.Update(queueLoadedMsg{
 		device: speaker.device,
-		room:   speaker.device.DisplayName(),
+		room:   speaker.device.RoomName(),
 		items:  queueItems(items),
 	})
 	return updated.(appModel), cmd

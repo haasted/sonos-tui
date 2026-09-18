@@ -390,7 +390,7 @@ func (m appModel) openQueue() (tea.Model, tea.Cmd) {
 
 	m.queue = m.queue.Open()
 	m.queue.Content = queueContent{
-		room:     speaker.device.DisplayName(),
+		room:     speaker.device.RoomName(),
 		loading:  true,
 		rows:     m.queue.ContentRows(),
 		width:    m.queue.ContentColumns(),
@@ -403,13 +403,13 @@ func readQueue(device *sonos.Device) tea.Cmd {
 	return func() tea.Msg {
 		items, err := device.Queue()
 		if err != nil {
-			slog.Warn("reading queue for the modal", "speaker", device.DisplayName(), "err", err)
-			return queueLoadedMsg{device: device, room: device.DisplayName(), err: err}
+			slog.Warn("reading queue for the modal", "speaker", device.RoomName(), "err", err)
+			return queueLoadedMsg{device: device, room: device.RoomName(), err: err}
 		}
 
 		return queueLoadedMsg{
 			device:  device,
-			room:    device.DisplayName(),
+			room:    device.RoomName(),
 			items:   items,
 			playing: playingPosition(device.State()),
 		}

@@ -236,7 +236,7 @@ func plainRefusal(name string, err error, state sonos.DeviceState) (string, bool
 func (m speakerModel) failed(err error) tea.Msg {
 	return panes.NoticeMsg{
 		Level: panes.NoticeError,
-		Text:  m.device.DisplayName() + ": " + err.Error(),
+		Text:  m.device.RoomName() + ": " + err.Error(),
 	}
 }
 

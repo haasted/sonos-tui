@@ -55,7 +55,10 @@ func (s Speaker) Description() (desc DeviceDescription, ok bool) {
 	return *d, true
 }
 
-func (s Speaker) DisplayName() string {
+// RoomName is the room the speaker is in, falling back to its address before
+// the description has arrived. Not DeviceDescription.DisplayName, which is the
+// model the speaker reports — "Era 100" against a room of "Kitchen".
+func (s Speaker) RoomName() string {
 	if desc, ok := s.Description(); ok && desc.RoomName != "" {
 		return desc.RoomName
 	}
