@@ -7,6 +7,10 @@ production code never imports from here.
 - `ssdp/` — evaluates `github.com/koron/go-ssdp` against the hand-rolled SSDP
   search in `internal/sonos/discovery.go`. Gated behind `-live` (needs real
   Sonos speakers on the network); see `make test-live`.
+- `queueevents/` — watches ContentDirectory events to find out what a speaker
+  reports when its queue changes, and prints which of the service's state
+  variables the speaker says it events. Needs real speakers; see
+  `make queue-events`.
 - `coverart/` — evaluates `github.com/blacktop/go-termimg` and
   `github.com/BourgeoisBear/rasterm` for rendering album art in the terminal.
   Runs against fixture images in `data/`, no live speaker calls.

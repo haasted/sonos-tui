@@ -1,4 +1,4 @@
-.PHONY: build fmt vet test test-verbose test-race test-live run uitest tidy adr-html help
+.PHONY: build fmt vet test test-verbose test-race test-live run run-logs run-capture run-nocache queue-events uitest tidy adr-html help
 
 .DEFAULT_GOAL := help
 
@@ -46,6 +46,12 @@ uitest: ## Show a UI demo: make uitest <name>. Without a name, the demos are lis
 	else \
 	  go run ./uitest $(UITEST_LAYOUT); \
 	fi
+
+queue-events: ## Watch ContentDirectory events while a queue is edited
+	cd experiments && go run ./queueevents
+
+run-logs: ## Run the CLI and print the logs once it exits
+	go run ./cmd/sonos -logs
 
 run-capture: ## Capture speaker data while running
 	go run ./cmd/sonos -capture=./captured-data
