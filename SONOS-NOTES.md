@@ -274,3 +274,126 @@ individually played track uses. `sid` identifies the service (204 here, against
 be told apart. `flags` varies between items in the same queue, and what it means
 is not established.
 
+
+## ContentDirectory tells you the queue changed, and nothing more
+
+Verified 2026-09-18 against five speakers, with `make queue-events`.
+
+The queue is served by `ContentDirectory:1`, which lives under `/MediaServer`,
+not `/MediaRenderer` like AVTransport and RenderingControl. Its event path is
+`/MediaServer/ContentDirectory/Event`.
+
+### What the speaker says it events
+
+From the SCPD at `/xml/ContentDirectory1.xml`. Two standard variables, and ten
+Sonos adds:
+
+```
+SystemUpdateID          ui4       rises on any change anywhere
+ContainerUpdateIDs      string    which containers changed
+ShareIndexInProgress    boolean   + ShareIndexLastError
+UserRadioUpdateID       string    + SavedQueuesUpdateID, ShareListUpdateID
+RecentlyPlayedUpdateID  string    + RadioFavoritesUpdateID, RadioLocationUpdateID
+Browseable              boolean   + FavoritesUpdateID
+```
+
+**There is no `LastChange`.** ContentDirectory:2 and :3 define one that carries
+detail; this service does not have it. So the list above is the most a speaker
+will ever tell you about its queue.
+
+### The event is a doorbell, not a delivery
+
+`ContainerUpdateIDs` is a flat, comma-separated list of positional pairs:
+
+```
+Q:0,42                     the speaker's own queue is now at version 42
+SQ:3,7,Q:0,42,R:0/0,9      three containers in one event
+```
+
+A container id holds a colon of its own, so the pairs cannot be split on a
+delimiter — they are counted, two fields at a time.
+
+The event carries **a version number only**. Nothing says whether a track was
+added, removed or moved, and nothing says how many there now are. The only
+answer is to Browse.
+
+**`Q:0` is the speaker's own queue.** `SQ:` is saved queues, `R:` radio, `FV:`
+and `FV:2` favourites. An event naming one of those says nothing about the
+queue, which is not the same as saying the queue is unchanged.
+
+**Update id 0 is a real value**, seen as `FV:2=0`. It is not a marker for
+"unknown", so an id that cannot be read must never fall back to 0: a stale
+queue would then look current.
+
+### The id from Browse is the id from the event
+
+Browse returns `UpdateID` for the container it browsed. It agreed with the id
+the event carried in every case observed (5 of 5), so the two can be compared
+to tell a stale copy from a current one.
+
+A full read of 131 to 151 items, which is two Browse calls, took **92 to 120
+ms**.
+
+### One id for each write, and the speaker may moderate them
+
+Ids rise by one for each write. A single edit is one write:
+
+```
+remove one track     131 items   Q:0  7 -> 8
+move a track         131 items   Q:0  8 -> 9
+move to position 1   131 items   Q:0  9 -> 10
+```
+
+A wholesale replacement is more than one write. The first batch is **exactly
+100 tracks**, observed twice, and the rest follows:
+
+```
+21:36:02.932  AVTransport       tracks=100          the first batch
+21:36:06.113  ContentDirectory  Q:0 10 -> 12        id 11 never announced
+21:36:06.233  browsed           151 items  id=12    the finished queue
+```
+
+The id jumped from 10 to 12, so the intermediate write did raise it, but the
+speaker did not send an event for it. A reader that browsed on the event got
+the complete queue and never saw the 100-track state.
+
+**This moderation is real but is not a promise.** An earlier replacement on the
+same speaker sent both ids, 740 ms apart. So a read can still land on a queue
+that is part-written: complete, well-formed, and about to be replaced. The
+defence is that the next event corrects it, which at about 100 ms a read costs
+little. A delay before reading is not needed.
+
+**AVTransport knows first.** It reported the replacement 3.2 seconds before
+ContentDirectory did. Its number during those seconds is the part-written
+queue, so it is the earlier signal and the wrong one.
+
+### Only ContentDirectory sees a reorder
+
+A move inside the queue keeps the length, and AVTransport carries no field that
+changes:
+
+```
+21:34:33.970  AVTransport       tracks=131 track=2    every field unchanged
+21:34:33.990  ContentDirectory  Q:0=9                 a new version
+```
+
+AVTransport does fire, so a reader watching it is woken with nothing to look
+at. This is the case that makes the subscription worth its cost.
+
+A move to position 1 also shifts `CurrentTrack` from 2 to 3, because a track is
+now ahead of the one playing. That is a side effect of the reorder. Read as a
+signal it says the listener skipped forward, which is wrong.
+
+### The first event after SUBSCRIBE is a value, not an inventory
+
+GENA replays the current value of each evented variable. The current value of
+`ContainerUpdateIDs` is **whichever containers changed last**, which may be any
+container or none of interest:
+
+```
+run 1   Ovenpå  R:=1      the queue had not changed recently
+run 2   Ovenpå  Q:0=7     the queue was the last thing to change
+```
+
+So a program learns the queue's id at subscription only by luck. Browse once at
+startup to establish it.
