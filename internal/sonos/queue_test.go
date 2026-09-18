@@ -25,10 +25,10 @@ func TestQueue_PagesUntilItHasEverything(t *testing.T) {
 	queue, err := clientFor(server).GetQueue()
 	require.NoError(t, err)
 
-	assert.Len(t, queue, total, "every page must be fetched, not just the first")
+	assert.Len(t, queue.Items, total, "every page must be fetched, not just the first")
 	assert.Greater(t, *calls, 1, "a 250-item queue cannot arrive in one page")
-	assert.Equal(t, "Track 1", queue[0].Title)
-	assert.Equal(t, "Track 250", queue[total-1].Title)
+	assert.Equal(t, "Track 1", queue.Items[0].Title)
+	assert.Equal(t, "Track 250", queue.Items[total-1].Title)
 }
 
 // Case: positions, which must line up with AVTransport's 1-based CurrentTrack
@@ -40,7 +40,7 @@ func TestQueue_PositionsAreOneBasedAndContiguous(t *testing.T) {
 	queue, err := clientFor(server).GetQueue()
 	require.NoError(t, err)
 
-	for i, item := range queue {
+	for i, item := range queue.Items {
 		assert.Equal(t, i+1, item.Position)
 	}
 }
@@ -54,7 +54,7 @@ func TestQueue_EmptyQueueReturnsNothing(t *testing.T) {
 	queue, err := clientFor(server).GetQueue()
 	require.NoError(t, err)
 
-	assert.Empty(t, queue)
+	assert.Empty(t, queue.Items)
 }
 
 // Case: a speaker claiming a total it will not serve. Paging on Total alone
@@ -68,7 +68,7 @@ func TestQueue_StopsWhenAPageComesBackEmpty(t *testing.T) {
 	queue, err := clientFor(server).GetQueue()
 	require.NoError(t, err)
 
-	assert.Empty(t, queue, "a claimed total must not produce phantom items")
+	assert.Empty(t, queue.Items, "a claimed total must not produce phantom items")
 }
 
 // Case: the DIDL document, which carries many items. Parsing it the way a
@@ -80,11 +80,11 @@ func TestQueue_EveryItemInTheDocumentIsParsed(t *testing.T) {
 	queue, err := clientFor(server).GetQueue()
 	require.NoError(t, err)
 
-	require.Len(t, queue, 3)
-	assert.Equal(t, "Artist 2", queue[1].Artist)
-	assert.Equal(t, "Album 2", queue[1].Album)
-	assert.Equal(t, "0:03:21", queue[1].Duration)
-	assert.Contains(t, queue[1].URI, "track-2")
+	require.Len(t, queue.Items, 3)
+	assert.Equal(t, "Artist 2", queue.Items[1].Artist)
+	assert.Equal(t, "Album 2", queue.Items[1].Album)
+	assert.Equal(t, "0:03:21", queue.Items[1].Duration)
+	assert.Contains(t, queue.Items[1].URI, "track-2")
 }
 
 func clientFor(server *httptest.Server) *sonos.SonosClient {

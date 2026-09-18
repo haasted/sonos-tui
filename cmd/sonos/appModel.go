@@ -285,7 +285,9 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		wasEmpty := len(m.tabs.Items) == 0
 		m = m.insertSpeaker(msg.ip, msg.title, msg.speaker)
 
-		var cmds []tea.Cmd
+		// One read for each speaker, each in its own command and so in its own
+		// goroutine. They run behind the tab that is already on screen.
+		cmds := []tea.Cmd{refreshQueue(msg.speaker.device)}
 		if m.eventManager != nil {
 			cmds = append(cmds, waitForEvent(msg.speaker.device))
 		}
@@ -342,7 +344,7 @@ func (m appModel) applyVerified(msg speakerVerifiedMsg) (tea.Model, tea.Cmd) {
 		if msg.degraded != "" {
 			degraded = notify(panes.NoticeWarn, msg.degraded)
 		}
-		return m, tea.Batch(cmd, degraded, waitForEvent(msg.speaker))
+		return m, tea.Batch(cmd, degraded, refreshQueue(msg.speaker), waitForEvent(msg.speaker))
 	}
 	return m, nil
 }
@@ -400,25 +402,44 @@ func (m appModel) applyEvent(event sonos.Event) (tea.Model, tea.Cmd) {
 			continue
 		}
 
-		updated, cmd := speaker.Update(eventMsg(event, speaker.device.State()))
-		m.tabs.Items[i].Content = updated
+		// An event the panel has nothing to say about still has to re-arm the
+		// wait below, so it reaches here and simply does not touch the tab.
+		var cmd tea.Cmd
+		if panel := eventMsg(event, speaker.device.State()); panel != nil {
+			updated, panelCmd := speaker.Update(panel)
+			m.tabs.Items[i].Content = updated
+			cmd = panelCmd
+		}
 
 		if i != m.tabs.Active {
 			cmd = nil
 		}
-		return m, tea.Batch(cmd, waitForEvent(speaker.device))
+
+		// Read the queue of whichever speaker changed, on screen or not: the
+		// point is that every queue is current before anyone asks for it.
+		var reread tea.Cmd
+		if _, queue := event.Directory.QueueUpdate(); queue {
+			reread = refreshQueue(speaker.device)
+		}
+		return m, tea.Batch(cmd, reread, waitForEvent(speaker.device))
 	}
 
 	slog.Warn("event for a speaker with no tab — dropping", "speaker", event.Speaker)
 	return m, nil
 }
 
-// eventMsg narrows a volume event to a VolumeMsg. A RenderingControl event
-// carries no playback position, so sending a TrackMsg would reset the clock to
+// eventMsg turns one speaker event into a message for the panel. Each kind is
+// named rather than defaulted: a RenderingControl or ContentDirectory event
+// carries no playback position, so a TrackMsg would reset the clock to
 // whatever stale RelTime the last AVTransport event left behind.
 func eventMsg(event sonos.Event, state sonos.DeviceState) tea.Msg {
-	if event.Kind == sonos.EventRenderingControl {
+	switch event.Kind {
+	case sonos.EventRenderingControl:
 		return nowplaying.VolumeMsg{Volume: state.Volume, Muted: state.Muted}
+	case sonos.EventContentDirectory:
+		// The queue changed. Nothing on the panel shows a queue, so the panel
+		// has nothing to say; applyEvent reads the queue instead.
+		return nil
 	}
 	return nowplaying.TrackMsg{Track: trackFromState(state)}
 }

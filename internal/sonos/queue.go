@@ -28,23 +28,41 @@ type QueueItem struct {
 	TrackMetadata
 }
 
+// Queue is a speaker's queue and the version the speaker gave for it, so a
+// caller can tell a copy it read earlier from the one the speaker holds now.
+type Queue struct {
+	Items    []QueueItem
+	UpdateID int
+}
+
 // GetQueue reads the speaker's queue, paging until it has everything.
 //
 // Browse returns at most RequestedCount items and reports how many it sent and
 // how many exist, so a single call is only ever correct by luck on a short
 // queue.
-func (c *SonosClient) GetQueue() ([]QueueItem, error) {
-	var queue []QueueItem
+func (c *SonosClient) GetQueue() (Queue, error) {
+	queue := Queue{}
 
 	for {
-		page, err := c.browseQueue(len(queue), browsePageSize)
+		page, err := c.browseQueue(len(queue.Items), browsePageSize)
 		if err != nil {
-			return nil, err
+			return Queue{}, err
+		}
+
+		// The id of the first page is the queue this read began against. A
+		// later page reporting another means the queue changed underneath the
+		// paging, so the result is a mix of two queues rather than either.
+		if len(queue.Items) == 0 {
+			queue.UpdateID = page.updateID
+		} else if page.updateID != queue.UpdateID {
+			slog.Warn("the queue changed while it was being read",
+				"began", queue.UpdateID, "now", page.updateID)
+			queue.UpdateID = page.updateID
 		}
 
 		for _, item := range page.items {
-			queue = append(queue, QueueItem{
-				Position:      len(queue) + 1,
+			queue.Items = append(queue.Items, QueueItem{
+				Position:      len(queue.Items) + 1,
 				TrackMetadata: item,
 			})
 		}
@@ -52,14 +70,14 @@ func (c *SonosClient) GetQueue() ([]QueueItem, error) {
 		// Stop on a page that returned nothing, not only on reaching the
 		// claimed total: a speaker reporting a total it will not serve would
 		// otherwise loop forever.
-		if page.returned == 0 || len(queue) >= page.total {
+		if page.returned == 0 || len(queue.Items) >= page.total {
 			// The claim is only worth reporting when it is wrong. Returning it
 			// alongside the items would be a second count that equals len in
 			// every correct case and differs only during a fault — which is
 			// precisely when a caller would reach for the wrong one.
-			if len(queue) != page.total {
+			if len(queue.Items) != page.total {
 				slog.Warn("speaker served a different number of queue items than it claimed",
-					"served", len(queue), "claimed", page.total)
+					"served", len(queue.Items), "claimed", page.total)
 			}
 			return queue, nil
 		}
@@ -72,6 +90,7 @@ type browsePage struct {
 	items    []TrackMetadata
 	returned int
 	total    int
+	updateID int // the container's version at the moment it was browsed
 }
 
 func (c *SonosClient) browseQueue(start, count int) (browsePage, error) {
@@ -101,6 +120,7 @@ func parseBrowseResponse(data []byte) (browsePage, error) {
 				Result         string `xml:"Result"`
 				NumberReturned int    `xml:"NumberReturned"`
 				TotalMatches   int    `xml:"TotalMatches"`
+				UpdateID       int    `xml:"UpdateID"`
 			} `xml:"BrowseResponse"`
 		} `xml:"Body"`
 	}
@@ -113,6 +133,7 @@ func parseBrowseResponse(data []byte) (browsePage, error) {
 		items:    parseDIDLTracks(response.Result),
 		returned: response.NumberReturned,
 		total:    response.TotalMatches,
+		updateID: response.UpdateID,
 	}, nil
 }
 

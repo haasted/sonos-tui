@@ -138,12 +138,19 @@ func (el *eventListener) close(ctx context.Context) error {
 	return el.server.Shutdown(ctx)
 }
 
-// handle dispatches the body to the parser for this route's service.
+// handle dispatches the body to the parser for this route's service. Named
+// rather than defaulted: every service has its own document shape, so a body
+// sent to the wrong parser is read as an event that never happened.
 func (r route) handle(body []byte) error {
-	if r.service == renderingControlEventPath {
+	switch r.service {
+	case avTransportEventPath:
+		return r.device.HandleAVTransportEvent(body)
+	case renderingControlEventPath:
 		return r.device.HandleRenderingControlEvent(body)
+	case contentDirectoryEventPath:
+		return r.device.HandleContentDirectoryEvent(body)
 	}
-	return r.device.HandleAVTransportEvent(body)
+	return fmt.Errorf("no parser for event service %q", r.service)
 }
 
 func notifyPath(device *Device, service string) string {

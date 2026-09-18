@@ -243,3 +243,50 @@ func TestEventManager_CloseUnsubscribesEveryService(t *testing.T) {
 	assert.Equal(t, len(subscribedServices), fs.unsubscribeCount(),
 		"every subscribed service should be unsubscribed on shutdown")
 }
+
+// Case: a ContentDirectory NOTIFY, which is the first subscription outside
+// /MediaRenderer. Its document has no LastChange, so a body routed to either
+// of the other two parsers reads as an event that never happened.
+func TestEventManager_DeliversContentDirectoryToSubscribedDevice(t *testing.T) {
+	fs := newFakeSpeaker(t)
+	device := testDevice(fs)
+
+	em, err := NewEventManager()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		em.Close(ctx)
+	})
+
+	require.NoError(t, em.Subscribe(context.Background(), device))
+
+	callback := fs.callback(contentDirectoryEventPath)
+	require.NotEmpty(t, callback, "the device must be subscribed to ContentDirectory")
+
+	body := `<e:propertyset xmlns:e="urn:schemas-upnp-org:event-1-0">` +
+		`<e:property><SystemUpdateID>118</SystemUpdateID></e:property>` +
+		`<e:property><ContainerUpdateIDs>Q:0,42</ContainerUpdateIDs></e:property>` +
+		`</e:propertyset>`
+
+	req, err := http.NewRequest("NOTIFY", callback, strings.NewReader(body))
+	require.NoError(t, err)
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	select {
+	case event := <-device.Events():
+		assert.Equal(t, EventContentDirectory, event.Kind, "the panel must be able to tell this from a track change")
+		updateID, named := event.Directory.QueueUpdate()
+		assert.True(t, named)
+		assert.Equal(t, 42, updateID)
+	case <-time.After(2 * time.Second):
+		t.Fatal("no event published for a ContentDirectory NOTIFY")
+	}
+
+	assert.Equal(t, 42, device.State().QueueUpdateID)
+}

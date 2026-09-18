@@ -9,10 +9,19 @@ import (
 const (
 	avTransportEventPath      = "/MediaRenderer/AVTransport/Event"
 	renderingControlEventPath = "/MediaRenderer/RenderingControl/Event"
+
+	// contentDirectoryEventPath is the first subscription outside
+	// /MediaRenderer. The queue is served by the MediaServer half of the
+	// device, which is a separate UPnP device behind the same address.
+	contentDirectoryEventPath = "/MediaServer/ContentDirectory/Event"
 )
 
 // subscribedServices are the event services each device is subscribed to.
-var subscribedServices = []string{avTransportEventPath, renderingControlEventPath}
+var subscribedServices = []string{
+	avTransportEventPath,
+	renderingControlEventPath,
+	contentDirectoryEventPath,
+}
 
 const subscriptionSeconds = 300
 

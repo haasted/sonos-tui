@@ -441,30 +441,43 @@ func (m appModel) openQueue() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	state := speaker.device.State()
 	m.queue = m.queue.Open()
 	m.queue.Content = queueContent{
 		room:     speaker.device.RoomName(),
-		loading:  true,
+		items:    state.Queue,
+		playing:  playingPosition(state),
+		loading:  !state.QueueKnown,
 		rows:     m.queue.ContentRows(),
 		width:    m.queue.ContentColumns(),
 		openedAt: time.Now(),
 	}
-	return m, readQueue(speaker.device)
+
+	// Nothing to fetch in the ordinary case: the queue was read at startup and
+	// has been kept current by events since. A read here is the fallback for a
+	// speaker whose first read has not landed yet.
+	if state.QueueKnown {
+		return m, nil
+	}
+	return m, refreshQueue(speaker.device)
 }
 
-func readQueue(device *sonos.Device) tea.Cmd {
+// refreshQueue reads a speaker's queue into its Device and reports that it
+// landed. Every speaker gets one at startup, and one more whenever an event
+// says its queue changed.
+func refreshQueue(device *sonos.Device) tea.Cmd {
 	return func() tea.Msg {
-		items, err := device.Queue()
-		if err != nil {
-			slog.Warn("reading queue for the modal", "speaker", device.RoomName(), "err", err)
+		if err := device.RefreshQueue(); err != nil {
+			slog.Warn("reading a speaker's queue", "speaker", device.RoomName(), "err", err)
 			return queueLoadedMsg{device: device, room: device.RoomName(), err: err}
 		}
 
+		state := device.State()
 		return queueLoadedMsg{
 			device:  device,
 			room:    device.RoomName(),
-			items:   items,
-			playing: playingPosition(device.State()),
+			items:   state.Queue,
+			playing: playingPosition(state),
 		}
 	}
 }
@@ -480,8 +493,10 @@ func playingPosition(state sonos.DeviceState) int {
 	return state.Track
 }
 
-// applyQueueLoaded fills the open modal in. A result for a speaker other than
-// the one on screen is dropped rather than shown under the wrong room name.
+// applyQueueLoaded fills the open modal in. Reads arrive for every speaker,
+// most of them for a modal that is closed or showing another room, so a result
+// that does not match what is on screen is dropped rather than drawn under the
+// wrong room name.
 func (m appModel) applyQueueLoaded(msg queueLoadedMsg) (tea.Model, tea.Cmd) {
 	content, ok := m.queue.Content.(queueContent)
 	if !ok || !m.queue.IsOpen() {
@@ -498,6 +513,10 @@ func (m appModel) applyQueueLoaded(msg queueLoadedMsg) (tea.Model, tea.Cmd) {
 	content.loading = false
 	content.rows = m.queue.ContentRows()
 	content.width = m.queue.ContentColumns()
+
+	// A queue that changed under the reader can be shorter than where they had
+	// scrolled to. Keep the place, but not past the end of the list.
+	content.offset = min(content.offset, content.maxOffset())
 
 	m.queue.Content = content
 

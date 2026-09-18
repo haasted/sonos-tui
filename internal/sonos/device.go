@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 )
 
 const eventChanBuffer = 8
@@ -19,6 +20,8 @@ type Device struct {
 
 	mu    sync.RWMutex
 	state DeviceState
+
+	queueGen atomic.Int64 // guards queue reads, so a slow one cannot overwrite a newer
 
 	events chan Event
 }
@@ -39,6 +42,22 @@ type DeviceState struct {
 
 	Track  int // 1-based position in the queue, as the speaker counts it
 	Tracks int // how many the speaker says the queue holds
+
+	// Queue is the speaker's queue as it was last read. A slice, so copying
+	// DeviceState copies a header rather than the items -- which means every
+	// copy shares one backing array, and the queue must always be replaced
+	// wholesale rather than edited in place.
+	Queue []QueueItem
+
+	// QueueKnown says the queue above was read, as against not read yet. An
+	// empty queue is a real answer and cannot be told from a missing one by
+	// length, nor by QueueUpdateID, whose zero is also a real value.
+	QueueKnown bool
+
+	// QueueUpdateID is the speaker's own version number for its queue. It
+	// rises whenever the queue changes, so a copy read at a lower id is
+	// stale. Zero until an event or a Browse has reported one.
+	QueueUpdateID int
 }
 
 // Live reports playback with no meaningful duration: a broadcast, or a station
@@ -69,6 +88,7 @@ type EventKind int
 const (
 	EventAVTransport EventKind = iota
 	EventRenderingControl
+	EventContentDirectory
 )
 
 type Event struct {
@@ -77,6 +97,10 @@ type Event struct {
 	Transport TransportInfo
 	Current   TrackMetadata
 	Raw       AVTransportEvent
+
+	// Directory is set on a ContentDirectory event only. It says which
+	// containers changed, and carries no playback state at all.
+	Directory ContentDirectoryEvent
 }
 
 // NewDevice creates a Device for the given discovered speaker.
@@ -182,6 +206,40 @@ func (d *Device) HandleRenderingControlEvent(body []byte) error {
 	return nil
 }
 
+// HandleContentDirectoryEvent records which containers changed and publishes
+// the fact. It fetches nothing: the event says the queue moved, not what it
+// now holds, and a Browse for every speaker on every change is a cost the
+// caller should choose rather than inherit.
+func (d *Device) HandleContentDirectoryEvent(body []byte) error {
+	parsed, err := ParseContentDirectoryEvent(body)
+	if err != nil {
+		return err
+	}
+
+	d.mu.Lock()
+	if updateID, named := parsed.QueueUpdate(); named {
+		d.state.QueueUpdateID = updateID
+	}
+	snapshot := d.state
+	d.mu.Unlock()
+
+	event := Event{
+		Kind:      EventContentDirectory,
+		Speaker:   d.Speaker,
+		Transport: snapshot.Transport,
+		Current:   snapshot.Current,
+		Directory: parsed,
+	}
+
+	select {
+	case d.events <- event:
+	default:
+		slog.Warn("event channel full — dropping event", "speaker", d.Speaker)
+	}
+
+	return nil
+}
+
 // State returns a copy of the last-known state. It never touches the
 // network — call Refresh first to populate it.
 func (d *Device) State() DeviceState {
@@ -255,8 +313,33 @@ func (d *Device) RefreshVolume() error {
 // Queue reads the speaker's playback queue. Deliberately not stored on
 // DeviceState: nothing renders it yet, and a queue that went stale in state
 // would be worse than one fetched when asked for.
-func (d *Device) Queue() ([]QueueItem, error) {
+func (d *Device) Queue() (Queue, error) {
 	return d.client.GetQueue()
+}
+
+// RefreshQueue reads the queue and stores it. Guarded by a generation, because
+// a queue can be announced twice within a second while a read takes about a
+// tenth of one: two reads are then in flight, and the slower one must not
+// overwrite the newer answer it raced.
+func (d *Device) RefreshQueue() error {
+	generation := d.queueGen.Add(1)
+
+	queue, err := d.client.GetQueue()
+	if err != nil {
+		return err
+	}
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if generation != d.queueGen.Load() {
+		slog.Debug("dropping a queue read a newer one overtook", "speaker", d.Speaker)
+		return nil
+	}
+	d.state.Queue = queue.Items
+	d.state.QueueUpdateID = queue.UpdateID
+	d.state.QueueKnown = true
+	return nil
 }
 
 func (d *Device) RefreshAll() error {
