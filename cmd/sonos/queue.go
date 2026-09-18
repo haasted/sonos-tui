@@ -102,8 +102,12 @@ var _ tea.Model = queueContent{}
 
 func (queueContent) Init() tea.Cmd { return nil }
 
-// Update scrolls the list. The modal forwards every key except esc, so up and
-// down mean the queue here and the volume everywhere else.
+// Update scrolls the list. The modal forwards every key except esc, so these
+// keys mean the queue here and the player everywhere else: j is the previous
+// track outside this list and one row down inside it.
+//
+// The keys are the ones charm.land/bubbles binds by default, which are the
+// ones less and vi established.
 func (q queueContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	key, ok := msg.(tea.KeyMsg)
 	if !ok {
@@ -111,19 +115,68 @@ func (q queueContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	switch key.String() {
-	case "up":
-		if q.offset == 0 {
-			return q.bump(bumpTop), nil
-		}
-		q.offset--
-	case "down":
-		if q.offset >= q.maxOffset() {
-			return q.bump(bumpBottom), nil
-		}
-		q.offset++
+	case "up", "k":
+		q = q.scrollBy(-1)
+	case "down", "j":
+		q = q.scrollBy(1)
+	case "pgup", "b":
+		q = q.scrollBy(-q.page())
+	case "pgdown", "f", "space":
+		q = q.scrollBy(q.page())
+	case "ctrl+u":
+		q = q.scrollBy(-q.halfPage())
+	case "ctrl+d":
+		q = q.scrollBy(q.halfPage())
+	case "home", "g":
+		q = q.scrollToEnd(bumpTop)
+	case "end", "G":
+		q = q.scrollToEnd(bumpBottom)
 	}
 	return q, nil
 }
+
+// scrollBy moves the window by delta rows, stopping at either end. It lights
+// an edge only where the window could not move at all: a page down that would
+// run past the last row lands on it instead, which is no refusal.
+//
+// Every relative key goes through it, and every absolute one through
+// scrollToEnd, so a cursor added later changes how a move lands in two
+// functions rather than in each of eight bindings.
+func (q queueContent) scrollBy(delta int) queueContent {
+	target := max(min(q.offset+delta, q.maxOffset()), 0)
+	if target == q.offset {
+		if delta < 0 {
+			return q.bump(bumpTop)
+		}
+		return q.bump(bumpBottom)
+	}
+	q.offset = target
+	return q
+}
+
+// scrollToEnd moves the window to one end of the list. The edge is passed in
+// rather than derived from the row it lands on, because a queue that fits its
+// window has one row at both ends and the two keys would then light the same
+// border.
+func (q queueContent) scrollToEnd(edge bumpEdge) queueContent {
+	target := 0
+	if edge == bumpBottom {
+		target = q.maxOffset()
+	}
+	if target == q.offset {
+		return q.bump(edge)
+	}
+	q.offset = target
+	return q
+}
+
+// page is how far a page move travels: one whole window, as a pager does. The
+// reader keeps their place by the heading, which names the rows on screen.
+func (q queueContent) page() int { return q.visibleRows() }
+
+// halfPage is the move ctrl+u and ctrl+d make, which keeps half the window in
+// view and so needs no heading to stay oriented.
+func (q queueContent) halfPage() int { return max(q.visibleRows()/2, 1) }
 
 // bump lights the end the reader pressed against. Every press restarts it, so
 // a held key holds the edge lit and it cools once the key is released.
