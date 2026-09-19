@@ -22,6 +22,9 @@ const (
 	actionPlay     = "play"
 	actionPause    = "pause"
 
+	confirmMuted   = "muted"
+	confirmUnmuted = "unmuted"
+
 	volumeDebounce = 150 * time.Millisecond // how long one volume window stays open before committing
 	volumeStepUp   = 1                      // volume added per up press
 	volumeStepDown = -1                     // volume removed per down press, negative by design
@@ -31,6 +34,20 @@ const (
 	// how finely a tap moves. Down is deliberately uncapped: it is the escape.
 	volumeUpMaxStep = 6
 )
+
+// confirmations are what each playback command says once it has happened. Play
+// and pause change form, where a skip reads the same as an outcome as it does
+// as an order.
+//
+// Volume is absent on purpose. It writes its own level into the album row, and
+// a held key commits every volumeDebounce, so a notice for each would flicker
+// over a clearer answer.
+var confirmations = map[string]string{
+	actionPlay:     "playing",
+	actionPause:    "paused",
+	actionNext:     "next track",
+	actionPrevious: "previous track",
+}
 
 var volumeGenerations atomic.Int64 // globally unique window ids, so one speaker's tick cannot fire another's
 
@@ -286,8 +303,19 @@ func (m speakerModel) toggleMute() tea.Cmd {
 			return m.failed(err)
 		}
 		state := m.device.State()
-		return m.to(nowplaying.VolumeMsg{Volume: state.Volume, Muted: state.Muted})
+		volume := m.to(nowplaying.VolumeMsg{Volume: state.Volume, Muted: state.Muted})
+		return withConfirmation(volume, muteConfirmation(state.Muted))
 	}
+}
+
+// muteConfirmation is what a mute toggle says once it has happened. The state
+// is read back from the speaker rather than assumed from the key, so a toggle
+// that landed the other way round says what is true.
+func muteConfirmation(muted bool) string {
+	if muted {
+		return confirmMuted
+	}
+	return confirmUnmuted
 }
 
 // deviceCommand wraps a device action as a Bubbletea command. The name travels
@@ -312,7 +340,28 @@ func (m speakerModel) runDeviceAction(name string, action func(*sonos.Device) er
 
 		return m.refused(name, err, state)
 	}
-	return m.to(nowplaying.TrackMsg{Track: trackFromState(m.device.State())})
+
+	track := m.to(nowplaying.TrackMsg{Track: trackFromState(m.device.State())})
+	return withConfirmation(track, confirmations[name])
+}
+
+// withConfirmation sends the command's own result and a notice saying what
+// happened. Two messages rather than one: the notice belongs to the whole
+// program, where the result belongs to the speaker that issued the command.
+//
+// The runtime unpacks a batch before Update sees it, so neither message is
+// wrapped in anything a handler has to know about. An empty said means the
+// command answers for itself and needs no words.
+func withConfirmation(result tea.Msg, said string) tea.Msg {
+	if said == "" {
+		return result
+	}
+	return tea.BatchMsg{
+		func() tea.Msg { return result },
+		func() tea.Msg {
+			return panes.NoticeMsg{Level: panes.NoticeInfo, Text: said, Confirmation: true}
+		},
+	}
 }
 
 // View renders the now-playing widget.
