@@ -1,6 +1,7 @@
 package panes_test
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -22,23 +23,54 @@ func TestNotice_AppearsInTheDividerWithoutGrowingTheFrame(t *testing.T) {
 	assert.Equal(t, before, strings.Count(tabs.View(), "\n"), "a notice must not add a line")
 }
 
-// Case: each severity, which must be distinguishable by shape alone so the
-// signal survives a monochrome terminal.
-func TestNotice_EachLevelHasItsOwnGlyph(t *testing.T) {
-	glyphs := map[panes.NoticeLevel]string{
-		panes.NoticeInfo:  "ℹ",
-		panes.NoticeWarn:  "⚠",
-		panes.NoticeError: "✖",
-	}
+// Case: the text a notice carries, which is all of it. A level used to lead
+// with a mark of its own, and the rule now holds a notice after every command:
+// a glyph saying "this is information" in front of "paused" was noise.
+func TestNotice_CarriesItsTextAndNoMark(t *testing.T) {
+	for _, level := range []panes.NoticeLevel{panes.NoticeInfo, panes.NoticeWarn, panes.NoticeError} {
+		view := plainNotice(show(noticeTabs(), level, "paused").View())
 
-	seen := map[string]bool{}
-	for level, glyph := range glyphs {
-		view := show(noticeTabs(), level, "something happened").View()
-		assert.Contains(t, view, glyph)
-		seen[glyph] = true
+		line, found := lineHolding(view, "paused")
+		assert.True(t, found, "the notice is not on the rule")
+
+		// The rule is everything either side, so what is left when it is
+		// trimmed away is the whole of what the notice drew. Compared rather
+		// than searched: a search for the old glyphs would pass on any other.
+		assert.Equal(t, " paused ", strings.Trim(line, string(noticeRuleGlyph)),
+			"a notice must carry its text and nothing else")
 	}
-	assert.Len(t, seen, 3, "the three levels must not share a glyph")
 }
+
+// noticeRuleGlyph is the character the divider is drawn from.
+const noticeRuleGlyph = '─'
+
+// lineHolding is the rendered line carrying want.
+func lineHolding(view, want string) (string, bool) {
+	for _, line := range strings.Split(view, "\n") {
+		if strings.Contains(line, want) {
+			return line, true
+		}
+	}
+	return "", false
+}
+
+// Case: the severities, which must still be told apart now that no glyph does
+// it. Colour is what is left, and the three must not share one.
+func TestNotice_EachLevelLooksDifferent(t *testing.T) {
+	seen := map[string]bool{}
+	for _, level := range []panes.NoticeLevel{panes.NoticeInfo, panes.NoticeWarn, panes.NoticeError} {
+		seen[show(noticeTabs(), level, "something happened").View()] = true
+	}
+	assert.Len(t, seen, 3, "the three levels must not draw the same")
+}
+
+// plainNotice drops the escapes, so a search for a glyph cannot match a colour
+// code that happens to hold the same bytes.
+func plainNotice(view string) string {
+	return ansiEscape.ReplaceAllString(view, "")
+}
+
+var ansiEscape = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 // Case: a second notice arriving while the first still shows — latest wins, so
 // the older one must be gone rather than queued behind it.

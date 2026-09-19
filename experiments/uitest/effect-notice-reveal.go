@@ -25,7 +25,7 @@ const (
 
 // revealTextFlag overrides the label, so a style can be judged on the string it
 // will really carry rather than only on the one it was tuned against.
-var revealTextFlag = flag.String("reveal-text", " ℹ press ? for help ",
+var revealTextFlag = flag.String("reveal-text", " press ? for keyboard shortcuts ",
 	"text for the `reveal` layout to open")
 
 // revealBlurbs explain each style in the demo's own words. The package names

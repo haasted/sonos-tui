@@ -14,9 +14,15 @@ import (
 	"github.com/haasted/sonos-sandbox/internal/ui/theme"
 )
 
-// NoticeLevel is how severe a notice is. Each level carries a distinct glyph
-// as well as a colour: colour alone fails on monochrome terminals and for
-// colour-blind readers.
+// NoticeLevel is how severe a notice is. It shows as a colour, and as how long
+// the notice holds: a confirmation goes in a moment where a fault stays, and it
+// yields the rule rather than taking it.
+//
+// Each level carried a glyph as well, so that the severity read without colour.
+// That was dropped: the rule now carries a notice after every command, and a
+// mark saying "this is information" in front of the word "paused" was noise on
+// the message a reader sees most. Where a level has to read without colour, the
+// words can carry it -- a fault that begins "could not ..." needs no mark.
 type NoticeLevel int
 
 const (
@@ -156,9 +162,10 @@ func (n notice) strength() float64 {
 	return t * t * (3 - 2*t) // smoothstep, matching the volume and mute fades
 }
 
-// label is the notice as it wants to be drawn, before any truncation.
+// label is the notice as it wants to be drawn, before any truncation. The
+// spaces are the gap between the text and the rule it parts.
 func (n notice) label() string {
-	return " " + noticeGlyph(n.level) + " " + n.text + " "
+	return " " + n.text + " "
 }
 
 // openDuration is how long the entrance runs, and zero when there is none. It
@@ -200,7 +207,7 @@ func (n notice) render(run string) string {
 	}
 
 	width := lipgloss.Width(run)
-	label := truncate(" "+noticeGlyph(n.level)+" "+n.text+" ", width-noticeLead)
+	label := truncate(n.label(), width-noticeLead)
 
 	// Centred where there is room, and otherwise pushed as far left as the
 	// minimum lead allows: a long notice keeps its text rather than losing
@@ -260,17 +267,6 @@ func truncate(s string, width int) string {
 		total += w
 	}
 	return string(kept) + "…"
-}
-
-func noticeGlyph(level NoticeLevel) string {
-	switch level {
-	case NoticeError:
-		return "✖"
-	case NoticeWarn:
-		return "⚠"
-	default:
-		return "ℹ"
-	}
 }
 
 // noticeStyle fades the level's colour toward the divider's resting tone, so
