@@ -30,6 +30,7 @@ var layouts = map[string]layout{
 	"interface2":  {"an overview of every room at once", layoutInterface2},
 	"interface3":  {"a now-playing panel with progress", layoutInterface3},
 	"reveal":      {"the centre-out notice entrance, in four styles", layoutNoticeReveal},
+	"spinners":    {"candidates for the now-playing spinner, side by side", layoutSpinners},
 }
 
 func main() {
