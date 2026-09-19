@@ -131,6 +131,15 @@ func (m appModel) Init() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+// activeSpeaker is the speaker whose tab is on screen.
+func (m appModel) activeSpeaker() (speakerModel, bool) {
+	if m.tabs.Active >= len(m.tabs.Items) {
+		return speakerModel{}, false
+	}
+	speaker, ok := m.tabs.Items[m.tabs.Active].Content.(speakerModel)
+	return speaker, ok
+}
+
 // deviceFor finds the Device backing a tab, so verification can refresh the
 // same instance the tab is already rendering.
 func (m appModel) deviceFor(ip string) (*sonos.Device, bool) {

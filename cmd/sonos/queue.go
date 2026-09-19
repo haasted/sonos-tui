@@ -2,10 +2,7 @@ package main
 
 import (
 	"fmt"
-	"image/color"
-	"log/slog"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -14,7 +11,6 @@ import (
 	"github.com/haasted/sonos-sandbox/internal/sonos"
 	"github.com/haasted/sonos-sandbox/internal/ui/flashsweep"
 	"github.com/haasted/sonos-sandbox/internal/ui/panes"
-	"github.com/haasted/sonos-sandbox/internal/ui/theme"
 )
 
 const (
@@ -36,16 +32,12 @@ const (
 	// bumpDuration is how long the edge stays lit after the reader presses
 	// against it. Short: it answers a keypress and then gets out of the way.
 	bumpDuration = 320 * time.Millisecond
-
-	// bumpVisibleAt is the point below which a rune is left in the border's own
-	// colour, rather than painted a shade indistinguishable from it.
-	bumpVisibleAt = 0.08
-
-	// bumpHeavyAt is where the line thickens. Colour alone spreads the pulse
-	// into a smear of close shades; the weight gives it an edge the eye finds
-	// without looking for it.
-	bumpHeavyAt = 0.35
 )
+
+// queueCursorGlyph marks the row the reader is on. It used to mark the playing
+// track, which now shows as colour alone: the cursor moves and so needs the
+// stronger signal of the two.
+const queueCursorGlyph = "▶"
 
 // bumpEdge is which end of the list the reader pressed against.
 type bumpEdge int
@@ -55,30 +47,6 @@ const (
 	bumpTop
 	bumpBottom
 )
-
-// queueTickMsg is one frame of the arrows' breath. The generation dies with the
-// modal, so a chain cannot outlive the list that began it.
-type queueTickMsg struct{ gen int }
-
-var queueGenerations atomic.Int64
-
-// nextQueueGen returns a generation unique across the process.
-func nextQueueGen() int { return int(queueGenerations.Add(1)) }
-
-func queueTick(gen int) tea.Cmd {
-	return tea.Tick(queuePulseInterval, func(time.Time) tea.Msg {
-		return queueTickMsg{gen: gen}
-	})
-}
-
-// queueLoadedMsg carries a speaker's queue back to the modal that asked for it.
-type queueLoadedMsg struct {
-	device  *sonos.Device
-	room    string
-	items   []sonos.QueueItem
-	playing int // 1-based position now playing, or 0 when the queue is not the source
-	err     error
-}
 
 // queueContent lists a speaker's queue inside a modal. It holds what it was
 // given and where the reader has scrolled to; it fetches nothing itself.
@@ -390,11 +358,6 @@ func (q queueContent) row(item sonos.QueueItem, index, title, artist int, arrow 
 		queueArrowStyle(q.openedAt).Render(arrow)
 }
 
-// queueCursorGlyph marks the row the reader is on. It used to mark the playing
-// track, which now shows as colour alone: the cursor moves and so needs the
-// stronger signal of the two.
-const queueCursorGlyph = "▶"
-
 // isPlaying guards the zero as well as matching the position. A queue counts
 // from one, so zero means nothing is playing from it — and an item that
 // somehow carries no position must not answer to that.
@@ -433,159 +396,6 @@ func (q queueContent) lights(edge panes.ModalEdge) bool {
 		(q.edge == bumpBottom && edge == panes.ModalBottom)
 }
 
-// bumpColour is one rune of the pulse: the scheme's own base at the faint end
-// of the light, and white at its front.
-//
-// The blend never passes through the border's resting colour. That colour is
-// amber, and a gradient from amber to blue crosses grey — the pulse would read
-// as the border going muddy rather than as a light on it. Below bumpVisibleAt
-// the rune is left alone instead, so the handover is a step and not a smear.
-func bumpColour(lit float32) color.Color {
-	base := flashsweep.FromColor(themedBumpBase())
-	peak := flashsweep.FromColor(themedBumpPeak())
-
-	mixed := base.Lerp(peak, smoothstep01(bumpVisibleAt, 1, lit))
-	return lipgloss.Color(mixed.ToRgb().String())
-}
-
-// smoothstep01 eases between two edges, so the front of the pulse rounds into
-// white rather than arriving at it in a straight line.
-func smoothstep01(edge0, edge1, x float32) float32 {
-	t := min(max((x-edge0)/(edge1-edge0), 0), 1)
-	return t * t * (3 - 2*t)
-}
-
-// openQueue asks the selected speaker for its queue. Every open fetches again:
-// the queue changes underneath us, and a stale list is worse than a short wait.
-func (m appModel) openQueue() (tea.Model, tea.Cmd) {
-	speaker, ok := m.activeSpeaker()
-	if !ok {
-		return m, nil
-	}
-
-	state := speaker.device.State()
-	m.queue = m.queue.Open()
-	m.queue.Content = queueContent{
-		room:     speaker.device.RoomName(),
-		items:    state.Queue,
-		playing:  playingPosition(state),
-		loading:  !state.QueueKnown,
-		rows:     m.queue.ContentRows(),
-		width:    m.queue.ContentColumns(),
-		openedAt: time.Now(),
-	}
-
-	// Nothing to fetch in the ordinary case: the queue was read at startup and
-	// has been kept current by events since. A read here is the fallback for a
-	// speaker whose first read has not landed yet.
-	if state.QueueKnown {
-		return m, nil
-	}
-	return m, refreshQueue(speaker.device)
-}
-
-// refreshQueue reads a speaker's queue into its Device and reports that it
-// landed. Every speaker gets one at startup, and one more whenever an event
-// says its queue changed.
-func refreshQueue(device *sonos.Device) tea.Cmd {
-	return func() tea.Msg {
-		if err := device.RefreshQueue(); err != nil {
-			slog.Warn("reading a speaker's queue", "speaker", device.RoomName(), "err", err)
-			return queueLoadedMsg{device: device, room: device.RoomName(), err: err}
-		}
-
-		state := device.State()
-		return queueLoadedMsg{
-			device:  device,
-			room:    device.RoomName(),
-			items:   state.Queue,
-			playing: playingPosition(state),
-		}
-	}
-}
-
-// playingPosition is the queue position now playing, or zero when nothing in
-// the queue is. A station plays straight past the queue without touching it,
-// and DeviceState.Track then counts the stream — so highlighting item 1 would
-// point confidently at the wrong track.
-func playingPosition(state sonos.DeviceState) int {
-	if state.Source.Kind() != sonos.SourceTrack {
-		return 0
-	}
-	return state.Track
-}
-
-// applyQueueLoaded fills the open modal in. Reads arrive for every speaker,
-// most of them for a modal that is closed or showing another room, so a result
-// that does not match what is on screen is dropped rather than drawn under the
-// wrong room name.
-func (m appModel) applyQueueLoaded(msg queueLoadedMsg) (tea.Model, tea.Cmd) {
-	content, ok := m.queue.Content.(queueContent)
-	if !ok || !m.queue.IsOpen() {
-		return m, nil
-	}
-	if speaker, found := m.activeSpeaker(); !found || speaker.device != msg.device {
-		return m, nil
-	}
-
-	content.room = msg.room
-	content.items = msg.items
-	content.playing = msg.playing
-	content.err = msg.err
-	content.loading = false
-	content.rows = m.queue.ContentRows()
-	content.width = m.queue.ContentColumns()
-
-	// A queue that changed under the reader can be shorter than the row they
-	// were on. Keep the place, but not past the end of the list, and let the
-	// window settle around wherever the cursor ends up.
-	content.cursor = min(content.cursor, content.lastRow())
-	content = content.follow()
-
-	m.queue.Content = content
-
-	// The breath starts only once there is an arrow to breathe. A queue that
-	// fits draws none, and a chain for it would repaint a still picture.
-	if !content.overflows() {
-		return m, nil
-	}
-	m.queueGen = nextQueueGen()
-	return m, queueTick(m.queueGen)
-}
-
-// applyQueueTick repaints the arrows. It re-arms only while the same modal is
-// open and still has an arrow, so the chain cannot outlive either.
-func (m appModel) applyQueueTick(msg queueTickMsg) (tea.Model, tea.Cmd) {
-	content, ok := m.queue.Content.(queueContent)
-	if msg.gen != m.queueGen || !m.queue.IsOpen() || !ok {
-		return m, nil
-	}
-
-	// The arrows breathe while the queue overflows, and a bumped edge cools
-	// whether it does or not. Neither is true: nothing on screen is moving.
-	if !content.overflows() && !content.bumping() {
-		return m, nil
-	}
-	return m, queueTick(msg.gen)
-}
-
-// restartQueueChain begins a fresh repaint chain and abandons any running one.
-// A bump on a queue that fits has no chain to ride, and taking a generation
-// each time is what keeps exactly one of them alive.
-func (m appModel) restartQueueChain() (appModel, tea.Cmd) {
-	m.queueGen = nextQueueGen()
-	return m, queueTick(m.queueGen)
-}
-
-// activeSpeaker is the speaker whose tab is on screen.
-func (m appModel) activeSpeaker() (speakerModel, bool) {
-	if m.tabs.Active >= len(m.tabs.Items) {
-		return speakerModel{}, false
-	}
-	speaker, ok := m.tabs.Items[m.tabs.Active].Content.(speakerModel)
-	return speaker, ok
-}
-
 // clip shortens to a display width, marking the cut. It walks runes rather
 // than bytes: track titles carry accents, and half a rune is not a character.
 func clip(s string, width int) string {
@@ -601,63 +411,4 @@ func clip(s string, width int) string {
 		kept, total = append(kept, r), total+w
 	}
 	return string(kept) + "…"
-}
-
-func queueRoomStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Bold(true).
-		Foreground(theme.LightDark(lipgloss.Color("#B45309"), lipgloss.Color("#FBBF24")))
-}
-
-func queueRuleStyle() lipgloss.Style {
-	return lipgloss.NewStyle().
-		Foreground(theme.LightDark(lipgloss.Color("#D0D0D0"), lipgloss.Color("#4A4A4A")))
-}
-
-func queueRowStyle() lipgloss.Style {
-	return lipgloss.NewStyle().
-		Foreground(theme.LightDark(lipgloss.Color("#1F2937"), lipgloss.Color("#E5E7EB")))
-}
-
-func queuePlayingStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Bold(true).
-		Foreground(theme.LightDark(lipgloss.Color("#1D4ED8"), lipgloss.Color("#93C5FD")))
-}
-
-// queueArrowStyle breathes the arrow from near the colour of the rule to the
-// far end of the palette. A wide swing on purpose: the arrow is one character,
-// so a narrow one is only found by a reader who already knows to look.
-func queueArrowStyle(since time.Time) lipgloss.Style {
-	return lipgloss.NewStyle().
-		Foreground(flashsweep.BreathAt(time.Since(since), themedArrowRest(), themedArrowLit()))
-}
-
-func themedArrowRest() color.Color {
-	return theme.LightDark(lipgloss.Color("#C4C4C4"), lipgloss.Color("#5A5A5A"))
-}
-
-// themedArrowLit brightens on a dark ground and deepens on a light one. The
-// same pair the notice entrance uses, for the same reason: a light that flashes
-// toward white on white erases itself.
-func themedArrowLit() color.Color {
-	return theme.LightDark(lipgloss.Color("#0F172A"), lipgloss.Color("#FFFFFF"))
-}
-
-func themedBorder() color.Color {
-	return theme.LightDark(lipgloss.Color("#B45309"), lipgloss.Color("#FBBF24"))
-}
-
-// themedBumpBase and themedBumpPeak are the pulse's two colours. Sky into white
-// on a dark ground, and the same pair inverted on a light one, where a white
-// front would vanish into the page.
-func themedBumpBase() color.Color {
-	return theme.LightDark(lipgloss.Color("#0369A1"), lipgloss.Color("#38BDF8"))
-}
-
-func themedBumpPeak() color.Color {
-	return theme.LightDark(lipgloss.Color("#0F172A"), lipgloss.Color("#FFFFFF"))
-}
-
-func queueNoteStyle() lipgloss.Style {
-	return lipgloss.NewStyle().
-		Foreground(theme.LightDark(lipgloss.Color("#4A4A4A"), lipgloss.Color("#9B9B9B")))
 }
