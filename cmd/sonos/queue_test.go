@@ -38,8 +38,8 @@ func TestQueue_ArrowsScrollTheListAndNotTheVolume(t *testing.T) {
 
 	m = pressKey(pressKey(m, "down"), "down")
 
-	if got := queueOf(t, m).offset; got != 2 {
-		t.Fatalf("two down presses scrolled to %d, want 2", got)
+	if got := queueOf(t, m).cursor; got != 2 {
+		t.Fatalf("two down presses moved the cursor to %d, want 2", got)
 	}
 	if got := pendingVolume(t, m); got != before {
 		t.Fatalf("scrolling the queue moved the volume by %+d", got-before)
@@ -79,7 +79,9 @@ func TestQueue_ShowsWhatLiesBeyondTheWindow(t *testing.T) {
 		t.Fatalf("nothing indicates more items below:\n%s", got)
 	}
 
-	m = pressKey(pressKey(m, "down"), "down")
+	// To the end rather than a couple of rows down: the window only moves once
+	// the cursor reaches its edge, so two presses scroll nothing.
+	m = pressKey(m, "end")
 	if got := plainQueue(t, m); !strings.Contains(got, "↑") {
 		t.Fatalf("nothing indicates the items scrolled past above:\n%s", got)
 	}
@@ -225,6 +227,10 @@ func plain(s string) string { return queueANSI.ReplaceAllString(s, "") }
 
 // Case: an item carrying no position, against a queue where nothing plays.
 // Both are zero, and a plain equality would mark the row as playing.
+//
+// The marker cannot answer this any more: it follows the cursor, which is
+// always on some row. Only the playing style, which is the bold half of bold
+// and blue, says a row is playing.
 func TestQueue_NothingPlayingMarksNoRow(t *testing.T) {
 	q := queueContent{
 		room:  "Ovenpå",
@@ -233,9 +239,34 @@ func TestQueue_NothingPlayingMarksNoRow(t *testing.T) {
 		width: 70,
 	}
 
-	if got := plain(q.View().Content); strings.Contains(got, "▶") {
-		t.Fatalf("a row is marked as playing when nothing is:\n%s", got)
+	if anyRowIsPlaying(q) {
+		t.Fatal("a row is drawn in the playing style when nothing is playing")
 	}
+
+	playing := q
+	playing.items[0].Position, playing.playing = 1, 1
+	if !anyRowIsPlaying(playing) {
+		t.Fatal("the playing row is not drawn in the playing style, so this proves nothing")
+	}
+}
+
+// anyRowIsPlaying reports whether a list row carries the playing style. It
+// looks at the rows alone: the heading above them is bold as well, and the
+// marker cannot answer this any more.
+//
+// lipgloss writes bold and the colour in one escape, so the opening of that
+// escape is what to look for rather than a bold code of its own.
+func anyRowIsPlaying(q queueContent) bool {
+	lines := strings.Split(q.View().Content, "\n")
+	if len(lines) <= queueHeaderRows {
+		return false
+	}
+	for _, line := range lines[queueHeaderRows:] {
+		if strings.Contains(line, "\x1b[1;") {
+			return true
+		}
+	}
+	return false
 }
 
 // Case: two columns that both fit, which must not be shortened at all. This is
@@ -328,14 +359,31 @@ func TestQueue_TopRowHoldsAnItem(t *testing.T) {
 	}
 }
 
-// Case: the two marks on one row. The play marker owns the column left of the
-// title, so a scroll arrow in that cell would hide it.
-func TestQueue_PlayMarkerAndArrowBothFitOnARow(t *testing.T) {
-	q := queueContent{room: "Køkken", items: queueItems(32), playing: 3, rows: 9, width: 70, offset: 2}
+// Case: the two marks on one row. The cursor owns the column left of the title,
+// so a scroll arrow in that cell would hide it.
+func TestQueue_CursorAndArrowBothFitOnARow(t *testing.T) {
+	// The playing track is far down the queue, so the marker on the top row can
+	// only have come from the cursor.
+	q := queueContent{room: "Køkken", items: queueItems(32), playing: 30,
+		rows: 9, width: 70, cursor: 2, offset: 2}
 
 	row := strings.Split(plain(q.View().Content), "\n")[2]
 	if !strings.Contains(row, "▶") || !strings.Contains(row, "↑") {
-		t.Fatalf("the playing track at the top of the window lost a mark: %q", row)
+		t.Fatalf("the top row of the window lost a mark: %q", row)
+	}
+}
+
+// Case: the marker, which follows the cursor and not the playing track. What
+// is playing is said by colour alone.
+func TestQueue_TheMarkerFollowsTheCursor(t *testing.T) {
+	q := queueContent{room: "Køkken", items: queueItems(8), playing: 6, rows: 12, width: 70, cursor: 1}
+
+	rows := strings.Split(plain(q.View().Content), "\n")[queueHeaderRows:]
+	if !strings.Contains(rows[1], "▶") {
+		t.Fatalf("the cursor row carries no marker: %q", rows[1])
+	}
+	if strings.Contains(rows[5], "▶") {
+		t.Fatalf("the playing row still carries the marker: %q", rows[5])
 	}
 }
 
@@ -551,8 +599,8 @@ func TestQueue_ScrollingDoesNotLightAnything(t *testing.T) {
 	m := pressKey(openWithQueue(t, 40), "down")
 
 	content := queueOf(t, m)
-	if content.offset != 1 {
-		t.Fatalf("down from the top scrolled to %d, want 1", content.offset)
+	if content.cursor != 1 {
+		t.Fatalf("down from the top moved the cursor to %d, want 1", content.cursor)
 	}
 	if content.bumping() {
 		t.Fatal("an ordinary scroll lit the list")
@@ -645,15 +693,15 @@ func TestQueue_AHeldKeyHoldsTheLightOn(t *testing.T) {
 	}
 }
 
-// Case: a queue entirely on screen. Pressing down still does nothing, so it
-// still needs an answer, even though there is no hidden end.
+// Case: a queue entirely on screen. Pressing up at the top still does nothing,
+// so it still needs an answer, even though there is no hidden end.
 func TestQueue_AQueueThatFitsStillBumps(t *testing.T) {
 	m := openWithQueue(t, 2)
 	if queueOf(t, m).overflows() {
 		t.Fatal("a two-item queue should fit the modal, or this proves nothing")
 	}
 
-	m = pressKey(m, "down")
+	m = pressKey(m, "up")
 	if !queueOf(t, m).bumping() {
 		t.Fatal("a queue that fits gave no answer to a key that does nothing")
 	}
@@ -664,7 +712,7 @@ func TestQueue_AQueueThatFitsStillBumps(t *testing.T) {
 func TestQueue_ABumpStartsARepaintChain(t *testing.T) {
 	m := openWithQueue(t, 2)
 
-	updated, cmd := m.Update(keyMsgFor("down"))
+	updated, cmd := m.Update(keyMsgFor("up"))
 	if cmd == nil {
 		t.Fatal("a bump on a queue that fits started no repaint chain")
 	}

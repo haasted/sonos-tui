@@ -9,13 +9,13 @@ import (
 func TestQueueNav_MovesOneRow(t *testing.T) {
 	for _, key := range []string{"down", "j"} {
 		q := navQueue(60, 20)
-		if got := offsetAfter(q, key); got != 21 {
+		if got := cursorAfter(q, key); got != 21 {
 			t.Fatalf("%q moved to row %d, not one row down", key, got)
 		}
 	}
 	for _, key := range []string{"up", "k"} {
 		q := navQueue(60, 20)
-		if got := offsetAfter(q, key); got != 19 {
+		if got := cursorAfter(q, key); got != 19 {
 			t.Fatalf("%q moved to row %d, not one row up", key, got)
 		}
 	}
@@ -29,12 +29,12 @@ func TestQueueNav_MovesOneWindow(t *testing.T) {
 	}
 
 	for _, key := range []string{"pgdown", "f", "space"} {
-		if got := offsetAfter(navQueue(60, 0), key); got != page {
+		if got := cursorAfter(navQueue(60, 0), key); got != page {
 			t.Fatalf("%q moved to row %d, not one window of %d", key, got, page)
 		}
 	}
 	for _, key := range []string{"pgup", "b"} {
-		if got := offsetAfter(navQueue(60, 2*page), key); got != page {
+		if got := cursorAfter(navQueue(60, 2*page), key); got != page {
 			t.Fatalf("%q moved to row %d, not one window of %d", key, got, page)
 		}
 	}
@@ -48,10 +48,10 @@ func TestQueueNav_MovesHalfAWindow(t *testing.T) {
 		t.Fatal("a half window must always move at least one row")
 	}
 
-	if got := offsetAfter(navQueue(60, 0), "ctrl+d"); got != half {
+	if got := cursorAfter(navQueue(60, 0), "ctrl+d"); got != half {
 		t.Fatalf("ctrl+d moved to row %d, not half a window of %d", got, half)
 	}
-	if got := offsetAfter(navQueue(60, 2*half), "ctrl+u"); got != half {
+	if got := cursorAfter(navQueue(60, 2*half), "ctrl+u"); got != half {
 		t.Fatalf("ctrl+u moved to row %d, not half a window of %d", got, half)
 	}
 }
@@ -61,12 +61,12 @@ func TestQueueNav_MovesHalfAWindow(t *testing.T) {
 func TestQueueNav_JumpsToEachEnd(t *testing.T) {
 	for _, key := range []string{"end", "G"} {
 		q := navQueue(60, 0)
-		if got := offsetAfter(q, key); got != q.maxOffset() {
-			t.Fatalf("%q moved to row %d, not the last window at %d", key, got, q.maxOffset())
+		if got := cursorAfter(q, key); got != q.lastRow() {
+			t.Fatalf("%q moved to row %d, not the last row at %d", key, got, q.lastRow())
 		}
 	}
 	for _, key := range []string{"home", "g"} {
-		if got := offsetAfter(navQueue(60, 40), key); got != 0 {
+		if got := cursorAfter(navQueue(60, 40), key); got != 0 {
 			t.Fatalf("%q moved to row %d, not the top", key, got)
 		}
 	}
@@ -75,12 +75,11 @@ func TestQueueNav_JumpsToEachEnd(t *testing.T) {
 // Case: a page move near the end, which must land on the last window rather
 // than run past it or refuse to move at all.
 func TestQueueNav_StopsAtTheEndRatherThanRunningPast(t *testing.T) {
-	q := navQueue(60, 0)
-	q.offset = q.maxOffset() - 1
+	q := navQueue(60, 58) // one short of the last row
 
 	moved := moveQueue(q, "pgdown")
-	if moved.offset != q.maxOffset() {
-		t.Fatalf("a page down near the end landed on row %d, not %d", moved.offset, q.maxOffset())
+	if moved.cursor != q.lastRow() {
+		t.Fatalf("a page down near the end landed on row %d, not %d", moved.cursor, q.lastRow())
 	}
 	if moved.bumping() {
 		t.Fatal("a move that went somewhere must not light an edge")
@@ -96,8 +95,7 @@ func TestQueueNav_LightsTheEdgeOnlyWhereNothingMoves(t *testing.T) {
 		}
 	}
 
-	end := navQueue(60, 0)
-	end.offset = end.maxOffset()
+	end := navQueue(60, 59) // the last row
 	for _, key := range []string{"down", "j", "pgdown", "f", "space", "ctrl+d", "end", "G"} {
 		if moved := moveQueue(end, key); !moved.bumping() {
 			t.Fatalf("%q at the end did not light the edge", key)
@@ -114,8 +112,11 @@ func TestQueueNav_AShortQueueNeverScrolls(t *testing.T) {
 	}
 }
 
-func navQueue(items, offset int) queueContent {
-	return queueContent{room: "Køkken", items: queueItems(items), rows: 12, width: 70, offset: offset}
+// navQueue is a list with the cursor already on a given row, and the window
+// wherever that row put it.
+func navQueue(items, cursor int) queueContent {
+	q := queueContent{room: "Køkken", items: queueItems(items), rows: 12, width: 70, cursor: cursor}
+	return q.follow()
 }
 
 // moveQueue applies one key to the list, as the modal would.
@@ -124,16 +125,34 @@ func moveQueue(q queueContent, key string) queueContent {
 	return updated.(queueContent)
 }
 
-func offsetAfter(q queueContent, key string) int { return moveQueue(q, key).offset }
+func cursorAfter(q queueContent, key string) int { return moveQueue(q, key).cursor }
 
-// Case: a queue that fits its window, where the top row is also the last one.
-// The edge a key lights must follow the key, not the row it lands on.
-func TestQueueNav_AShortQueueLightsTheEdgeTheKeyMeans(t *testing.T) {
-	if moved := moveQueue(navQueue(2, 0), "end"); moved.edge != bumpBottom {
-		t.Fatal("end on a short queue lit the top edge")
+// Case: a queue of one item, where the first row is also the last. The edge a
+// key lights must follow the key, not the row it lands on.
+func TestQueueNav_AOneItemQueueLightsTheEdgeTheKeyMeans(t *testing.T) {
+	if moved := moveQueue(navQueue(1, 0), "end"); moved.edge != bumpBottom {
+		t.Fatal("end on a one-item queue lit the top edge")
 	}
-	if moved := moveQueue(navQueue(2, 0), "home"); moved.edge != bumpTop {
-		t.Fatal("home on a short queue lit the bottom edge")
+	if moved := moveQueue(navQueue(1, 0), "home"); moved.edge != bumpTop {
+		t.Fatal("home on a one-item queue lit the bottom edge")
+	}
+}
+
+// Case: the window, which is not what the keys move. It follows the cursor,
+// and only by as much as it must to keep the cursor on screen.
+func TestQueueNav_TheWindowFollowsTheCursor(t *testing.T) {
+	q := navQueue(60, 0)
+	last := q.visibleRows() - 1
+
+	onScreen := moveQueue(q, "ctrl+d")
+	if onScreen.offset != 0 {
+		t.Fatalf("the window moved to %d for a cursor still on screen", onScreen.offset)
+	}
+
+	q.cursor = last
+	pushed := moveQueue(q, "down")
+	if pushed.offset != 1 {
+		t.Fatalf("the window moved to %d, not the one row the cursor needed", pushed.offset)
 	}
 }
 

@@ -150,15 +150,15 @@ func TestQueueCurrent_AChangeReachesAnOpenModal(t *testing.T) {
 	}
 }
 
-// Case: a queue that shrinks under a reader who had scrolled past its new end.
-// The window clamps on render either way, but an offset left out of range
-// moves the next keypress from where the reader can see.
+// Case: a queue that shrinks under a reader who was on a row past its new end.
+// The window clamps on render either way, but a cursor left out of range puts
+// the marker nowhere and moves the next keypress from somewhere unseen.
 func TestQueueCurrent_AShorterQueueClampsTheScroll(t *testing.T) {
 	m, _ := deliverQueue(t, 200)
 	speaker, _ := m.activeSpeaker()
 
 	content := m.queue.Content.(queueContent)
-	content.offset = 150
+	content.cursor, content.offset = 150, 150
 	m.queue.Content = content
 
 	model, _ := m.Update(queueLoadedMsg{
@@ -169,8 +169,12 @@ func TestQueueCurrent_AShorterQueueClampsTheScroll(t *testing.T) {
 	m = model.(appModel)
 
 	content = m.queue.Content.(queueContent)
+	if content.cursor > content.lastRow() {
+		t.Fatalf("the cursor is left on row %d of a queue ending at %d",
+			content.cursor, content.lastRow())
+	}
 	if content.offset > content.maxOffset() {
-		t.Fatalf("the reader is left at row %d of a queue ending at %d",
+		t.Fatalf("the window is left at row %d of a queue ending at %d",
 			content.offset, content.maxOffset())
 	}
 }

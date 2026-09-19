@@ -19,7 +19,7 @@ import (
 
 const (
 	queueHeaderRows = 2 // the room line and the rule below it
-	queueMarkWidth  = 2 // the playing marker and the space after it
+	queueMarkWidth  = 2 // the cursor and the space after it
 	queueArrowWidth = 1 // the scroll arrow at the right edge of a row
 	queueGap        = 2 // between one column and the next
 
@@ -89,6 +89,7 @@ type queueContent struct {
 	err     error
 	loading bool
 
+	cursor   int       // the row the reader is on, as an index into items
 	offset   int       // first visible item
 	rows     int       // how many rows the modal will show, its frame excluded
 	width    int       // how many columns it will show, likewise
@@ -116,59 +117,75 @@ func (q queueContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch key.String() {
 	case "up", "k":
-		q = q.scrollBy(-1)
+		q = q.moveBy(-1)
 	case "down", "j":
-		q = q.scrollBy(1)
+		q = q.moveBy(1)
 	case "pgup", "b":
-		q = q.scrollBy(-q.page())
+		q = q.moveBy(-q.page())
 	case "pgdown", "f", "space":
-		q = q.scrollBy(q.page())
+		q = q.moveBy(q.page())
 	case "ctrl+u":
-		q = q.scrollBy(-q.halfPage())
+		q = q.moveBy(-q.halfPage())
 	case "ctrl+d":
-		q = q.scrollBy(q.halfPage())
+		q = q.moveBy(q.halfPage())
 	case "home", "g":
-		q = q.scrollToEnd(bumpTop)
+		q = q.moveToEnd(bumpTop)
 	case "end", "G":
-		q = q.scrollToEnd(bumpBottom)
+		q = q.moveToEnd(bumpBottom)
 	}
 	return q, nil
 }
 
-// scrollBy moves the window by delta rows, stopping at either end. It lights
-// an edge only where the window could not move at all: a page down that would
-// run past the last row lands on it instead, which is no refusal.
+// moveBy moves the cursor by delta rows, stopping at either end. It lights an
+// edge only where the cursor could not move at all: a page down that would run
+// past the last row lands on it instead, which is no refusal.
 //
 // Every relative key goes through it, and every absolute one through
-// scrollToEnd, so a cursor added later changes how a move lands in two
-// functions rather than in each of eight bindings.
-func (q queueContent) scrollBy(delta int) queueContent {
-	target := max(min(q.offset+delta, q.maxOffset()), 0)
-	if target == q.offset {
+// moveToEnd, so what a move means is decided in two functions rather than in
+// each of eight bindings.
+func (q queueContent) moveBy(delta int) queueContent {
+	target := max(min(q.cursor+delta, q.lastRow()), 0)
+	if target == q.cursor {
 		if delta < 0 {
 			return q.bump(bumpTop)
 		}
 		return q.bump(bumpBottom)
 	}
-	q.offset = target
+	q.cursor = target
+	return q.follow()
+}
+
+// moveToEnd puts the cursor on the first or the last row. The edge is passed in
+// rather than derived from the row it lands on, because a queue of one item has
+// the same row at both ends and the two keys would then light the same border.
+func (q queueContent) moveToEnd(edge bumpEdge) queueContent {
+	target := 0
+	if edge == bumpBottom {
+		target = q.lastRow()
+	}
+	if target == q.cursor {
+		return q.bump(edge)
+	}
+	q.cursor = target
+	return q.follow()
+}
+
+// follow scrolls the window the least it can to keep the cursor on screen. The
+// window is what moves; the cursor is where the reader is.
+func (q queueContent) follow() queueContent {
+	switch {
+	case q.cursor < q.offset:
+		q.offset = q.cursor
+	case q.cursor >= q.offset+q.visibleRows():
+		q.offset = q.cursor - q.visibleRows() + 1
+	}
+	q.offset = max(min(q.offset, q.maxOffset()), 0)
 	return q
 }
 
-// scrollToEnd moves the window to one end of the list. The edge is passed in
-// rather than derived from the row it lands on, because a queue that fits its
-// window has one row at both ends and the two keys would then light the same
-// border.
-func (q queueContent) scrollToEnd(edge bumpEdge) queueContent {
-	target := 0
-	if edge == bumpBottom {
-		target = q.maxOffset()
-	}
-	if target == q.offset {
-		return q.bump(edge)
-	}
-	q.offset = target
-	return q
-}
+// lastRow is the index of the final item, or zero for a queue with none. The
+// cursor always sits somewhere, even on a list with nowhere to sit.
+func (q queueContent) lastRow() int { return max(len(q.items)-1, 0) }
 
 // page is how far a page move travels: one whole window, as a pager does. The
 // reader keeps their place by the heading, which names the rows on screen.
@@ -214,7 +231,7 @@ func (q queueContent) View() tea.View {
 
 	first, last := q.window()
 	for i, item := range q.items[first:last] {
-		b.WriteString(q.row(item, title, artist, q.arrow(first, last, i)) + "\n")
+		b.WriteString(q.row(item, first+i, title, artist, q.arrow(first, last, i)) + "\n")
 	}
 
 	return tea.NewView(strings.TrimRight(b.String(), "\n"))
@@ -345,10 +362,10 @@ func (q queueContent) arrow(first, last, row int) string {
 // that is playing. The speaker's own position is held on the item but not
 // drawn — it is what the highlight matches on, and what a later "jump to
 // track" will need.
-func (q queueContent) row(item sonos.QueueItem, title, artist int, arrow string) string {
+func (q queueContent) row(item sonos.QueueItem, index, title, artist int, arrow string) string {
 	mark := " "
-	if q.isPlaying(item) {
-		mark = "▶"
+	if index == q.cursor {
+		mark = queueCursorGlyph
 	}
 
 	body := fmt.Sprintf("%s %s  %s", mark,
@@ -372,6 +389,11 @@ func (q queueContent) row(item sonos.QueueItem, title, artist int, arrow string)
 		strings.Repeat(" ", queueGap) +
 		queueArrowStyle(q.openedAt).Render(arrow)
 }
+
+// queueCursorGlyph marks the row the reader is on. It used to mark the playing
+// track, which now shows as colour alone: the cursor moves and so needs the
+// stronger signal of the two.
+const queueCursorGlyph = "▶"
 
 // isPlaying guards the zero as well as matching the position. A queue counts
 // from one, so zero means nothing is playing from it — and an item that
@@ -514,9 +536,11 @@ func (m appModel) applyQueueLoaded(msg queueLoadedMsg) (tea.Model, tea.Cmd) {
 	content.rows = m.queue.ContentRows()
 	content.width = m.queue.ContentColumns()
 
-	// A queue that changed under the reader can be shorter than where they had
-	// scrolled to. Keep the place, but not past the end of the list.
-	content.offset = min(content.offset, content.maxOffset())
+	// A queue that changed under the reader can be shorter than the row they
+	// were on. Keep the place, but not past the end of the list, and let the
+	// window settle around wherever the cursor ends up.
+	content.cursor = min(content.cursor, content.lastRow())
+	content = content.follow()
 
 	m.queue.Content = content
 
