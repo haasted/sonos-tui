@@ -7,6 +7,9 @@ production code never imports from here.
 - `ssdp/` — evaluates `github.com/koron/go-ssdp` against the hand-rolled SSDP
   search in `internal/sonos/discovery.go`. Gated behind `-live` (needs real
   Sonos speakers on the network); see `make test-live`.
+- `uitest/` also holds `spinners`, twenty-five candidates for the now-playing
+  spinner shown side by side and animating. Nothing there is wired into the
+  client: see `make uitest spinners`.
 - `queueevents/` — watches ContentDirectory events to find out what a speaker
   reports when its queue changes, and prints which of the service's state
   variables the speaker says it events. Needs real speakers; see
