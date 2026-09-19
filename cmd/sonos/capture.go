@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,37 +40,6 @@ var capturePath captureDir
 func init() {
 	flag.Var(&capturePath, "capture",
 		"write every raw NOTIFY body to its own file; optionally -capture=<dir> (default "+defaultCaptureDir+")")
-}
-
-// captureOption builds the event-manager option that writes raw bodies to
-// disk, or nothing when -capture was not given.
-func captureOption() []sonos.EventManagerOption {
-	dir := string(capturePath)
-	if dir == "" {
-		return nil
-	}
-
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		slog.Error("creating capture directory — continuing without capture", "dir", dir, "err", err)
-		return nil
-	}
-
-	absolute, err := filepath.Abs(dir)
-	if err != nil {
-		absolute = dir
-	}
-	slog.Info("capturing every raw event", "dir", absolute)
-
-	return []sonos.EventManagerOption{sonos.WithCapture(func(raw sonos.RawEvent) {
-		path, err := writeCapture(dir, raw)
-		if err != nil {
-			// Error, not Warn: a capture session that silently writes nothing
-			// wastes the whole session, and -logs=false hides warnings.
-			slog.Error("capturing event failed", "dir", dir, "err", err)
-			return
-		}
-		slog.Debug("captured event", "path", path, "speaker", raw.Speaker.IP, "service", raw.Service)
-	})}
 }
 
 // writeCapture files one body under a name that sorts chronologically and

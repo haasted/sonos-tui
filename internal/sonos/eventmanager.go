@@ -10,9 +10,10 @@ import (
 	"time"
 )
 
-const renewInterval = 4 * time.Minute
-
-const eventHTTPTimeout = 5 * time.Second
+const (
+	renewInterval    = 4 * time.Minute
+	eventHTTPTimeout = 5 * time.Second
+)
 
 type EventManager struct {
 	listener *eventListener
@@ -29,27 +30,8 @@ type subscription struct {
 	stop      context.CancelFunc
 }
 
-// EventManagerOption configures an EventManager at construction.
-type EventManagerOption func(*eventManagerConfig)
-
-type eventManagerConfig struct {
-	capture CaptureFunc
-}
-
-// WithCapture hands every raw NOTIFY body to capture before it is parsed.
-// The callback owns whatever it does with them: this package deliberately
-// does no filesystem work of its own.
-func WithCapture(capture CaptureFunc) EventManagerOption {
-	return func(c *eventManagerConfig) { c.capture = capture }
-}
-
-func NewEventManager(opts ...EventManagerOption) (*EventManager, error) {
-	var config eventManagerConfig
-	for _, opt := range opts {
-		opt(&config)
-	}
-
-	listener, err := newEventListener(config.capture)
+func NewEventManager() (*EventManager, error) {
+	listener, err := newEventListener()
 	if err != nil {
 		return nil, err
 	}
@@ -70,6 +52,7 @@ func (em *EventManager) Subscribe(ctx context.Context, device *Device) error {
 		if err := em.subscribeService(ctx, device, service); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", service, err))
 		}
+		slog.Debug("Subscribed to service", "service", service, "device", device.Speaker)
 	}
 	return errors.Join(errs...)
 }

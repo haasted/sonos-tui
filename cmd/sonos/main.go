@@ -31,7 +31,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	events, err := sonos.NewEventManager(captureOption()...)
+	events, err := sonos.NewEventManager()
 	if err != nil {
 		slog.Error("starting event listener", "err", err)
 		return

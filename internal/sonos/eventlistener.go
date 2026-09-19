@@ -38,13 +38,12 @@ type CaptureFunc func(RawEvent)
 type eventListener struct {
 	server  *http.Server
 	baseURL string
-	capture CaptureFunc
 
 	mu     sync.RWMutex
 	routes map[string]route
 }
 
-func newEventListener(capture CaptureFunc) (*eventListener, error) {
+func newEventListener() (*eventListener, error) {
 	localIP, err := GetLocalIP()
 	if err != nil {
 		return nil, fmt.Errorf("detecting local IP: %w", err)
@@ -57,7 +56,6 @@ func newEventListener(capture CaptureFunc) (*eventListener, error) {
 
 	el := &eventListener{
 		baseURL: fmt.Sprintf("http://%s:%d", localIP, ln.Addr().(*net.TCPAddr).Port),
-		capture: capture,
 		routes:  map[string]route{},
 	}
 
@@ -110,16 +108,6 @@ func (el *eventListener) handleNotify(w http.ResponseWriter, r *http.Request) {
 	el.mu.RLock()
 	found := el.routes[r.URL.Path]
 	el.mu.RUnlock()
-
-	// Before the route lookup and before parsing, so an unrouted or
-	// unparseable body is captured too.
-	if el.capture != nil {
-		raw := RawEvent{Service: found.service, Path: r.URL.Path, Body: body}
-		if found.device != nil {
-			raw.Speaker = found.device.Speaker
-		}
-		el.capture(raw)
-	}
 
 	if found.device == nil {
 		slog.Debug("NOTIFY for unknown subscription", "path", r.URL.Path)
