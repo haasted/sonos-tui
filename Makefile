@@ -1,4 +1,4 @@
-.PHONY: build fmt vet test test-verbose test-race test-live run run-logs run-capture run-nocache queue-events uitest tidy adr-html help
+.PHONY: build fmt vet test test-verbose test-race test-live run run-logs run-capture run-nocache queue-events uitest worktrees tidy adr-html help
 
 .DEFAULT_GOAL := help
 
@@ -62,6 +62,9 @@ run-nocache: ## Delete speaker cache prior to starting
 
 tidy: ## Tidy go.mod/go.sum
 	@for m in $(MODULES); do (cd $$m && go mod tidy) || exit 1; done
+
+worktrees: ## Report the state of every worktree. Removes nothing.
+	./scripts/worktree_report.sh
 
 adr-html: ## Render ADRs/*.md to standalone HTML pages with diagrams in ADRs/html/.
 	./scripts/render_adr_html.sh
