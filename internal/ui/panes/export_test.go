@@ -46,3 +46,9 @@ func DividerReverse(t Tabs) bool { return t.dividerReverse }
 
 // DividerActive reports the current sweep's progress, if one is running.
 func DividerActive(t Tabs) (float32, bool) { return t.dividerProgress() }
+
+// NoticeHoldFor is how long a notice built from this message stays fully lit,
+// so a test can compare two kinds without waiting for either.
+func NoticeHoldFor(msg NoticeMsg) time.Duration {
+	return notice{confirmation: msg.Confirmation}.hold()
+}

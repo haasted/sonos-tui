@@ -3,6 +3,7 @@ package panes_test
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/haasted/sonos-sandbox/internal/ui/panes"
 	"github.com/stretchr/testify/assert"
@@ -106,5 +107,83 @@ func noticeTabs() panes.Tabs {
 
 func show(tabs panes.Tabs, level panes.NoticeLevel, text string) panes.Tabs {
 	updated, _ := tabs.Update(panes.NoticeMsg{Level: level, Text: text})
+	return updated
+}
+
+// Case: a confirmation arriving while a refusal is on the rule. The refusal
+// explains why nothing happened, and a confirmation would bury the one message
+// the reader needs. Both are NoticeInfo, so the level cannot decide this.
+func TestNotice_AConfirmationYieldsToWhatIsAlreadyThere(t *testing.T) {
+	tabs := show(noticeTabs(), panes.NoticeInfo, "a station plays forward only")
+
+	tabs = confirm(tabs, "next track")
+
+	assert.Contains(t, tabs.View(), "a station plays forward only")
+	assert.NotContains(t, tabs.View(), "next track")
+}
+
+// Case: a confirmation against a fault, which is the same rule at the other
+// end of the scale.
+func TestNotice_AConfirmationYieldsToAFault(t *testing.T) {
+	tabs := show(noticeTabs(), panes.NoticeError, "Køkken: no answer")
+
+	tabs = confirm(tabs, "paused")
+
+	assert.Contains(t, tabs.View(), "Køkken: no answer")
+}
+
+// Case: one command after another, which must replace rather than queue behind
+// each other. Yielding to everything would leave the second key unanswered.
+func TestNotice_AConfirmationReplacesAnotherConfirmation(t *testing.T) {
+	tabs := confirm(noticeTabs(), "paused")
+	require.Contains(t, tabs.View(), "paused")
+
+	tabs = confirm(tabs, "playing")
+
+	assert.Contains(t, tabs.View(), "playing")
+	assert.NotContains(t, tabs.View(), "paused")
+}
+
+// Case: anything that is not a confirmation, which keeps the old rule of the
+// newest message winning. A fault must still interrupt a confirmation.
+func TestNotice_AFaultStillTakesTheRuleFromAConfirmation(t *testing.T) {
+	tabs := confirm(noticeTabs(), "next track")
+
+	tabs = show(tabs, panes.NoticeError, "Køkken: no answer")
+
+	assert.Contains(t, tabs.View(), "Køkken: no answer")
+	assert.NotContains(t, tabs.View(), "next track")
+}
+
+// Case: a confirmation arriving to an empty rule, which is the ordinary case.
+// Yielding must mean "to something", not "always".
+func TestNotice_AConfirmationShowsOnAnEmptyRule(t *testing.T) {
+	assert.Contains(t, confirm(noticeTabs(), "muted").View(), "muted")
+}
+
+// Case: how long each kind holds. A confirmation answers a key the reader just
+// pressed and must be gone well before a refusal would be.
+func TestNotice_AConfirmationHoldsForLessThanARefusal(t *testing.T) {
+	brief := panes.NoticeHoldFor(panes.NoticeMsg{Confirmation: true})
+	ordinary := panes.NoticeHoldFor(panes.NoticeMsg{})
+
+	assert.Less(t, brief, ordinary, "a confirmation must go sooner than a refusal")
+	assert.Less(t, brief, 2*time.Second, "a confirmation is read at a glance")
+}
+
+// Case: the entrance a confirmation arrives with. It appears many times a
+// session, so it must not perform: an animation replaying on every keypress is
+// what NoticeAppear exists to avoid.
+func TestNotice_AConfirmationDoesNotPerform(t *testing.T) {
+	tabs := confirm(noticeTabs(), "paused")
+	before := tabs.View()
+
+	tabs = confirm(tabs, "paused")
+
+	assert.Equal(t, before, tabs.View(), "a repeat redrew the rule differently")
+}
+
+func confirm(tabs panes.Tabs, text string) panes.Tabs {
+	updated, _ := tabs.Update(panes.NoticeMsg{Level: panes.NoticeInfo, Text: text, Confirmation: true})
 	return updated
 }

@@ -241,7 +241,11 @@ func (t Tabs) Init() tea.Cmd {
 func (t Tabs) Update(msg tea.Msg) (Tabs, tea.Cmd) {
 	switch msg := msg.(type) {
 	case NoticeMsg:
-		t.notice = notice{text: msg.Text, level: msg.Level, entrance: msg.Entrance, shownAt: time.Now()}
+		if t.notice.blocks(msg) {
+			return t, nil
+		}
+		t.notice = notice{text: msg.Text, level: msg.Level, entrance: msg.Entrance,
+			confirmation: msg.Confirmation, shownAt: time.Now()}
 		t.noticeGen = nextNoticeGen()
 		return t, noticeTick(t.noticeGen, t.notice.interval())
 

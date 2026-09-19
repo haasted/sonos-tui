@@ -26,12 +26,13 @@ const (
 )
 
 const (
-	noticeHold     = 4 * time.Second        // fully lit before it starts to go
-	noticeFade     = 900 * time.Millisecond // eased fade back to the plain rule
-	noticeInterval = 40 * time.Millisecond  // repaint rate while fading
-	noticeFramed   = 16 * time.Millisecond  // repaint rate while a notice is opening or collapsing
-	noticeLead     = 4                      // shortest run of rule left either side of the label
-	noticeRule     = '─'                    // the glyph the divider is drawn from
+	noticeHold     = 4 * time.Second         // fully lit before it starts to go
+	noticeBrief    = 1200 * time.Millisecond // a confirmation's hold, which is read at a glance
+	noticeFade     = 900 * time.Millisecond  // eased fade back to the plain rule
+	noticeInterval = 40 * time.Millisecond   // repaint rate while fading
+	noticeFramed   = 16 * time.Millisecond   // repaint rate while a notice is opening or collapsing
+	noticeLead     = 4                       // shortest run of rule left either side of the label
+	noticeRule     = '─'                     // the glyph the divider is drawn from
 )
 
 // NoticeEntrance is how a notice arrives. The zero value, NoticeAppear, is no
@@ -72,6 +73,14 @@ type NoticeMsg struct {
 	// rule when it goes, rather than simply appearing and fading. Reserve it
 	// for a notice nobody asked for, which has to earn its glance.
 	Entrance NoticeEntrance
+
+	// Confirmation says this only answers a key the reader just pressed. Such a
+	// notice holds briefly and yields: it replaces another confirmation and
+	// nothing else, so an error or a refusal keeps the rule it is on.
+	//
+	// One field rather than a duration and a priority, because the two always
+	// travel together here and no other pairing of them has a reader.
+	Confirmation bool
 }
 
 // noticeTickMsg is one frame of a notice's fade.
@@ -102,10 +111,27 @@ func (n notice) interval() time.Duration {
 
 // notice is the message currently set into the divider rule, if any.
 type notice struct {
-	text     string
-	level    NoticeLevel
-	entrance NoticeEntrance
-	shownAt  time.Time // zero when nothing is showing
+	text         string
+	level        NoticeLevel
+	entrance     NoticeEntrance
+	confirmation bool
+	shownAt      time.Time // zero when nothing is showing
+}
+
+// hold is how long this notice stays fully lit. A confirmation goes quickly:
+// the reader pressed the key and already knows what they asked for.
+func (n notice) hold() time.Duration {
+	if n.confirmation {
+		return noticeBrief
+	}
+	return noticeHold
+}
+
+// blocks reports that an arriving notice must be dropped rather than shown. A
+// confirmation is the least important thing the rule can carry, so it never
+// takes the rule from a refusal, a fault or a hint that is still on screen.
+func (n notice) blocks(arriving NoticeMsg) bool {
+	return arriving.Confirmation && !n.confirmation && n.strength() > 0
 }
 
 // strength is 1 while opening and held, eased to 0 across the exit, and 0 once
@@ -117,7 +143,7 @@ func (n notice) strength() float64 {
 	}
 	since := time.Since(n.shownAt)
 
-	lit := n.openDuration() + noticeHold
+	lit := n.openDuration() + n.hold()
 	if since < lit {
 		return 1
 	}
