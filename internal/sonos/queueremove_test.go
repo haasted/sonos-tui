@@ -70,6 +70,14 @@ func TestRemoveTrack_ReportsARefusal(t *testing.T) {
 	assert.Contains(t, err.Error(), "42", "the error must say which track")
 }
 
+// serverThatMustNotBeCalled fails the test if anything reaches it.
+func serverThatMustNotBeCalled(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("nothing should reach the speaker")
+	}))
+}
+
 // captureRequest records the body a command sends and answers it with an empty
 // success.
 func captureRequest(t *testing.T) (*string, *httptest.Server) {

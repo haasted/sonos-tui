@@ -114,6 +114,19 @@ type (
 		UpdateID   int    `xml:"UpdateID"`
 	}
 
+	// reorderTracksAction moves a run of tracks. StartingIndex and InsertBefore
+	// are 1-based positions in the queue as it stands, so the track being moved
+	// is still counted when InsertBefore is read.
+	reorderTracksAction struct {
+		XMLName        xml.Name
+		Namespace      string `xml:"xmlns:u,attr"`
+		InstanceID     int    `xml:"InstanceID"`
+		StartingIndex  int    `xml:"StartingIndex"`
+		NumberOfTracks int    `xml:"NumberOfTracks"`
+		InsertBefore   int    `xml:"InsertBefore"`
+		UpdateID       int    `xml:"UpdateID"`
+	}
+
 	// browseAction carries no InstanceID. ContentDirectory has no instance to
 	// address, unlike the two MediaRenderer services.
 	browseAction struct {

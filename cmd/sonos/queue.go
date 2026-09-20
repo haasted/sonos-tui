@@ -65,6 +65,18 @@ type queueContent struct {
 
 	edge     bumpEdge  // which end the reader last pressed against
 	bumpedAt time.Time // when they did; zero when nothing is lit
+
+	// moveFrom is where the moving track sat when the window opened, 1-based.
+	// It is what the speaker is told, since the rows the reader now sees exist
+	// only here. Zero when no move is pending.
+	moveFrom int
+	moveGen  int // id of the open commit window, matched against arriving ticks
+
+	// settling is the track a committed move is waiting to see land: the queue
+	// the speaker sends back is what says where it really went. Its URI rather
+	// than its position, because the position is precisely what changed.
+	settling   string
+	settlingAt time.Time
 }
 
 var _ tea.Model = queueContent{}
@@ -101,9 +113,119 @@ func (q queueContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "end", "G":
 		q = q.moveToEnd(bumpBottom)
 	case "x", "delete":
-		return q, q.remove()
+		return q.remove()
+	case "K", "shift+up":
+		return q.shift(-1)
+	case "J", "shift+down":
+		return q.shift(1)
 	}
 	return q, nil
+}
+
+// shift moves the track under the cursor one place and keeps the cursor on it.
+//
+// THIS IS THE ONE PLACE THE LIST EDITS ITSELF, and it is deliberate. Everywhere
+// else the speaker is told and the ContentDirectory event brings the new queue
+// back. A move cannot wait for that: the track has to follow the key on every
+// press or the key feels broken, so for as long as the window below is open the
+// rows on screen are the reader's and not the speaker's.
+func (q queueContent) shift(delta int) (queueContent, tea.Cmd) {
+	// A move has been sent and the queue it produced has not arrived. Every
+	// position held here still describes the queue from before it, so a second
+	// move built on them would name the wrong track. Wait: the list is about to
+	// be replaced, and moving rows that are about to be thrown away is what
+	// makes tracks appear to jump.
+	if q.settlingMove() {
+		return q, nil
+	}
+
+	target := q.cursor + delta
+	if q.cursor >= len(q.items) || target < 0 || target >= len(q.items) {
+		if delta < 0 {
+			return q.bump(bumpTop), nil
+		}
+		return q.bump(bumpBottom), nil
+	}
+
+	// Where the track started, remembered once. A run of presses is one move
+	// from there, and the rows it passed over never existed for the speaker.
+	if q.moveFrom == 0 {
+		q.moveFrom = q.items[q.cursor].Position
+	}
+
+	q.items = movedItems(q.items, q.cursor, target)
+	q.cursor = target
+	q = q.follow()
+
+	if q.moveGen != 0 {
+		return q, nil // a tick is already pending; this press joins that window
+	}
+	q.moveGen = nextQueueGen()
+	return q, queueMoveTick(q.moveGen)
+}
+
+// movedItems is the list with one item lifted out and put back at another
+// index. It copies rather than reordering in place: the slice it is given is
+// shared with the Device that read it, and editing that would change what
+// every other reader of the queue sees.
+func movedItems(items []sonos.QueueItem, from, to int) []sonos.QueueItem {
+	moved := make([]sonos.QueueItem, 0, len(items))
+	moved = append(moved, items[:from]...)
+	moved = append(moved, items[from+1:]...)
+
+	rest := make([]sonos.QueueItem, 0, len(items))
+	rest = append(rest, moved[:to]...)
+	rest = append(rest, items[from])
+	return append(rest, moved[to:]...)
+}
+
+// pendingMove is the move waiting to be sent, and whether there is one. to is
+// the position the track now appears at, which is what the speaker is asked
+// for.
+func (q queueContent) pendingMove() (from, to int, pending bool) {
+	if q.moveFrom == 0 || q.cursor >= len(q.items) {
+		return 0, 0, false
+	}
+	return q.moveFrom, q.cursor + 1, true
+}
+
+// clearMove closes the window, whether it was committed or abandoned.
+func (q queueContent) clearMove() queueContent {
+	q.moveFrom, q.moveGen = 0, 0
+	return q
+}
+
+// settleMove records that a move has gone to the speaker and names the track
+// to look for in the queue that comes back.
+func (q queueContent) settleMove(uri string) queueContent {
+	q.settling, q.settlingAt = uri, time.Now()
+	return q
+}
+
+// settlingMove reports a move still waiting for its queue. It expires, because
+// the event that would end it can be dropped -- Device says so when its channel
+// fills -- and a reader must not be left unable to move anything.
+func (q queueContent) settlingMove() bool {
+	return q.settling != "" && time.Since(q.settlingAt) < queueMoveSettle
+}
+
+// followSettled puts the cursor back on the track a move sent away, now that
+// the speaker has said where it went. The reader was watching that track, not
+// that row.
+func (q queueContent) followSettled() queueContent {
+	uri := q.settling
+	q.settling, q.settlingAt = "", time.Time{}
+	if uri == "" {
+		return q
+	}
+
+	for i, item := range q.items {
+		if item.URI == uri {
+			q.cursor = i
+			return q.follow()
+		}
+	}
+	return q
 }
 
 // remove asks for the track under the cursor to go. The list does not do it
@@ -113,13 +235,25 @@ func (q queueContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // The cursor stays where it is. Once the shorter queue arrives the row below
 // has moved up into it, which is what a reader clearing several in a row
 // wants; at the end of the list the cursor is clamped back by one.
-func (q queueContent) remove() tea.Cmd {
+//
+// A move still waiting to be sent is dropped first. Both commands address
+// tracks by position, and a removal shifts every position below it -- so a move
+// committed afterwards would name a track the reader never chose.
+func (q queueContent) remove() (queueContent, tea.Cmd) {
 	if q.cursor >= len(q.items) {
-		return nil // an empty queue, or one still being read
+		return q, nil // an empty queue, or one still being read
 	}
 
 	position := q.items[q.cursor].Position
-	return func() tea.Msg { return queueRemoveMsg{position: position} }
+
+	var dropped tea.Cmd
+	if _, _, pending := q.pendingMove(); pending {
+		q = q.clearMove()
+		dropped = notify(panes.NoticeWarn, queueMoveAbandoned)
+	}
+
+	ask := func() tea.Msg { return queueRemoveMsg{position: position} }
+	return q, tea.Batch(ask, dropped)
 }
 
 // moveBy moves the cursor by delta rows, stopping at either end. It lights an

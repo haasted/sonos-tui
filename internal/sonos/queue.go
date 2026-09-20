@@ -112,6 +112,42 @@ func (c *SonosClient) RemoveTrackFromQueue(position, updateID int) error {
 	return nil
 }
 
+// MoveQueueTrack moves one track to another place in the queue. Both positions
+// are 1-based, as QueueItem.Position counts, and to is where the reader wants
+// the track to end up.
+//
+// THE OFF-BY-ONE. InsertBefore is read against the queue with the track still
+// in it, so moving DOWN has to name one place further on than the destination:
+// lifting the track out afterwards shifts everything below it up by one. Moving
+// up needs no such correction. This is the convention the action is documented
+// with and is NOT yet verified against a speaker.
+func (c *SonosClient) MoveQueueTrack(from, to, updateID int) error {
+	if from < 1 || to < 1 {
+		return fmt.Errorf("moving in the queue: %d to %d is not a move between tracks", from, to)
+	}
+	if from == to {
+		return nil
+	}
+
+	insertBefore := to
+	if to > from {
+		insertBefore = to + 1
+	}
+
+	_, err := c.avTransport("ReorderTracksInQueue", reorderTracksAction{
+		XMLName:        xml.Name{Local: "u:ReorderTracksInQueue"},
+		Namespace:      avtransportService,
+		StartingIndex:  from,
+		NumberOfTracks: 1,
+		InsertBefore:   insertBefore,
+		UpdateID:       updateID,
+	})
+	if err != nil {
+		return fmt.Errorf("moving track %d to %d in the queue: %w", from, to, err)
+	}
+	return nil
+}
+
 // browsePage is one Browse response: the items it carried, and the counts that
 // say whether more remain.
 type browsePage struct {

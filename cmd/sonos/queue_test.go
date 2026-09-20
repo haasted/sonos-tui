@@ -187,8 +187,11 @@ func queueItems(n int) []sonos.QueueItem {
 		items = append(items, sonos.QueueItem{
 			Position: i,
 			TrackMetadata: sonos.TrackMetadata{
-				Title:    fmt.Sprintf("Track %d", i),
-				Artist:   "An Artist",
+				Title:  fmt.Sprintf("Track %d", i),
+				Artist: "An Artist",
+				// The URI is what a track is known by once its position has
+				// changed, which is the whole of how a move is followed.
+				URI:      fmt.Sprintf("x-sonos-http:track-%d.mp3", i),
 				Duration: "3:45",
 			},
 		})
