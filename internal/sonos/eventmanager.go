@@ -66,7 +66,7 @@ func (em *EventManager) subscribeService(ctx context.Context, device *Device, se
 		return err
 	}
 
-	renewCtx, stop := context.WithCancel(context.Background())
+	renewCtx, stop := context.WithCancel(ctx)
 	sub := &subscription{
 		device:    device,
 		eventPath: service,
@@ -106,7 +106,8 @@ func (em *EventManager) renewLoop(ctx context.Context, sub *subscription, callba
 			sid := sub.sid
 			em.mu.Unlock()
 
-			if err := renew(ctx, em.client, sub.device.client.BaseURL, sub.eventPath, sid); err == nil {
+			var err error
+			if err = renew(ctx, em.client, sub.device.client.BaseURL, sub.eventPath, sid); err == nil {
 				slog.Debug("renewed subscription", "speaker", sub.device.Speaker, "sid", sid)
 				continue
 			}
