@@ -11,6 +11,16 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/haasted/sonos-sandbox/internal/sonos"
+	"github.com/haasted/sonos-sandbox/internal/ui/panes"
+)
+
+const (
+	queueRemoved = "removed"
+
+	// queueRemoveFailed says nothing about why. A speaker refusing because the
+	// queue moved under the reader and a speaker that could not be reached look
+	// the same from here, and which error means which is not yet established.
+	queueRemoveFailed = "could not remove the track"
 )
 
 // queueLoadedMsg carries a speaker's queue back to the modal that asked for it.
@@ -21,6 +31,11 @@ type queueLoadedMsg struct {
 	playing int // 1-based position now playing, or 0 when the queue is not the source
 	err     error
 }
+
+// queueRemoveMsg asks for one track to leave the queue on screen. It carries
+// the 1-based position rather than the row, since that is what the speaker
+// addresses a track by.
+type queueRemoveMsg struct{ position int }
 
 // queueTickMsg is one frame of the arrows' breath. The generation dies with the
 // modal, so a chain cannot outlive the list that began it.
@@ -83,6 +98,27 @@ func refreshQueue(device *sonos.Device) tea.Cmd {
 			items:   state.Queue,
 			playing: playingPosition(state),
 		}
+	}
+}
+
+// applyQueueRemove takes a track out of the speaker on screen. It updates no
+// list: the removal raises a ContentDirectory event, which the program already
+// answers by reading the queue again, and a second answer here would disagree
+// with that one while it was in flight.
+func (m appModel) applyQueueRemove(msg queueRemoveMsg) (tea.Model, tea.Cmd) {
+	speaker, ok := m.activeSpeaker()
+	if !ok {
+		return m, nil
+	}
+
+	device := speaker.device
+	return m, func() tea.Msg {
+		if err := device.RemoveQueueTrack(msg.position); err != nil {
+			slog.Warn("removing a track from the queue",
+				"speaker", device.RoomName(), "position", msg.position, "err", err)
+			return panes.NoticeMsg{Level: panes.NoticeError, Text: queueRemoveFailed}
+		}
+		return panes.NoticeMsg{Level: panes.NoticeInfo, Text: queueRemoved, Confirmation: true}
 	}
 }
 

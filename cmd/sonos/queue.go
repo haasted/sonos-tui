@@ -100,8 +100,26 @@ func (q queueContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		q = q.moveToEnd(bumpTop)
 	case "end", "G":
 		q = q.moveToEnd(bumpBottom)
+	case "x", "delete":
+		return q, q.remove()
 	}
 	return q, nil
+}
+
+// remove asks for the track under the cursor to go. The list does not do it
+// itself and does not know the speaker: it says which track, and whoever holds
+// the device acts on it.
+//
+// The cursor stays where it is. Once the shorter queue arrives the row below
+// has moved up into it, which is what a reader clearing several in a row
+// wants; at the end of the list the cursor is clamped back by one.
+func (q queueContent) remove() tea.Cmd {
+	if q.cursor >= len(q.items) {
+		return nil // an empty queue, or one still being read
+	}
+
+	position := q.items[q.cursor].Position
+	return func() tea.Msg { return queueRemoveMsg{position: position} }
 }
 
 // moveBy moves the cursor by delta rows, stopping at either end. It lights an

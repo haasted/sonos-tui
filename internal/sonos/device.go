@@ -317,6 +317,17 @@ func (d *Device) Queue() (Queue, error) {
 	return d.client.GetQueue()
 }
 
+// RemoveQueueTrack takes one track out of this speaker's queue, at the version
+// the device last learned of. It stores nothing: the removal raises a
+// ContentDirectory event, and answering that is what brings the new queue in.
+func (d *Device) RemoveQueueTrack(position int) error {
+	d.mu.RLock()
+	updateID := d.state.QueueUpdateID
+	d.mu.RUnlock()
+
+	return d.client.RemoveTrackFromQueue(position, updateID)
+}
+
 // RefreshQueue reads the queue and stores it. Guarded by a generation, because
 // a queue can be announced twice within a second while a read takes about a
 // tenth of one: two reads are then in flight, and the slower one must not

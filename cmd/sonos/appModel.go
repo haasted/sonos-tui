@@ -318,6 +318,8 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.applyHintTick()
 	case queueLoadedMsg:
 		return m.applyQueueLoaded(msg)
+	case queueRemoveMsg:
+		return m.applyQueueRemove(msg)
 	case queueTickMsg:
 		return m.applyQueueTick(msg)
 	case panes.NoticeMsg:

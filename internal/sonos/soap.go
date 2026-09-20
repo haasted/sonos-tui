@@ -103,6 +103,17 @@ type (
 		Desired    int    `xml:"DesiredMute"`
 	}
 
+	// removeTrackAction takes the track away by naming it, not by its index:
+	// ObjectID is "Q:0/<position>", the same container the queue is browsed
+	// from. UpdateID is the version the caller believes the queue is at.
+	removeTrackAction struct {
+		XMLName    xml.Name
+		Namespace  string `xml:"xmlns:u,attr"`
+		InstanceID int    `xml:"InstanceID"`
+		ObjectID   string `xml:"ObjectID"`
+		UpdateID   int    `xml:"UpdateID"`
+	}
+
 	// browseAction carries no InstanceID. ContentDirectory has no instance to
 	// address, unlike the two MediaRenderer services.
 	browseAction struct {

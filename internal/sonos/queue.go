@@ -84,6 +84,34 @@ func (c *SonosClient) GetQueue() (Queue, error) {
 	}
 }
 
+// RemoveTrackFromQueue takes one track out of the speaker's queue. position is
+// 1-based, as QueueItem.Position counts.
+//
+// The queue is READ from ContentDirectory under /MediaServer and CHANGED
+// through AVTransport under /MediaRenderer. Two services for one queue, and
+// this is the second of them.
+//
+// updateID is the version the caller believes the queue is at. A speaker that
+// checks it refuses a command aimed at a queue that has since changed, which
+// is the difference between removing the track the reader saw and removing
+// whatever moved into its place.
+func (c *SonosClient) RemoveTrackFromQueue(position, updateID int) error {
+	if position < 1 {
+		return fmt.Errorf("removing from the queue: position %d is not a track", position)
+	}
+
+	_, err := c.avTransport("RemoveTrackFromQueue", removeTrackAction{
+		XMLName:   xml.Name{Local: "u:RemoveTrackFromQueue"},
+		Namespace: avtransportService,
+		ObjectID:  fmt.Sprintf("%s/%d", queueObjectID, position),
+		UpdateID:  updateID,
+	})
+	if err != nil {
+		return fmt.Errorf("removing track %d from the queue: %w", position, err)
+	}
+	return nil
+}
+
 // browsePage is one Browse response: the items it carried, and the counts that
 // say whether more remain.
 type browsePage struct {
