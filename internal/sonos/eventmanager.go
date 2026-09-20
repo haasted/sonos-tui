@@ -109,9 +109,9 @@ func (em *EventManager) renewLoop(ctx context.Context, sub *subscription, callba
 			if err := renew(ctx, em.client, sub.device.client.BaseURL, sub.eventPath, sid); err == nil {
 				slog.Debug("renewed subscription", "speaker", sub.device.Speaker, "sid", sid)
 				continue
-			} else {
-				slog.Warn("renew failed — resubscribing", "speaker", sub.device.Speaker, "err", err)
 			}
+
+			slog.Warn("renew failed — resubscribing", "speaker", sub.device.Speaker, "err", err)
 
 			fresh, err := subscribe(ctx, em.client, sub.device.client.BaseURL, sub.eventPath, callbackURL)
 			if err != nil {
