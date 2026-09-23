@@ -39,6 +39,12 @@ const (
 	// the same from here, and which error means which is not yet established.
 	queueRemoveFailed = "could not remove the track"
 	queueMoveFailed   = "could not move the track"
+
+	// queuePlayNextNoTrack answers a station: its queue can be seen but nothing
+	// in it is playing, so there is no current track to be "next" of.
+	queuePlayNextNoTrack = "nothing is playing from the queue"
+	queueAlreadyPlaying  = "already playing"
+	queueAlreadyNext     = "already next"
 )
 
 // queueLoadedMsg carries a speaker's queue back to the modal that asked for it.
@@ -54,6 +60,11 @@ type queueLoadedMsg struct {
 // the 1-based position rather than the row, since that is what the speaker
 // addresses a track by.
 type queueRemoveMsg struct{ position int }
+
+// queuePlayNextMsg asks for one track to move directly after the one playing.
+// Sent and answered in one step, unlike a shifted move: there is no window of
+// presses to close first.
+type queuePlayNextMsg struct{ from, to int }
 
 // queueMoveCommitMsg closes a move window, sending whatever the reader ended
 // up with. It carries the generation so a tick from an abandoned window cannot
@@ -150,6 +161,27 @@ func (m appModel) applyQueueRemove(msg queueRemoveMsg) (tea.Model, tea.Cmd) {
 			return panes.NoticeMsg{Level: panes.NoticeError, Text: queueRemoveFailed}
 		}
 		return panes.NoticeMsg{Level: panes.NoticeInfo, Text: queueRemoved, Confirmation: true}
+	}
+}
+
+// applyQueuePlayNext sends the move queueContent.playNext decided on. Unlike a
+// shifted move there is no window to close first: the positions were computed
+// once, against the queue on screen, and are sent as they are.
+func (m appModel) applyQueuePlayNext(msg queuePlayNextMsg) (tea.Model, tea.Cmd) {
+	speaker, ok := m.activeSpeaker()
+	if !ok {
+		return m, nil
+	}
+
+	device := speaker.device
+	ctx := m.ctx
+	return m, func() tea.Msg {
+		if err := device.MoveQueueTrack(ctx, msg.from, msg.to); err != nil {
+			slog.Warn("moving a track to play next",
+				"speaker", device.RoomName(), "from", msg.from, "to", msg.to, "err", err)
+			return panes.NoticeMsg{Level: panes.NoticeError, Text: queueMoveFailed}
+		}
+		return panes.NoticeMsg{Level: panes.NoticeInfo, Text: queueMoved, Confirmation: true}
 	}
 }
 

@@ -116,6 +116,8 @@ func (q queueContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		q = q.jumpToPlaying()
 	case "x", "delete":
 		return q.remove()
+	case "n":
+		return q.playNext()
 	case "K", "shift+up":
 		return q.shift(-1)
 	case "J", "shift+down":
@@ -255,6 +257,54 @@ func (q queueContent) remove() (queueContent, tea.Cmd) {
 	}
 
 	ask := func() tea.Msg { return queueRemoveMsg{position: position} }
+	return q, tea.Batch(ask, dropped)
+}
+
+// playNext asks for the track under the cursor to move directly after the one
+// playing, so it is the next thing heard. Unlike shift's debounced window this
+// is decided and sent in one step: there is no run of presses to gather, so
+// the list waits for the ContentDirectory event like remove does.
+//
+// The cursor stays where it is, exactly as remove leaves it: once the
+// reordered queue arrives, the track that was beneath the one that moved has
+// slid up into this row. At the last row, which has nothing beneath it, the
+// same clamp remove relies on lands it on the track that was above instead.
+func (q queueContent) playNext() (queueContent, tea.Cmd) {
+	if q.cursor >= len(q.items) {
+		return q, nil // an empty queue, or one still being read
+	}
+
+	// A station plays past the queue without touching it. DeviceState.Track
+	// then counts the stream, so playing is left at zero: there is no current
+	// track to be "next" of, even though the queue behind it is right there.
+	if q.playing <= 0 {
+		return q, notify(panes.NoticeInfo, queuePlayNextNoTrack)
+	}
+
+	track := q.items[q.cursor]
+	switch track.Position {
+	case q.playing:
+		return q, notify(panes.NoticeInfo, queueAlreadyPlaying)
+	case q.playing + 1:
+		return q, notify(panes.NoticeInfo, queueAlreadyNext)
+	}
+
+	// to is where the track should end up once it is lifted out, in the
+	// numbering that leaves it in -- see MoveQueueTrack. Lifting a track from
+	// above the playing one shifts the playing one up by one place first.
+	to := q.playing + 1
+	if track.Position < q.playing {
+		to = q.playing
+	}
+
+	var dropped tea.Cmd
+	if _, _, pending := q.pendingMove(); pending {
+		q = q.clearMove()
+		dropped = notify(panes.NoticeWarn, queueMoveAbandoned)
+	}
+
+	from := track.Position
+	ask := func() tea.Msg { return queuePlayNextMsg{from: from, to: to} }
 	return q, tea.Batch(ask, dropped)
 }
 
