@@ -367,6 +367,16 @@ little. A delay before reading is not needed.
 ContentDirectory did. Its number during those seconds is the part-written
 queue, so it is the earlier signal and the wrong one.
 
+### Removing the playing track advances rather than stops it
+
+Verified 2026-09-23 by removing the track playing on a real speaker.
+
+The speaker advanced to whatever track slid into the vacated playing
+position, the same way `Next` would, rather than stopping or refusing the
+removal. `RemoveTrackFromQueue` names nothing about playback, only the track
+to take out of `Q:0` — the advance is the speaker's own reaction to losing the
+track it was on, not something the removal command asked for.
+
 ### Only ContentDirectory sees a reorder
 
 A move inside the queue keeps the length, and AVTransport carries no field that
