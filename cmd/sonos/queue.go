@@ -112,6 +112,8 @@ func (q queueContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		q = q.moveToEnd(bumpTop)
 	case "end", "G":
 		q = q.moveToEnd(bumpBottom)
+	case "c":
+		q = q.jumpToPlaying()
 	case "x", "delete":
 		return q.remove()
 	case "K", "shift+up":
@@ -288,6 +290,23 @@ func (q queueContent) moveToEnd(edge bumpEdge) queueContent {
 	}
 	q.cursor = target
 	return q.follow()
+}
+
+// jumpToPlaying moves the cursor to the track now playing. Pausing or muting
+// the speaker does not change which track that is, only stopping the queue
+// itself does, so this answers "playing" the same way in every one of those
+// states.
+func (q queueContent) jumpToPlaying() queueContent {
+	if q.playing <= 0 {
+		return q
+	}
+	for i, item := range q.items {
+		if item.Position == q.playing {
+			q.cursor = i
+			return q.follow()
+		}
+	}
+	return q
 }
 
 // follow scrolls the window the least it can to keep the cursor on screen. The

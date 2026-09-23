@@ -128,6 +128,24 @@ func TestQueue_RadioHighlightsNothing(t *testing.T) {
 	}
 }
 
+// Case: pausing or muting the speaker must not hide which track is playing --
+// only the source not being the queue does that, as above.
+func TestQueue_CFindsTheTrackWhilePausedOrMuted(t *testing.T) {
+	state := sonos.DeviceState{
+		Source:    sonos.SourceInfo{URI: "x-rincon-queue:RINCON_1234#0"},
+		Track:     6,
+		Transport: sonos.TransportInfo{State: "PAUSED_PLAYBACK"},
+		Muted:     true,
+	}
+
+	q := queueContent{room: "Køkken", items: queueItems(10), rows: 14, width: 60, playing: playingPosition(state)}
+
+	moved, _ := q.Update(keyMsgFor("c"))
+	if got := moved.(queueContent).cursor; got != 5 {
+		t.Fatalf("c landed on row %d while paused and muted, want row 5 for position 6", got)
+	}
+}
+
 // Case: the three bodies with no rows. Each must say what happened rather than
 // render an empty box the reader has to interpret.
 func TestQueue_SaysWhyThereAreNoRows(t *testing.T) {

@@ -85,6 +85,7 @@ var queueHelp = helpTable{
 			{"^u  ^d", "half a page"},
 			{"home  g", "to the top"},
 			{"end  G", "to the end"},
+			{"c", "to what is playing"},
 			{"x  delete", "remove a track"},
 			{"J K ⇧↑ ⇧↓", "move a track"},
 			{"esc", "close"},
