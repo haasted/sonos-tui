@@ -45,6 +45,9 @@ const (
 	queuePlayNextNoTrack = "nothing is playing from the queue"
 	queueAlreadyPlaying  = "already playing"
 	queueAlreadyNext     = "already next"
+
+	queuePlayedFrom     = "playing"
+	queuePlayFromFailed = "could not play the track"
 )
 
 // queueLoadedMsg carries a speaker's queue back to the modal that asked for it.
@@ -65,6 +68,10 @@ type queueRemoveMsg struct{ position int }
 // Sent and answered in one step, unlike a shifted move: there is no window of
 // presses to close first.
 type queuePlayNextMsg struct{ from, to int }
+
+// queuePlayFromMsg asks for one track to start playing now, wherever the
+// speaker's attention was before.
+type queuePlayFromMsg struct{ position int }
 
 // queueMoveCommitMsg closes a move window, sending whatever the reader ended
 // up with. It carries the generation so a tick from an abandoned window cannot
@@ -182,6 +189,29 @@ func (m appModel) applyQueuePlayNext(msg queuePlayNextMsg) (tea.Model, tea.Cmd) 
 			return panes.NoticeMsg{Level: panes.NoticeError, Text: queueMoveFailed}
 		}
 		return panes.NoticeMsg{Level: panes.NoticeInfo, Text: queueMoved, Confirmation: true}
+	}
+}
+
+// applyQueuePlayFrom jumps playback to the track queueContent.playFromCursor
+// named. The modal closes on the way: the reader asked to listen to
+// something, and the now-playing view behind it is what answers that.
+func (m appModel) applyQueuePlayFrom(msg queuePlayFromMsg) (tea.Model, tea.Cmd) {
+	m.queue = m.queue.Close()
+
+	speaker, ok := m.activeSpeaker()
+	if !ok {
+		return m, nil
+	}
+
+	device := speaker.device
+	ctx := m.ctx
+	return m, func() tea.Msg {
+		if err := device.PlayTrack(ctx, msg.position); err != nil {
+			slog.Warn("playing a track from the queue",
+				"speaker", device.RoomName(), "position", msg.position, "err", err)
+			return panes.NoticeMsg{Level: panes.NoticeError, Text: queuePlayFromFailed}
+		}
+		return panes.NoticeMsg{Level: panes.NoticeInfo, Text: queuePlayedFrom, Confirmation: true}
 	}
 }
 

@@ -127,6 +127,17 @@ type (
 		UpdateID       int    `xml:"UpdateID"`
 	}
 
+	// seekAction moves playback to a place within what is loaded. Unit and
+	// Target together say where -- TRACK_NR with a 1-based position jumps to a
+	// track in the current queue.
+	seekAction struct {
+		XMLName    xml.Name
+		Namespace  string `xml:"xmlns:u,attr"`
+		InstanceID int    `xml:"InstanceID"`
+		Unit       string `xml:"Unit"`
+		Target     string `xml:"Target"`
+	}
+
 	// browseAction carries no InstanceID. ContentDirectory has no instance to
 	// address, unlike the two MediaRenderer services.
 	browseAction struct {

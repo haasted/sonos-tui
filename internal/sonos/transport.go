@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/xml"
 	"fmt"
+	"strconv"
 )
 
 // serviceURNs are the UPnP service XML namespaces used both as SOAPAction
@@ -52,6 +53,24 @@ func (c *SonosClient) Next(ctx context.Context) error {
 // Previous goes back to the previous track.
 func (c *SonosClient) Previous(ctx context.Context) error {
 	_, err := c.avTransport(ctx, "Previous", instancePayload(avtransportService, "Previous"))
+	return err
+}
+
+// seekUnitTrackNr addresses Seek's Target as a 1-based position in the
+// current queue, rather than a time offset or an absolute track URI.
+const seekUnitTrackNr = "TRACK_NR"
+
+// SeekTrack moves playback to the track at position within the queue.
+func (c *SonosClient) SeekTrack(ctx context.Context, position int) error {
+	if position < 1 {
+		return fmt.Errorf("seeking in the queue: position %d is not a track", position)
+	}
+	_, err := c.avTransport(ctx, "Seek", seekAction{
+		XMLName:   xml.Name{Local: "u:Seek"},
+		Namespace: avtransportService,
+		Unit:      seekUnitTrackNr,
+		Target:    strconv.Itoa(position),
+	})
 	return err
 }
 

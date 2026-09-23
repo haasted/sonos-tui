@@ -462,3 +462,20 @@ func (d *Device) Previous(ctx context.Context) error {
 	d.mu.Unlock()
 	return nil
 }
+
+// PlayTrack jumps to the track at position within the queue and starts it,
+// whatever the speaker was doing before -- a station, another track, or this
+// one paused. Seek alone is not certain to resume a paused transport, so Play
+// follows it regardless of state.
+func (d *Device) PlayTrack(ctx context.Context, position int) error {
+	if err := d.client.SeekTrack(ctx, position); err != nil {
+		return fmt.Errorf("play track %d: %w", position, err)
+	}
+	if err := d.client.Play(ctx); err != nil {
+		return fmt.Errorf("play track %d: %w", position, err)
+	}
+	d.mu.Lock()
+	d.state.Transport.State = transportPlaying
+	d.mu.Unlock()
+	return nil
+}

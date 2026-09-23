@@ -118,6 +118,8 @@ func (q queueContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return q.remove()
 	case "n":
 		return q.playNext()
+	case "enter":
+		return q.playFromCursor()
 	case "K", "shift+up":
 		return q.shift(-1)
 	case "J", "shift+down":
@@ -306,6 +308,20 @@ func (q queueContent) playNext() (queueContent, tea.Cmd) {
 	from := track.Position
 	ask := func() tea.Msg { return queuePlayNextMsg{from: from, to: to} }
 	return q, tea.Batch(ask, dropped)
+}
+
+// playFromCursor asks for the track under the cursor to start playing now,
+// whatever the speaker was doing before -- a station, another track, or this
+// one paused. Restarting the track already playing is a real answer to enter,
+// not a state worth refusing the way playNext refuses an unchanged position.
+func (q queueContent) playFromCursor() (queueContent, tea.Cmd) {
+	if q.cursor >= len(q.items) {
+		return q, nil // an empty queue, or one still being read
+	}
+
+	position := q.items[q.cursor].Position
+	ask := func() tea.Msg { return queuePlayFromMsg{position: position} }
+	return q, ask
 }
 
 // moveBy moves the cursor by delta rows, stopping at either end. It lights an
