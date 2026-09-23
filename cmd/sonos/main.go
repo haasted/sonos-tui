@@ -28,6 +28,11 @@ func main() {
 	dumpLogs := log.CaptureLogs(*logsFlag, slog.LevelDebug)
 	defer dumpLogs()
 
+	// Before anything goes looking for a speaker. A search leaves by one
+	// interface, and on a machine where discovery finds nothing the first
+	// question is whether it was ever pointed at the right one.
+	sonos.LogInterfaces()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
