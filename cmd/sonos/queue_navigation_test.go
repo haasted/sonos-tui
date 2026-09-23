@@ -72,6 +72,31 @@ func TestQueueNav_JumpsToEachEnd(t *testing.T) {
 	}
 }
 
+// Case: the reader wants the playing track without hunting for it, wherever
+// it sits relative to the row they are on.
+func TestQueueNav_CJumpsToWhatIsPlaying(t *testing.T) {
+	q := navQueue(60, 40)
+	q.playing = 6
+
+	moved := moveQueue(q, "c")
+	if moved.cursor != 5 {
+		t.Fatalf("c landed on row %d, want row 5 for the track at position 6", moved.cursor)
+	}
+	if moved.offset > 5 {
+		t.Fatalf("c left row 5 outside the window, offset %d", moved.offset)
+	}
+}
+
+// Case: nothing plays from the queue -- a station, say -- so c has no row to
+// aim at and must leave the cursor exactly where it was.
+func TestQueueNav_CDoesNothingWithNoTrackPlaying(t *testing.T) {
+	q := navQueue(60, 40) // playing is left at its zero value: nothing
+
+	if got := cursorAfter(q, "c"); got != 40 {
+		t.Fatalf("c moved the cursor to %d with nothing playing, want it to stay at 40", got)
+	}
+}
+
 // Case: a page move near the end, which must land on the last window rather
 // than run past it or refuse to move at all.
 func TestQueueNav_StopsAtTheEndRatherThanRunningPast(t *testing.T) {
