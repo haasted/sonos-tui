@@ -32,6 +32,11 @@ const (
 	// bumpDuration is how long the edge stays lit after the reader presses
 	// against it. Short: it answers a keypress and then gets out of the way.
 	bumpDuration = 320 * time.Millisecond
+
+	// highlightDuration is how long a moved track flashes before fading back
+	// to normal. Short, like the edge bump: it answers a command that just
+	// landed, not a state to dwell on.
+	highlightDuration = 500 * time.Millisecond
 )
 
 // queueCursorGlyph marks the row the reader is on. It used to mark the playing
@@ -72,11 +77,23 @@ type queueContent struct {
 	moveFrom int
 	moveGen  int // id of the open commit window, matched against arriving ticks
 
-	// settling is the track a committed move is waiting to see land: the queue
-	// the speaker sends back is what says where it really went. Its URI rather
+	// settling is the track a move is waiting to see land: the queue the
+	// speaker sends back is what says where it really went. Its URI rather
 	// than its position, because the position is precisely what changed.
-	settling   string
-	settlingAt time.Time
+	//
+	// settlingFollow says whether landing should also move the cursor onto
+	// the track (a shift committed with J/K, which the reader is watching
+	// move) or only flash it (play next, which deliberately leaves the
+	// cursor where it was -- see playNext).
+	settling       string
+	settlingAt     time.Time
+	settlingFollow bool
+
+	// highlightURI is the track flashing briefly after a move landed, so the
+	// reader sees where it went even when the cursor does not follow it
+	// there. Empty when nothing is highlighted.
+	highlightURI string
+	highlightAt  time.Time
 }
 
 var _ tea.Model = queueContent{}
@@ -201,10 +218,19 @@ func (q queueContent) clearMove() queueContent {
 	return q
 }
 
-// settleMove records that a move has gone to the speaker and names the track
-// to look for in the queue that comes back.
+// settleMove records that a committed move has gone to the speaker and names
+// the track to look for in the queue that comes back, moving the cursor onto
+// it once found.
 func (q queueContent) settleMove(uri string) queueContent {
-	q.settling, q.settlingAt = uri, time.Now()
+	q.settling, q.settlingAt, q.settlingFollow = uri, time.Now(), true
+	return q
+}
+
+// awaitHighlight is settleMove without moving the cursor: the queue that
+// comes back is still recognised as this command's own answer, but only the
+// flash follows the track, the way playNext wants it.
+func (q queueContent) awaitHighlight(uri string) queueContent {
+	q.settling, q.settlingAt, q.settlingFollow = uri, time.Now(), false
 	return q
 }
 
@@ -219,8 +245,7 @@ func (q queueContent) settlingMove() bool {
 // the speaker has said where it went. The reader was watching that track, not
 // that row.
 func (q queueContent) followSettled() queueContent {
-	uri := q.settling
-	q.settling, q.settlingAt = "", time.Time{}
+	q, uri := q.clearSettling()
 	if uri == "" {
 		return q
 	}
@@ -232,6 +257,68 @@ func (q queueContent) followSettled() queueContent {
 		}
 	}
 	return q
+}
+
+// highlightSettled flashes the track a played-next move sent away, now that
+// the speaker has said where it landed, without moving the cursor onto it --
+// see playNext for why it stays where it was.
+func (q queueContent) highlightSettled() queueContent {
+	q, uri := q.clearSettling()
+	if uri == "" {
+		return q
+	}
+
+	for _, item := range q.items {
+		if item.URI == uri {
+			return q.highlight(uri)
+		}
+	}
+	return q
+}
+
+// clearSettling closes the wait, returning the updated content alongside the
+// track it was waiting for, or empty if none was.
+func (q queueContent) clearSettling() (queueContent, string) {
+	uri := q.settling
+	q.settling, q.settlingAt, q.settlingFollow = "", time.Time{}, false
+	return q, uri
+}
+
+// highlight marks uri as the track that just landed, to flash briefly the
+// next time the queue holding it is drawn.
+func (q queueContent) highlight(uri string) queueContent {
+	q.highlightURI, q.highlightAt = uri, time.Now()
+	return q
+}
+
+// highlightGlow is how lit uri's flash is, from 1 just after landing to 0
+// once highlightDuration has passed, and for any other track.
+// highlightHold is the share of highlightDuration the flash stays at full
+// glow before it starts to fade. A pulse that starts fading on its very
+// first frame is only ever seen mid-fade -- held here for a beat first, so a
+// reader glancing right after the queue lands still catches it fully lit.
+const highlightHold = 0.35
+
+func (q queueContent) highlightGlow(uri string) float32 {
+	if q.highlightURI == "" || uri != q.highlightURI {
+		return 0
+	}
+
+	t := float32(time.Since(q.highlightAt)) / float32(highlightDuration)
+	switch {
+	case t >= 1:
+		return 0
+	case t <= highlightHold:
+		return 1
+	default:
+		return 1 - (t-highlightHold)/(1-highlightHold)
+	}
+}
+
+// highlighting reports whether a flash is still fading, so the repaint chain
+// knows to keep ticking for it even where nothing else asks for a repaint.
+func (q queueContent) highlighting() bool {
+	return q.highlightURI != "" && time.Since(q.highlightAt) < highlightDuration
 }
 
 // remove asks for the track under the cursor to go. The list does not do it
@@ -272,6 +359,9 @@ func (q queueContent) remove() (queueContent, tea.Cmd) {
 // slid up into this row. At the last row, which has nothing beneath it, the
 // same clamp remove relies on lands it on the track that was above instead.
 func (q queueContent) playNext() (queueContent, tea.Cmd) {
+	if q.settlingMove() {
+		return q, nil // a move already sent has not been answered yet
+	}
 	if q.cursor >= len(q.items) {
 		return q, nil // an empty queue, or one still being read
 	}
@@ -307,7 +397,7 @@ func (q queueContent) playNext() (queueContent, tea.Cmd) {
 
 	from := track.Position
 	ask := func() tea.Msg { return queuePlayNextMsg{from: from, to: to} }
-	return q, tea.Batch(ask, dropped)
+	return q.awaitHighlight(track.URI), tea.Batch(ask, dropped)
 }
 
 // playFromCursor asks for the track under the cursor to start playing now,
@@ -563,10 +653,8 @@ func (q queueContent) arrow(first, last, row int) string {
 	}
 }
 
-// row draws one queue item: the title and the artist, and a marker on the one
-// that is playing. The speaker's own position is held on the item but not
-// drawn — it is what the highlight matches on, and what a later "jump to
-// track" will need.
+// row draws one queue item: the title and the artist, a marker on the one
+// that is playing, and a brief flash on one that just landed from a move.
 func (q queueContent) row(item sonos.QueueItem, index, title, artist int, arrow string) string {
 	mark := " "
 	if index == q.cursor {
@@ -577,9 +665,14 @@ func (q queueContent) row(item sonos.QueueItem, index, title, artist int, arrow 
 		padRight(clip(item.Title, title), title),
 		clip(item.Artist, artist))
 
+	base := themedRowColor()
 	style := queueRowStyle()
 	if q.isPlaying(item) {
+		base = themedPlayingColor()
 		style = queuePlayingStyle()
+	}
+	if glow := q.highlightGlow(item.URI); glow > 0 {
+		style = style.Foreground(highlightColour(base, glow))
 	}
 
 	// The arrow column exists only where the queue overflows, so a short queue

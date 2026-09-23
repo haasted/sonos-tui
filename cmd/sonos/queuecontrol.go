@@ -304,17 +304,23 @@ func (m appModel) applyQueueLoaded(msg queueLoadedMsg) (tea.Model, tea.Cmd) {
 	content.cursor = min(content.cursor, content.lastRow())
 	content = content.follow()
 
-	// The reader was watching a track, not a row. Now that the speaker has said
-	// where it put it, the cursor goes back onto it.
+	// The reader was watching a track, not a row. Now that the speaker has
+	// said where it put it, the cursor goes back onto it for a committed
+	// shift; play next leaves the cursor alone and only flashes the track.
 	if settling {
-		content = content.followSettled()
+		if content.settlingFollow {
+			content = content.followSettled()
+		} else {
+			content = content.highlightSettled()
+		}
 	}
 
 	m.queue.Content = content
 
-	// The breath starts only once there is an arrow to breathe. A queue that
-	// fits draws none, and a chain for it would repaint a still picture.
-	if !content.overflows() {
+	// The breath starts once there is an arrow to breathe, or a flash to fade.
+	// A queue that fits and has nothing landing draws neither, and a chain for
+	// it would repaint a still picture.
+	if !content.overflows() && !content.highlighting() {
 		return m, abandoned
 	}
 	m.queueGen = nextQueueGen()
@@ -329,9 +335,10 @@ func (m appModel) applyQueueTick(msg queueTickMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// The arrows breathe while the queue overflows, and a bumped edge cools
-	// whether it does or not. Neither is true: nothing on screen is moving.
-	if !content.overflows() && !content.bumping() {
+	// The arrows breathe while the queue overflows, a bumped edge cools
+	// whether it does or not, and a moved track fades regardless of either.
+	// None of the three is true: nothing on screen is moving.
+	if !content.overflows() && !content.bumping() && !content.highlighting() {
 		return m, nil
 	}
 	return m, queueTick(msg.gen)

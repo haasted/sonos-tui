@@ -34,14 +34,20 @@ func queueRuleStyle() lipgloss.Style {
 		Foreground(theme.LightDark(lipgloss.Color("#D0D0D0"), lipgloss.Color("#4A4A4A")))
 }
 
+func themedRowColor() color.Color {
+	return theme.LightDark(lipgloss.Color("#1F2937"), lipgloss.Color("#E5E7EB"))
+}
+
 func queueRowStyle() lipgloss.Style {
-	return lipgloss.NewStyle().
-		Foreground(theme.LightDark(lipgloss.Color("#1F2937"), lipgloss.Color("#E5E7EB")))
+	return lipgloss.NewStyle().Foreground(themedRowColor())
+}
+
+func themedPlayingColor() color.Color {
+	return theme.LightDark(lipgloss.Color("#1D4ED8"), lipgloss.Color("#93C5FD"))
 }
 
 func queuePlayingStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Bold(true).
-		Foreground(theme.LightDark(lipgloss.Color("#1D4ED8"), lipgloss.Color("#93C5FD")))
+	return lipgloss.NewStyle().Bold(true).Foreground(themedPlayingColor())
 }
 
 // queueArrowStyle breathes the arrow from near the colour of the rule to the
@@ -91,6 +97,28 @@ func bumpColour(lit float32) color.Color {
 	peak := flashsweep.FromColor(themedBumpPeak())
 
 	mixed := base.Lerp(peak, smoothstep01(bumpVisibleAt, 1, lit))
+	return lipgloss.Color(mixed.ToRgb().String())
+}
+
+// themedHighlightPeak is the flash's own colour, deliberately not
+// themedBumpPeak's white: a row's resting colour in dark mode (themedRowColor)
+// is already close to white, so brightening toward white there is the same
+// mistake themedArrowLit's own comment warns against, just missed here first
+// time round. A saturated accent that neither the resting grey nor the
+// playing blue is anywhere near reads as a real change from both, in either
+// theme. Reuses queueRoomStyle's amber rather than inventing a third colour.
+func themedHighlightPeak() color.Color {
+	return theme.LightDark(lipgloss.Color("#B45309"), lipgloss.Color("#FBBF24"))
+}
+
+// highlightColour blends a row's own colour toward the flash's peak, so a
+// track that just moved lights up without losing whether it is the one
+// playing.
+func highlightColour(base color.Color, glow float32) color.Color {
+	from := flashsweep.FromColor(base)
+	peak := flashsweep.FromColor(themedHighlightPeak())
+
+	mixed := from.Lerp(peak, smoothstep01(0, 1, glow))
 	return lipgloss.Color(mixed.ToRgb().String())
 }
 
