@@ -58,6 +58,12 @@ A parent says "this is part of that epic". A dependency says "this must wait for
 
 Start an epic when new work splits into several tasks. Do not make an epic out of tasks that already exist: a reparented task keeps its old id, so its id and its place in the tree disagree from then on.
 
+## Task labels
+
+`diagnose-first` marks a task where a plausible answer can be wrong and still look right. Measure before building, and read the task before dispatching it: it wants a model that can hold competing hypotheses, and its cheap fix will appear to work.
+
+Label the property, not the model. Model names change; a task outlives them, and the reason is what a person needs anyway.
+
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:6cd5cc61 -->
 ## Beads Issue Tracker
 
