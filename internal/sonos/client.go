@@ -2,6 +2,7 @@ package sonos
 
 import (
 	"bytes"
+	"context"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -30,14 +31,14 @@ func NewClient(ip string) *SonosClient {
 // Do sends a SOAP request built from payload and returns the response body.
 // The payload is a tagged struct rather than a string, so the marshaller
 // escapes its values — see soap.go.
-func (c *SonosClient) Do(path, serviceURN, action string, payload any) ([]byte, error) {
+func (c *SonosClient) Do(ctx context.Context, path, serviceURN, action string, payload any) ([]byte, error) {
 	body, err := marshalRequest(payload)
 	if err != nil {
 		return nil, err
 	}
 	soapAction := fmt.Sprintf(`"%s#%s"`, serviceURN, action)
 
-	req, err := http.NewRequest(http.MethodPost, c.BaseURL+path, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+path, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("building request: %w", err)
 	}

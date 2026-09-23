@@ -1,6 +1,7 @@
 package sonos_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -22,7 +23,7 @@ func TestRefreshQueue_StoresTheQueueOnTheDevice(t *testing.T) {
 	device := deviceFor(server)
 	require.False(t, device.State().QueueKnown, "nothing is known before the first read")
 
-	require.NoError(t, device.RefreshQueue())
+	require.NoError(t, device.RefreshQueue(context.Background()))
 
 	state := device.State()
 	assert.True(t, state.QueueKnown)
@@ -38,7 +39,7 @@ func TestRefreshQueue_AnEmptyQueueIsStillAnAnswer(t *testing.T) {
 	defer server.Close()
 
 	device := deviceFor(server)
-	require.NoError(t, device.RefreshQueue())
+	require.NoError(t, device.RefreshQueue(context.Background()))
 
 	state := device.State()
 	assert.True(t, state.QueueKnown, "an empty queue was read, not missed")
@@ -57,8 +58,8 @@ func TestRefreshQueue_ASlowReadDoesNotOverwriteANewerOne(t *testing.T) {
 	server := browseServerFunc(t, func(w http.ResponseWriter, r *http.Request, serve func(int)) {
 		if !overtaken {
 			overtaken = true
-			require.NoError(t, device.RefreshQueue()) // the newer read, start to finish
-			serve(5)                                  // then the older one finally answers
+			require.NoError(t, device.RefreshQueue(context.Background())) // the newer read, start to finish
+			serve(5)                                                      // then the older one finally answers
 			return
 		}
 		serve(9)
@@ -66,7 +67,7 @@ func TestRefreshQueue_ASlowReadDoesNotOverwriteANewerOne(t *testing.T) {
 	defer server.Close()
 	device = deviceFor(server)
 
-	require.NoError(t, device.RefreshQueue())
+	require.NoError(t, device.RefreshQueue(context.Background()))
 
 	assert.Len(t, device.State().Queue, 9, "the overtaken read must not replace the newer queue")
 }

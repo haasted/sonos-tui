@@ -144,7 +144,7 @@ func VerifySpeaker(ctx context.Context, speaker Speaker) error {
 		BaseURL:    "http://" + speaker.IP + ":1400",
 		HTTPClient: client,
 	})
-	if err := device.Refresh(); err != nil {
+	if err := device.Refresh(ctx); err != nil {
 		return fmt.Errorf("transport check: %w", err)
 	}
 	return nil

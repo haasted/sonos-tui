@@ -1,6 +1,7 @@
 package sonos
 
 import (
+	"context"
 	"encoding/xml"
 	"fmt"
 	"html"
@@ -40,11 +41,11 @@ type Queue struct {
 // Browse returns at most RequestedCount items and reports how many it sent and
 // how many exist, so a single call is only ever correct by luck on a short
 // queue.
-func (c *SonosClient) GetQueue() (Queue, error) {
+func (c *SonosClient) GetQueue(ctx context.Context) (Queue, error) {
 	queue := Queue{}
 
 	for {
-		page, err := c.browseQueue(len(queue.Items), browsePageSize)
+		page, err := c.browseQueue(ctx, len(queue.Items), browsePageSize)
 		if err != nil {
 			return Queue{}, err
 		}
@@ -95,12 +96,12 @@ func (c *SonosClient) GetQueue() (Queue, error) {
 // checks it refuses a command aimed at a queue that has since changed, which
 // is the difference between removing the track the reader saw and removing
 // whatever moved into its place.
-func (c *SonosClient) RemoveTrackFromQueue(position, updateID int) error {
+func (c *SonosClient) RemoveTrackFromQueue(ctx context.Context, position, updateID int) error {
 	if position < 1 {
 		return fmt.Errorf("removing from the queue: position %d is not a track", position)
 	}
 
-	_, err := c.avTransport("RemoveTrackFromQueue", removeTrackAction{
+	_, err := c.avTransport(ctx, "RemoveTrackFromQueue", removeTrackAction{
 		XMLName:   xml.Name{Local: "u:RemoveTrackFromQueue"},
 		Namespace: avtransportService,
 		ObjectID:  fmt.Sprintf("%s/%d", queueObjectID, position),
@@ -121,7 +122,7 @@ func (c *SonosClient) RemoveTrackFromQueue(position, updateID int) error {
 // lifting the track out afterwards shifts everything below it up by one. Moving
 // up needs no such correction. This is the convention the action is documented
 // with and is NOT yet verified against a speaker.
-func (c *SonosClient) MoveQueueTrack(from, to, updateID int) error {
+func (c *SonosClient) MoveQueueTrack(ctx context.Context, from, to, updateID int) error {
 	if from < 1 || to < 1 {
 		return fmt.Errorf("moving in the queue: %d to %d is not a move between tracks", from, to)
 	}
@@ -134,7 +135,7 @@ func (c *SonosClient) MoveQueueTrack(from, to, updateID int) error {
 		insertBefore = to + 1
 	}
 
-	_, err := c.avTransport("ReorderTracksInQueue", reorderTracksAction{
+	_, err := c.avTransport(ctx, "ReorderTracksInQueue", reorderTracksAction{
 		XMLName:        xml.Name{Local: "u:ReorderTracksInQueue"},
 		Namespace:      avtransportService,
 		StartingIndex:  from,
@@ -157,10 +158,10 @@ type browsePage struct {
 	updateID int // the container's version at the moment it was browsed
 }
 
-func (c *SonosClient) browseQueue(start, count int) (browsePage, error) {
+func (c *SonosClient) browseQueue(ctx context.Context, start, count int) (browsePage, error) {
 	// ObjectID is a constant today, but it is the field that becomes a playlist
 	// identifier later. Marshalling escapes it, where a format string would not.
-	data, err := c.Do(contentDirectoryPath, contentDirectoryService, "Browse", browseAction{
+	data, err := c.Do(ctx, contentDirectoryPath, contentDirectoryService, "Browse", browseAction{
 		XMLName:        xml.Name{Local: "u:Browse"},
 		Namespace:      contentDirectoryService,
 		ObjectID:       queueObjectID,

@@ -1,6 +1,7 @@
 package sonos
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -122,7 +123,7 @@ func (d *Device) Events() <-chan Event {
 	return d.events
 }
 
-func (d *Device) HandleAVTransportEvent(body []byte) error {
+func (d *Device) HandleAVTransportEvent(ctx context.Context, body []byte) error {
 	parsed, err := ParseAVTransportEvent(body)
 	if err != nil {
 		return err
@@ -130,7 +131,7 @@ func (d *Device) HandleAVTransportEvent(body []byte) error {
 
 	relTime := parsed.RelTime
 	if relTime == "" {
-		info, err := d.client.GetPositionInfo()
+		info, err := d.client.GetPositionInfo(ctx)
 		if err != nil {
 			slog.Warn("fetching position after event", "speaker", d.Speaker, "err", err)
 		} else {
@@ -249,8 +250,8 @@ func (d *Device) State() DeviceState {
 }
 
 // Refresh fetches the current transport state from the speaker.
-func (d *Device) Refresh() error {
-	info, err := d.client.GetTransportInfo()
+func (d *Device) Refresh(ctx context.Context) error {
+	info, err := d.client.GetTransportInfo(ctx)
 	if err != nil {
 		return err
 	}
@@ -260,8 +261,8 @@ func (d *Device) Refresh() error {
 	return nil
 }
 
-func (d *Device) RefreshTrack() error {
-	info, err := d.client.GetPositionInfo()
+func (d *Device) RefreshTrack(ctx context.Context) error {
+	info, err := d.client.GetPositionInfo(ctx)
 	if err != nil {
 		return err
 	}
@@ -279,7 +280,7 @@ func (d *Device) RefreshTrack() error {
 	return nil
 }
 
-func (d *Device) RefreshVolume() error {
+func (d *Device) RefreshVolume(ctx context.Context) error {
 	var (
 		wg      sync.WaitGroup
 		volume  int
@@ -291,11 +292,11 @@ func (d *Device) RefreshVolume() error {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		volume, volErr = d.client.GetVolume()
+		volume, volErr = d.client.GetVolume(ctx)
 	}()
 	go func() {
 		defer wg.Done()
-		muted, muteErr = d.client.GetMute()
+		muted, muteErr = d.client.GetMute(ctx)
 	}()
 	wg.Wait()
 
@@ -313,40 +314,40 @@ func (d *Device) RefreshVolume() error {
 // Queue reads the speaker's playback queue. Deliberately not stored on
 // DeviceState: nothing renders it yet, and a queue that went stale in state
 // would be worse than one fetched when asked for.
-func (d *Device) Queue() (Queue, error) {
-	return d.client.GetQueue()
+func (d *Device) Queue(ctx context.Context) (Queue, error) {
+	return d.client.GetQueue(ctx)
 }
 
 // RemoveQueueTrack takes one track out of this speaker's queue, at the version
 // the device last learned of. It stores nothing: the removal raises a
 // ContentDirectory event, and answering that is what brings the new queue in.
-func (d *Device) RemoveQueueTrack(position int) error {
+func (d *Device) RemoveQueueTrack(ctx context.Context, position int) error {
 	d.mu.RLock()
 	updateID := d.state.QueueUpdateID
 	d.mu.RUnlock()
 
-	return d.client.RemoveTrackFromQueue(position, updateID)
+	return d.client.RemoveTrackFromQueue(ctx, position, updateID)
 }
 
 // MoveQueueTrack moves one track within this speaker's queue, at the version
 // the device last learned of. Like a removal it stores nothing: the move raises
 // a ContentDirectory event, and answering that is what brings the new order in.
-func (d *Device) MoveQueueTrack(from, to int) error {
+func (d *Device) MoveQueueTrack(ctx context.Context, from, to int) error {
 	d.mu.RLock()
 	updateID := d.state.QueueUpdateID
 	d.mu.RUnlock()
 
-	return d.client.MoveQueueTrack(from, to, updateID)
+	return d.client.MoveQueueTrack(ctx, from, to, updateID)
 }
 
 // RefreshQueue reads the queue and stores it. Guarded by a generation, because
 // a queue can be announced twice within a second while a read takes about a
 // tenth of one: two reads are then in flight, and the slower one must not
 // overwrite the newer answer it raced.
-func (d *Device) RefreshQueue() error {
+func (d *Device) RefreshQueue(ctx context.Context) error {
 	generation := d.queueGen.Add(1)
 
-	queue, err := d.client.GetQueue()
+	queue, err := d.client.GetQueue(ctx)
 	if err != nil {
 		return err
 	}
@@ -364,8 +365,8 @@ func (d *Device) RefreshQueue() error {
 	return nil
 }
 
-func (d *Device) RefreshAll() error {
-	refreshers := []func() error{d.Refresh, d.RefreshTrack, d.RefreshVolume}
+func (d *Device) RefreshAll(ctx context.Context) error {
+	refreshers := []func(context.Context) error{d.Refresh, d.RefreshTrack, d.RefreshVolume}
 	errs := make([]error, len(refreshers))
 
 	var wg sync.WaitGroup
@@ -373,7 +374,7 @@ func (d *Device) RefreshAll() error {
 	for i, refresh := range refreshers {
 		go func() {
 			defer wg.Done()
-			errs[i] = refresh()
+			errs[i] = refresh(ctx)
 		}()
 	}
 	wg.Wait()
@@ -381,18 +382,18 @@ func (d *Device) RefreshAll() error {
 	return errors.Join(errs...)
 }
 
-func (d *Device) AdjustVolume(adjustment int) (int, error) {
+func (d *Device) AdjustVolume(ctx context.Context, adjustment int) (int, error) {
 	d.mu.RLock()
 	muted := d.state.Muted
 	d.mu.RUnlock()
 
 	if muted {
-		if err := d.SetMuted(false); err != nil {
+		if err := d.SetMuted(ctx, false); err != nil {
 			return 0, fmt.Errorf("adjust volume: %w", err)
 		}
 	}
 
-	volume, err := d.client.SetRelativeVolume(adjustment)
+	volume, err := d.client.SetRelativeVolume(ctx, adjustment)
 	if err != nil {
 		return 0, fmt.Errorf("adjust volume: %w", err)
 	}
@@ -403,8 +404,8 @@ func (d *Device) AdjustVolume(adjustment int) (int, error) {
 	return volume, nil
 }
 
-func (d *Device) SetMuted(muted bool) error {
-	if err := d.client.SetMute(muted); err != nil {
+func (d *Device) SetMuted(ctx context.Context, muted bool) error {
+	if err := d.client.SetMute(ctx, muted); err != nil {
 		return fmt.Errorf("set mute: %w", err)
 	}
 	d.mu.Lock()
@@ -413,16 +414,16 @@ func (d *Device) SetMuted(muted bool) error {
 	return nil
 }
 
-func (d *Device) ToggleMute() error {
+func (d *Device) ToggleMute(ctx context.Context) error {
 	d.mu.RLock()
 	muted := d.state.Muted
 	d.mu.RUnlock()
-	return d.SetMuted(!muted)
+	return d.SetMuted(ctx, !muted)
 }
 
 // Play starts or resumes playback.
-func (d *Device) Play() error {
-	if err := d.client.Play(); err != nil {
+func (d *Device) Play(ctx context.Context) error {
+	if err := d.client.Play(ctx); err != nil {
 		return fmt.Errorf("play: %w", err)
 	}
 	d.mu.Lock()
@@ -432,8 +433,8 @@ func (d *Device) Play() error {
 }
 
 // Pause pauses playback.
-func (d *Device) Pause() error {
-	if err := d.client.Pause(); err != nil {
+func (d *Device) Pause(ctx context.Context) error {
+	if err := d.client.Pause(ctx); err != nil {
 		return fmt.Errorf("pause: %w", err)
 	}
 	d.mu.Lock()
@@ -442,8 +443,8 @@ func (d *Device) Pause() error {
 	return nil
 }
 
-func (d *Device) Next() error {
-	if err := d.client.Next(); err != nil {
+func (d *Device) Next(ctx context.Context) error {
+	if err := d.client.Next(ctx); err != nil {
 		return fmt.Errorf("next track: %w", err)
 	}
 	d.mu.Lock()
@@ -452,8 +453,8 @@ func (d *Device) Next() error {
 	return nil
 }
 
-func (d *Device) Previous() error {
-	if err := d.client.Previous(); err != nil {
+func (d *Device) Previous(ctx context.Context) error {
+	if err := d.client.Previous(ctx); err != nil {
 		return fmt.Errorf("previous track: %w", err)
 	}
 	d.mu.Lock()

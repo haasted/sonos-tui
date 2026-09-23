@@ -1,6 +1,7 @@
 package sonos_test
 
 import (
+	"context"
 	"fmt"
 	"html"
 	"net/http"
@@ -50,7 +51,7 @@ func TestDevice_Refresh(t *testing.T) {
 	defer srv.Close()
 
 	d := newTestDevice(t, srv)
-	require.NoError(t, d.Refresh())
+	require.NoError(t, d.Refresh(context.Background()))
 	assert.Equal(t, "PLAYING", d.State().Transport.State)
 }
 
@@ -59,7 +60,7 @@ func TestDevice_Play_UpdatesStateOptimistically(t *testing.T) {
 	defer srv.Close()
 
 	d := newTestDevice(t, srv)
-	require.NoError(t, d.Play())
+	require.NoError(t, d.Play(context.Background()))
 
 	// State should reflect Play() immediately, without a follow-up Refresh.
 	assert.Equal(t, "PLAYING", d.State().Transport.State)
@@ -70,7 +71,7 @@ func TestDevice_Pause_UpdatesStateOptimistically(t *testing.T) {
 	defer srv.Close()
 
 	d := newTestDevice(t, srv)
-	require.NoError(t, d.Pause())
+	require.NoError(t, d.Pause(context.Background()))
 	assert.Equal(t, "PAUSED_PLAYBACK", d.State().Transport.State)
 }
 
@@ -81,7 +82,7 @@ func TestDevice_Play_Error_LeavesStateUnchanged(t *testing.T) {
 	defer srv.Close()
 
 	d := newTestDevice(t, srv)
-	err := d.Play()
+	err := d.Play(context.Background())
 
 	require.Error(t, err)
 	assert.Empty(t, d.State().Transport.State, "state should stay untouched when the command fails")
@@ -103,7 +104,7 @@ func TestDevice_RefreshTrack(t *testing.T) {
 	defer srv.Close()
 
 	d := newTestDevice(t, srv)
-	require.NoError(t, d.RefreshTrack())
+	require.NoError(t, d.RefreshTrack(context.Background()))
 
 	state := d.State()
 	assert.Equal(t, "Test Track", state.Current.Title)
@@ -141,7 +142,7 @@ func TestDevice_HandleAVTransportEvent_UpdatesStateAndPublishes(t *testing.T) {
 			`<CurrentTrackURI val="x-sonos-http:live"/>` +
 			`<CurrentTrackMetaData val="` + didlItem("Live Track", "Live Artist", "Live Album") + `"/>`)
 
-	require.NoError(t, d.HandleAVTransportEvent(body))
+	require.NoError(t, d.HandleAVTransportEvent(context.Background(), body))
 
 	state := d.State()
 	assert.Equal(t, "PLAYING", state.Transport.State)
@@ -174,7 +175,7 @@ func TestDevice_HandleAVTransportEvent_FetchesPositionWhenEventOmitsIt(t *testin
 
 	d := newTestDevice(t, srv)
 
-	require.NoError(t, d.HandleAVTransportEvent(notifyBody(`<TransportState val="PAUSED_PLAYBACK"/>`)))
+	require.NoError(t, d.HandleAVTransportEvent(context.Background(), notifyBody(`<TransportState val="PAUSED_PLAYBACK"/>`)))
 
 	assert.Equal(t, "PAUSED_PLAYBACK", d.State().Transport.State)
 	assert.Equal(t, "0:02:45", d.State().RelTime, "position should come from GetPositionInfo when the event omits it")
@@ -186,7 +187,7 @@ func TestDevice_HandleAVTransportEvent_MalformedBodyIsAnError(t *testing.T) {
 
 	d := newTestDevice(t, srv)
 
-	require.Error(t, d.HandleAVTransportEvent([]byte("not xml at all")))
+	require.Error(t, d.HandleAVTransportEvent(context.Background(), []byte("not xml at all")))
 }
 
 func TestDevice_HandleAVTransportEvent_DropsRatherThanBlockingWhenNobodyReceives(t *testing.T) {
@@ -201,7 +202,7 @@ func TestDevice_HandleAVTransportEvent_DropsRatherThanBlockingWhenNobodyReceives
 	go func() {
 		defer close(done)
 		for range sonos.EventChanBuffer * 3 {
-			require.NoError(t, d.HandleAVTransportEvent(body))
+			require.NoError(t, d.HandleAVTransportEvent(context.Background(), body))
 		}
 	}()
 
@@ -233,13 +234,13 @@ func TestDevice_HandleAVTransportEvent_ConcurrentWithCommands(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			require.NoError(t, d.HandleAVTransportEvent(body))
+			require.NoError(t, d.HandleAVTransportEvent(context.Background(), body))
 		}()
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			require.NoError(t, d.Play())
+			require.NoError(t, d.Play(context.Background()))
 		}()
 
 		wg.Add(1)
@@ -258,7 +259,7 @@ func TestDevice_State_ReturnsCopy(t *testing.T) {
 	defer srv.Close()
 
 	d := newTestDevice(t, srv)
-	require.NoError(t, d.Refresh())
+	require.NoError(t, d.Refresh(context.Background()))
 
 	got := d.State()
 	got.Transport.State = "MUTATED"

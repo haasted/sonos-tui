@@ -84,7 +84,7 @@ func modelPlaying(t *testing.T, title string) (appModel, *sonos.Device) {
 	if !ok {
 		t.Fatal("no device for the first cached speaker")
 	}
-	if err := device.HandleAVTransportEvent(playingBody(title)); err != nil {
+	if err := device.HandleAVTransportEvent(context.Background(), playingBody(title)); err != nil {
 		t.Fatalf("handling event: %v", err)
 	}
 	<-device.Events()

@@ -68,7 +68,7 @@ func newAppModel(ctx context.Context, events *sonos.EventManager, cached []sonos
 	m := appModel{ctx: ctx, tabs: tabs, eventManager: events, fromCache: len(cached) > 0,
 		help: help, queue: queue}
 	for _, speaker := range cached {
-		m = m.insertSpeaker(speaker.IP, speaker.RoomName(), newSpeakerModel(sonos.NewDevice(speaker)))
+		m = m.insertSpeaker(speaker.IP, speaker.RoomName(), newSpeakerModel(ctx, sonos.NewDevice(speaker)))
 	}
 	for i, ip := range m.ips {
 		if usnFor(cached, ip) == selectedUSN && selectedUSN != "" {
@@ -296,7 +296,7 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// One read for each speaker, each in its own command and so in its own
 		// goroutine. They run behind the tab that is already on screen.
-		cmds := []tea.Cmd{refreshQueue(msg.speaker.device)}
+		cmds := []tea.Cmd{refreshQueue(m.ctx, msg.speaker.device)}
 		if m.eventManager != nil {
 			cmds = append(cmds, waitForEvent(msg.speaker.device))
 		}
@@ -357,7 +357,7 @@ func (m appModel) applyVerified(msg speakerVerifiedMsg) (tea.Model, tea.Cmd) {
 		if msg.degraded != "" {
 			degraded = notify(panes.NoticeWarn, msg.degraded)
 		}
-		return m, tea.Batch(cmd, degraded, refreshQueue(msg.speaker), waitForEvent(msg.speaker))
+		return m, tea.Batch(cmd, degraded, refreshQueue(m.ctx, msg.speaker), waitForEvent(msg.speaker))
 	}
 	return m, nil
 }
@@ -432,7 +432,7 @@ func (m appModel) applyEvent(event sonos.Event) (tea.Model, tea.Cmd) {
 		// point is that every queue is current before anyone asks for it.
 		var reread tea.Cmd
 		if _, queue := event.Directory.QueueUpdate(); queue {
-			reread = refreshQueue(speaker.device)
+			reread = refreshQueue(m.ctx, speaker.device)
 		}
 		return m, tea.Batch(cmd, reread, waitForEvent(speaker.device))
 	}

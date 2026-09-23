@@ -1,6 +1,7 @@
 package sonos_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -35,7 +36,7 @@ func TestDevice_RefreshVolume_SeedsVolumeAndMute(t *testing.T) {
 	defer rs.Close()
 
 	d := newVolumeDevice(t, rs)
-	require.NoError(t, d.RefreshVolume())
+	require.NoError(t, d.RefreshVolume(context.Background()))
 
 	assert.Equal(t, 37, d.State().Volume)
 	assert.True(t, d.State().Muted)
@@ -48,7 +49,7 @@ func TestDevice_AdjustVolume_ReturnsSpeakerReportedLevel(t *testing.T) {
 
 	d := newVolumeDevice(t, rs)
 
-	got, err := d.AdjustVolume(5)
+	got, err := d.AdjustVolume(context.Background(), 5)
 	require.NoError(t, err)
 
 	assert.Equal(t, 45, got, "the speaker's NewVolume should be returned, not a locally computed guess")
@@ -62,7 +63,7 @@ func TestDevice_AdjustVolume_NeedsNoPriorVolumeKnowledge(t *testing.T) {
 
 	d := newVolumeDevice(t, rs)
 
-	got, err := d.AdjustVolume(-10)
+	got, err := d.AdjustVolume(context.Background(), -10)
 	require.NoError(t, err)
 
 	assert.Equal(t, 50, got, "a relative adjustment should apply to the speaker's real level without RefreshVolume first")
@@ -75,9 +76,9 @@ func TestDevice_AdjustVolume_UnmutesFirstWhenMuted(t *testing.T) {
 	defer rs.Close()
 
 	d := newVolumeDevice(t, rs)
-	require.NoError(t, d.RefreshVolume())
+	require.NoError(t, d.RefreshVolume(context.Background()))
 
-	_, err := d.AdjustVolume(2)
+	_, err := d.AdjustVolume(context.Background(), 2)
 	require.NoError(t, err)
 
 	assert.False(t, d.State().Muted, "changing volume should unmute, like a physical remote")
@@ -95,9 +96,9 @@ func TestDevice_AdjustVolume_DoesNotUnmuteWhenAlreadyUnmuted(t *testing.T) {
 	defer rs.Close()
 
 	d := newVolumeDevice(t, rs)
-	require.NoError(t, d.RefreshVolume())
+	require.NoError(t, d.RefreshVolume(context.Background()))
 
-	_, err := d.AdjustVolume(2)
+	_, err := d.AdjustVolume(context.Background(), 2)
 	require.NoError(t, err)
 
 	assert.NotContains(t, rs.calls()[2:], "SetMute", "an unmuted speaker should not be sent a redundant unmute")
@@ -109,12 +110,12 @@ func TestDevice_ToggleMute_FlipsBothWays(t *testing.T) {
 	defer rs.Close()
 
 	d := newVolumeDevice(t, rs)
-	require.NoError(t, d.RefreshVolume())
+	require.NoError(t, d.RefreshVolume(context.Background()))
 
-	require.NoError(t, d.ToggleMute())
+	require.NoError(t, d.ToggleMute(context.Background()))
 	assert.True(t, d.State().Muted)
 
-	require.NoError(t, d.ToggleMute())
+	require.NoError(t, d.ToggleMute(context.Background()))
 	assert.False(t, d.State().Muted)
 }
 
@@ -128,7 +129,7 @@ func TestDevice_AdjustVolume_LeavesStateUnchangedOnFailure(t *testing.T) {
 	speaker := sonos.Speaker{IP: "test", Location: srv.URL}
 	d := sonos.NewDeviceWithClient(speaker, &sonos.SonosClient{BaseURL: srv.URL, HTTPClient: srv.Client()})
 
-	_, err := d.AdjustVolume(5)
+	_, err := d.AdjustVolume(context.Background(), 5)
 	require.Error(t, err)
 	assert.Equal(t, 0, d.State().Volume, "a failed adjustment must not record a volume that never took effect")
 }
@@ -145,7 +146,7 @@ func TestDevice_RefreshAll_RunsRequestsConcurrently(t *testing.T) {
 	d := sonos.NewDeviceWithClient(speaker, &sonos.SonosClient{BaseURL: srv.URL, HTTPClient: srv.Client()})
 
 	start := time.Now()
-	require.NoError(t, d.RefreshAll())
+	require.NoError(t, d.RefreshAll(context.Background()))
 	elapsed := time.Since(start)
 
 	if elapsed > 3*delay {
@@ -168,7 +169,7 @@ func TestDevice_RefreshAll_ReportsEveryFailure(t *testing.T) {
 	speaker := sonos.Speaker{IP: "test", Location: srv.URL}
 	d := sonos.NewDeviceWithClient(speaker, &sonos.SonosClient{BaseURL: srv.URL, HTTPClient: srv.Client()})
 
-	err := d.RefreshAll()
+	err := d.RefreshAll(context.Background())
 	require.Error(t, err)
 
 	joined, ok := err.(interface{ Unwrap() []error })

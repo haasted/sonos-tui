@@ -156,12 +156,12 @@ func watch(ctx context.Context, events *sonos.EventManager, speakers []sonos.Spe
 	}
 
 	if *inventoryFlag {
-		inventory(devices)
+		inventory(ctx, devices)
 	}
 
 	fmt.Printf("watching %d speaker(s). Edit a queue in the Sonos app.\n\n", len(devices))
 	for _, device := range devices {
-		go print(device)
+		go print(ctx, device)
 	}
 
 	<-ctx.Done()
@@ -170,18 +170,18 @@ func watch(ctx context.Context, events *sonos.EventManager, speakers []sonos.Spe
 // inventory reads every speaker's queue once, whatever it is playing. A speaker
 // on a station reports one track through AVTransport, which says nothing about
 // the queue behind it — this is where the two are put side by side.
-func inventory(devices []*sonos.Device) {
+func inventory(ctx context.Context, devices []*sonos.Device) {
 	fmt.Println("queue of each speaker, before any event:")
 	fmt.Printf("  %-12s %6s %7s %9s  %-18s %s\n",
 		"room", "queue", "tracks", "UpdateID", "playing", "queue ends")
 
 	for _, device := range devices {
-		if err := device.Refresh(); err != nil {
+		if err := device.Refresh(ctx); err != nil {
 			slog.Debug("refreshing before inventory", "speaker", device.RoomName(), "err", err)
 		}
 		state := device.State()
 
-		queue, err := device.Queue()
+		queue, err := device.Queue(ctx)
 		if err != nil {
 			fmt.Printf("  %-12s  could not read the queue: %v\n", device.RoomName(), err)
 			continue
@@ -197,7 +197,7 @@ func inventory(devices []*sonos.Device) {
 // print reports one speaker's events. AVTransport is shown beside the
 // ContentDirectory ones on purpose: its NumberOfTracks is the partial signal we
 // have today, and the point of the harness is to see where the two disagree.
-func print(device *sonos.Device) {
+func print(ctx context.Context, device *sonos.Device) {
 	for event := range device.Events() {
 		state := device.State()
 		stamp := time.Now().Format("15:04:05.000")
@@ -211,7 +211,7 @@ func print(device *sonos.Device) {
 			// what a reader gets by being quick, so the harness is quick and
 			// reports what it got.
 			if updateID, queue := event.Directory.QueueUpdate(); queue && *browseFlag {
-				browse(device, updateID)
+				browse(ctx, device, updateID)
 			}
 		case sonos.EventAVTransport:
 			fmt.Printf("%s  %-12s AVTransport       tracks=%d track=%d  queue-id=%d  %s\n",
@@ -227,9 +227,9 @@ func print(device *sonos.Device) {
 // A read that lands while the speaker is still writing returns a shorter queue
 // with nothing to mark it as provisional, so the count here is the evidence for
 // or against reading straight away.
-func browse(device *sonos.Device, announced int) {
+func browse(ctx context.Context, device *sonos.Device, announced int) {
 	start := time.Now()
-	queue, err := device.Queue()
+	queue, err := device.Queue(ctx)
 	took := time.Since(start)
 
 	if err != nil {

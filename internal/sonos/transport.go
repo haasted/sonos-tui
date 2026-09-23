@@ -1,6 +1,7 @@
 package sonos
 
 import (
+	"context"
 	"encoding/xml"
 	"fmt"
 )
@@ -16,13 +17,13 @@ const (
 
 const avtransportPath = "/MediaRenderer/AVTransport/Control"
 
-func (c *SonosClient) avTransport(action string, payload any) ([]byte, error) {
-	return c.Do(avtransportPath, avtransportService, action, payload)
+func (c *SonosClient) avTransport(ctx context.Context, action string, payload any) ([]byte, error) {
+	return c.Do(ctx, avtransportPath, avtransportService, action, payload)
 }
 
 // Play starts or resumes playback.
-func (c *SonosClient) Play() error {
-	_, err := c.avTransport("Play", playAction{
+func (c *SonosClient) Play(ctx context.Context) error {
+	_, err := c.avTransport(ctx, "Play", playAction{
 		XMLName:   xml.Name{Local: "u:Play"},
 		Namespace: avtransportService,
 		Speed:     1,
@@ -31,26 +32,26 @@ func (c *SonosClient) Play() error {
 }
 
 // Pause pauses playback.
-func (c *SonosClient) Pause() error {
-	_, err := c.avTransport("Pause", instancePayload(avtransportService, "Pause"))
+func (c *SonosClient) Pause(ctx context.Context) error {
+	_, err := c.avTransport(ctx, "Pause", instancePayload(avtransportService, "Pause"))
 	return err
 }
 
 // Stop stops playback.
-func (c *SonosClient) Stop() error {
-	_, err := c.avTransport("Stop", instancePayload(avtransportService, "Stop"))
+func (c *SonosClient) Stop(ctx context.Context) error {
+	_, err := c.avTransport(ctx, "Stop", instancePayload(avtransportService, "Stop"))
 	return err
 }
 
 // Next skips to the next track.
-func (c *SonosClient) Next() error {
-	_, err := c.avTransport("Next", instancePayload(avtransportService, "Next"))
+func (c *SonosClient) Next(ctx context.Context) error {
+	_, err := c.avTransport(ctx, "Next", instancePayload(avtransportService, "Next"))
 	return err
 }
 
 // Previous goes back to the previous track.
-func (c *SonosClient) Previous() error {
-	_, err := c.avTransport("Previous", instancePayload(avtransportService, "Previous"))
+func (c *SonosClient) Previous(ctx context.Context) error {
+	_, err := c.avTransport(ctx, "Previous", instancePayload(avtransportService, "Previous"))
 	return err
 }
 
@@ -65,8 +66,8 @@ type TransportInfo struct {
 }
 
 // GetTransportInfo returns the current playback state of the speaker.
-func (c *SonosClient) GetTransportInfo() (*TransportInfo, error) {
-	data, err := c.avTransport("GetTransportInfo", instancePayload(avtransportService, "GetTransportInfo"))
+func (c *SonosClient) GetTransportInfo(ctx context.Context) (*TransportInfo, error) {
+	data, err := c.avTransport(ctx, "GetTransportInfo", instancePayload(avtransportService, "GetTransportInfo"))
 	if err != nil {
 		return nil, err
 	}
@@ -102,8 +103,8 @@ type TrackInfo struct {
 }
 
 // GetPositionInfo returns the current track position and metadata.
-func (c *SonosClient) GetPositionInfo() (*TrackInfo, error) {
-	data, err := c.avTransport("GetPositionInfo", instancePayload(avtransportService, "GetPositionInfo"))
+func (c *SonosClient) GetPositionInfo(ctx context.Context) (*TrackInfo, error) {
+	data, err := c.avTransport(ctx, "GetPositionInfo", instancePayload(avtransportService, "GetPositionInfo"))
 	if err != nil {
 		return nil, err
 	}
@@ -153,13 +154,13 @@ func (c *SonosClient) GetPositionInfo() (*TrackInfo, error) {
 
 const renderingPath = "/MediaRenderer/RenderingControl/Control"
 
-func (c *SonosClient) rendering(action string, payload any) ([]byte, error) {
-	return c.Do(renderingPath, renderingService, action, payload)
+func (c *SonosClient) rendering(ctx context.Context, action string, payload any) ([]byte, error) {
+	return c.Do(ctx, renderingPath, renderingService, action, payload)
 }
 
 // GetVolume returns the current Master volume (0–100).
-func (c *SonosClient) GetVolume() (int, error) {
-	data, err := c.rendering("GetVolume", channelAction{
+func (c *SonosClient) GetVolume(ctx context.Context) (int, error) {
+	data, err := c.rendering(ctx, "GetVolume", channelAction{
 		XMLName:   xml.Name{Local: "u:GetVolume"},
 		Namespace: renderingService,
 		Channel:   masterChannel,
@@ -178,11 +179,11 @@ func (c *SonosClient) GetVolume() (int, error) {
 }
 
 // SetVolume sets the Master volume (0–100).
-func (c *SonosClient) SetVolume(level int) error {
+func (c *SonosClient) SetVolume(ctx context.Context, level int) error {
 	if level < 0 || level > 100 {
 		return fmt.Errorf("volume must be between 0 and 100, got %d", level)
 	}
-	_, err := c.rendering("SetVolume", setVolumeAction{
+	_, err := c.rendering(ctx, "SetVolume", setVolumeAction{
 		XMLName:   xml.Name{Local: "u:SetVolume"},
 		Namespace: renderingService,
 		Channel:   masterChannel,
@@ -191,8 +192,8 @@ func (c *SonosClient) SetVolume(level int) error {
 	return err
 }
 
-func (c *SonosClient) SetRelativeVolume(adjustment int) (int, error) {
-	data, err := c.rendering("SetRelativeVolume", setRelativeVolumeAction{
+func (c *SonosClient) SetRelativeVolume(ctx context.Context, adjustment int) (int, error) {
+	data, err := c.rendering(ctx, "SetRelativeVolume", setRelativeVolumeAction{
 		XMLName:    xml.Name{Local: "u:SetRelativeVolume"},
 		Namespace:  renderingService,
 		Channel:    masterChannel,
@@ -212,8 +213,8 @@ func (c *SonosClient) SetRelativeVolume(adjustment int) (int, error) {
 }
 
 // GetMute returns true if the speaker is muted.
-func (c *SonosClient) GetMute() (bool, error) {
-	data, err := c.rendering("GetMute", channelAction{
+func (c *SonosClient) GetMute(ctx context.Context) (bool, error) {
+	data, err := c.rendering(ctx, "GetMute", channelAction{
 		XMLName:   xml.Name{Local: "u:GetMute"},
 		Namespace: renderingService,
 		Channel:   masterChannel,
@@ -232,12 +233,12 @@ func (c *SonosClient) GetMute() (bool, error) {
 }
 
 // SetMute mutes or unmutes the speaker.
-func (c *SonosClient) SetMute(muted bool) error {
+func (c *SonosClient) SetMute(ctx context.Context, muted bool) error {
 	val := 0
 	if muted {
 		val = 1
 	}
-	_, err := c.rendering("SetMute", setMuteAction{
+	_, err := c.rendering(ctx, "SetMute", setMuteAction{
 		XMLName:   xml.Name{Local: "u:SetMute"},
 		Namespace: renderingService,
 		Channel:   masterChannel,

@@ -127,7 +127,7 @@ func verifyCachedSpeaker(ctx context.Context, events *sonos.EventManager, speake
 		}
 
 		var degraded []string
-		if err := device.RefreshAll(); err != nil {
+		if err := device.RefreshAll(ctx); err != nil {
 			slog.Warn("refreshing cached speaker", "speaker", speaker.IP, "err", err)
 			degraded = append(degraded, "state may be stale")
 		}
@@ -182,7 +182,7 @@ func loadSpeaker(ctx context.Context, events *sonos.EventManager, speaker sonos.
 		device := sonos.NewDevice(speaker)
 
 		var degraded []string
-		if err := device.RefreshAll(); err != nil {
+		if err := device.RefreshAll(ctx); err != nil {
 			slog.Warn("refreshing speaker state", "speaker", speaker, "err", err)
 			degraded = append(degraded, "state may be stale")
 		}
@@ -192,7 +192,7 @@ func loadSpeaker(ctx context.Context, events *sonos.EventManager, speaker sonos.
 		}
 
 		return speakerReadyMsg{
-			title: speaker.RoomName(), ip: speaker.IP, speaker: newSpeakerModel(device),
+			title: speaker.RoomName(), ip: speaker.IP, speaker: newSpeakerModel(ctx, device),
 			degraded: degradedText(speaker.RoomName(), degraded),
 		}
 	}

@@ -115,7 +115,11 @@ func (el *eventListener) handleNotify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := found.handle(body); err != nil {
+	// r.Context() is cancelled the moment this handler writes its response
+	// below, before a follow-up fetch like GetPositionInfo could finish.
+	// WithoutCancel keeps the request scope without inheriting that
+	// cancellation; the client's own timeout still bounds the fetch.
+	if err := found.handle(context.WithoutCancel(r.Context()), body); err != nil {
 		slog.Warn("handling event", "speaker", found.device.Speaker, "service", found.service, "err", err)
 	}
 
@@ -129,10 +133,13 @@ func (el *eventListener) close(ctx context.Context) error {
 // handle dispatches the body to the parser for this route's service. Named
 // rather than defaulted: every service has its own document shape, so a body
 // sent to the wrong parser is read as an event that never happened.
-func (r route) handle(body []byte) error {
+//
+// ctx only reaches AVTransport: it is the sole handler that makes a network
+// call of its own, to fill in a position the event omitted.
+func (r route) handle(ctx context.Context, body []byte) error {
 	switch r.service {
 	case avTransportEventPath:
-		return r.device.HandleAVTransportEvent(body)
+		return r.device.HandleAVTransportEvent(ctx, body)
 	case renderingControlEventPath:
 		return r.device.HandleRenderingControlEvent(body)
 	case contentDirectoryEventPath:

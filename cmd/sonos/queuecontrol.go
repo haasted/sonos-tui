@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"sync/atomic"
 	"time"
@@ -107,15 +108,15 @@ func (m appModel) openQueue() (tea.Model, tea.Cmd) {
 	if state.QueueKnown {
 		return m, nil
 	}
-	return m, refreshQueue(speaker.device)
+	return m, refreshQueue(m.ctx, speaker.device)
 }
 
 // refreshQueue reads a speaker's queue into its Device and reports that it
 // landed. Every speaker gets one at startup, and one more whenever an event
 // says its queue changed.
-func refreshQueue(device *sonos.Device) tea.Cmd {
+func refreshQueue(ctx context.Context, device *sonos.Device) tea.Cmd {
 	return func() tea.Msg {
-		if err := device.RefreshQueue(); err != nil {
+		if err := device.RefreshQueue(ctx); err != nil {
 			slog.Warn("reading a speaker's queue", "speaker", device.RoomName(), "err", err)
 			return queueLoadedMsg{device: device, room: device.RoomName(), err: err}
 		}
@@ -141,8 +142,9 @@ func (m appModel) applyQueueRemove(msg queueRemoveMsg) (tea.Model, tea.Cmd) {
 	}
 
 	device := speaker.device
+	ctx := m.ctx
 	return m, func() tea.Msg {
-		if err := device.RemoveQueueTrack(msg.position); err != nil {
+		if err := device.RemoveQueueTrack(ctx, msg.position); err != nil {
 			slog.Warn("removing a track from the queue",
 				"speaker", device.RoomName(), "position", msg.position, "err", err)
 			return panes.NoticeMsg{Level: panes.NoticeError, Text: queueRemoveFailed}
@@ -177,8 +179,9 @@ func (m appModel) applyQueueMoveCommit(msg queueMoveCommitMsg) (tea.Model, tea.C
 	}
 
 	device := speaker.device
+	ctx := m.ctx
 	return m, func() tea.Msg {
-		if err := device.MoveQueueTrack(from, to); err != nil {
+		if err := device.MoveQueueTrack(ctx, from, to); err != nil {
 			slog.Warn("moving a track in the queue",
 				"speaker", device.RoomName(), "from", from, "to", to, "err", err)
 			return panes.NoticeMsg{Level: panes.NoticeError, Text: queueMoveFailed}

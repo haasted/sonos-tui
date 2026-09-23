@@ -1,6 +1,7 @@
 package sonos_test
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -22,7 +23,7 @@ func TestQueue_PagesUntilItHasEverything(t *testing.T) {
 	server, calls := browseServer(t, total)
 	defer server.Close()
 
-	queue, err := clientFor(server).GetQueue()
+	queue, err := clientFor(server).GetQueue(context.Background())
 	require.NoError(t, err)
 
 	assert.Len(t, queue.Items, total, "every page must be fetched, not just the first")
@@ -37,7 +38,7 @@ func TestQueue_PositionsAreOneBasedAndContiguous(t *testing.T) {
 	server, _ := browseServer(t, 5)
 	defer server.Close()
 
-	queue, err := clientFor(server).GetQueue()
+	queue, err := clientFor(server).GetQueue(context.Background())
 	require.NoError(t, err)
 
 	for i, item := range queue.Items {
@@ -51,7 +52,7 @@ func TestQueue_EmptyQueueReturnsNothing(t *testing.T) {
 	server, _ := browseServer(t, 0)
 	defer server.Close()
 
-	queue, err := clientFor(server).GetQueue()
+	queue, err := clientFor(server).GetQueue(context.Background())
 	require.NoError(t, err)
 
 	assert.Empty(t, queue.Items)
@@ -65,7 +66,7 @@ func TestQueue_StopsWhenAPageComesBackEmpty(t *testing.T) {
 	}))
 	defer server.Close()
 
-	queue, err := clientFor(server).GetQueue()
+	queue, err := clientFor(server).GetQueue(context.Background())
 	require.NoError(t, err)
 
 	assert.Empty(t, queue.Items, "a claimed total must not produce phantom items")
@@ -77,7 +78,7 @@ func TestQueue_EveryItemInTheDocumentIsParsed(t *testing.T) {
 	server, _ := browseServer(t, 3)
 	defer server.Close()
 
-	queue, err := clientFor(server).GetQueue()
+	queue, err := clientFor(server).GetQueue(context.Background())
 	require.NoError(t, err)
 
 	require.Len(t, queue.Items, 3)

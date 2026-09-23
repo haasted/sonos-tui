@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"sync/atomic"
@@ -69,6 +70,7 @@ func volumeCommitTick(gen int) tea.Cmd {
 // speakerModel is one speaker's tab: the device it controls, the now-playing
 // widget, and the debounce bookkeeping for pending volume changes.
 type speakerModel struct {
+	ctx    context.Context  // root context; every command this tab issues carries it
 	device *sonos.Device    // the speaker this tab controls
 	widget nowplaying.Model // renders the current track
 
@@ -78,8 +80,9 @@ type speakerModel struct {
 }
 
 // newSpeakerModel builds a tab for device, seeded from its current state.
-func newSpeakerModel(device *sonos.Device) speakerModel {
+func newSpeakerModel(ctx context.Context, device *sonos.Device) speakerModel {
 	return speakerModel{
+		ctx:    ctx,
 		device: device,
 		widget: nowplaying.New(trackFromState(device.State())),
 	}
@@ -286,7 +289,7 @@ func (m speakerModel) togglePlayback() tea.Cmd {
 // change cannot move playback, and a TrackMsg would reset the clock.
 func (m speakerModel) adjustVolume(delta int) tea.Cmd {
 	return func() tea.Msg {
-		if _, err := m.device.AdjustVolume(delta); err != nil {
+		if _, err := m.device.AdjustVolume(m.ctx, delta); err != nil {
 			slog.Warn("volume command failed", "speaker", m.device.Speaker, "delta", delta, "err", err)
 			return m.failed(err)
 		}
@@ -298,7 +301,7 @@ func (m speakerModel) adjustVolume(delta int) tea.Cmd {
 // toggleMute flips mute, reporting volume only for the same reason as adjustVolume.
 func (m speakerModel) toggleMute() tea.Cmd {
 	return func() tea.Msg {
-		if err := m.device.ToggleMute(); err != nil {
+		if err := m.device.ToggleMute(m.ctx); err != nil {
 			slog.Warn("mute command failed", "speaker", m.device.Speaker, "err", err)
 			return m.failed(err)
 		}
@@ -320,7 +323,7 @@ func muteConfirmation(muted bool) string {
 
 // deviceCommand wraps a device action as a Bubbletea command. The name travels
 // with it so a refusal can say which command the speaker would not run.
-func (m speakerModel) deviceCommand(name string, action func(*sonos.Device) error) tea.Cmd {
+func (m speakerModel) deviceCommand(name string, action func(*sonos.Device, context.Context) error) tea.Cmd {
 	return func() tea.Msg {
 		return m.runDeviceAction(name, action)
 	}
@@ -328,8 +331,8 @@ func (m speakerModel) deviceCommand(name string, action func(*sonos.Device) erro
 
 // runDeviceAction runs action, mapping failure to an error message and success
 // to a refreshed track.
-func (m speakerModel) runDeviceAction(name string, action func(*sonos.Device) error) tea.Msg {
-	if err := action(m.device); err != nil {
+func (m speakerModel) runDeviceAction(name string, action func(*sonos.Device, context.Context) error) tea.Msg {
+	if err := action(m.device, m.ctx); err != nil {
 		state := m.device.State()
 
 		// The source and the position are what make a refusal readable later.

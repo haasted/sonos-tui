@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -136,7 +137,7 @@ func TestSpeaker_GenerationsAreUniqueAcrossSpeakers(t *testing.T) {
 // newTestSpeaker builds a speakerModel around a device pointed at a dead address;
 // these tests exercise debounce bookkeeping, never real playback.
 func newTestSpeaker() speakerModel {
-	return newSpeakerModel(sonos.NewDevice(sonos.Speaker{IP: "127.0.0.1"}))
+	return newSpeakerModel(context.Background(), sonos.NewDevice(sonos.Speaker{IP: "127.0.0.1"}))
 }
 
 // press sends one key to the model and discards the resulting command.

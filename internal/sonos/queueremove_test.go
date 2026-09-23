@@ -1,6 +1,7 @@
 package sonos_test
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,7 +18,7 @@ func TestRemoveTrack_AddressesTheTrackByPosition(t *testing.T) {
 	body, server := captureRequest(t)
 	defer server.Close()
 
-	require.NoError(t, clientFor(server).RemoveTrackFromQueue(23, 7))
+	require.NoError(t, clientFor(server).RemoveTrackFromQueue(context.Background(), 23, 7))
 
 	assert.Contains(t, *body, "<ObjectID>Q:0/23</ObjectID>", "the track is named by its place in Q:0")
 	assert.Contains(t, *body, "<UpdateID>7</UpdateID>", "the version the caller believes the queue is at")
@@ -36,7 +37,7 @@ func TestRemoveTrack_GoesToTheTransportService(t *testing.T) {
 	}))
 	defer server.Close()
 
-	require.NoError(t, clientFor(server).RemoveTrackFromQueue(1, 0))
+	require.NoError(t, clientFor(server).RemoveTrackFromQueue(context.Background(), 1, 0))
 	assert.Equal(t, "/MediaRenderer/AVTransport/Control", path)
 }
 
@@ -49,8 +50,8 @@ func TestRemoveTrack_RefusesAPositionThatIsNotATrack(t *testing.T) {
 	}))
 	defer server.Close()
 
-	assert.Error(t, clientFor(server).RemoveTrackFromQueue(0, 3))
-	assert.Error(t, clientFor(server).RemoveTrackFromQueue(-1, 3))
+	assert.Error(t, clientFor(server).RemoveTrackFromQueue(context.Background(), 0, 3))
+	assert.Error(t, clientFor(server).RemoveTrackFromQueue(context.Background(), -1, 3))
 }
 
 // Case: a speaker that refuses. The error must carry which track, since the
@@ -65,7 +66,7 @@ func TestRemoveTrack_ReportsARefusal(t *testing.T) {
 	}))
 	defer server.Close()
 
-	err := clientFor(server).RemoveTrackFromQueue(42, 3)
+	err := clientFor(server).RemoveTrackFromQueue(context.Background(), 42, 3)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "42", "the error must say which track")
 }

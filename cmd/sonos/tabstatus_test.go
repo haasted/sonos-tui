@@ -51,7 +51,7 @@ func startPlaying(t *testing.T, m appModel, ip string) {
 		`&lt;Event xmlns="urn:schemas-upnp-org:metadata-1-0/AVT/"&gt;&lt;InstanceID val="0"&gt;` +
 		`&lt;TransportState val="PLAYING"/&gt;&lt;RelativeTimePosition val="0:00:12"/&gt;` +
 		`&lt;/InstanceID&gt;&lt;/Event&gt;</LastChange></e:property></e:propertyset>`)
-	if err := device.HandleAVTransportEvent(body); err != nil {
+	if err := device.HandleAVTransportEvent(context.Background(), body); err != nil {
 		t.Fatalf("handling event: %v", err)
 	}
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -31,13 +32,13 @@ func withQueueServer(t *testing.T, items int) (appModel, *sonos.Device, func(int
 	t.Helper()
 
 	device, serve := queueDevice(t, items)
-	if err := device.RefreshQueue(); err != nil {
+	if err := device.RefreshQueue(context.Background()); err != nil {
 		t.Fatalf("reading the queue: %v", err)
 	}
 
 	m := sizedModel(t)
 	m.tabs.Active = 0
-	m.tabs.Items[0].Content = newSpeakerModel(device)
+	m.tabs.Items[0].Content = newSpeakerModel(context.Background(), device)
 	return m, device, serve
 }
 
@@ -243,7 +244,7 @@ func TestQueueCurrent_ASpeakerIsReadWhenItArrives(t *testing.T) {
 	}
 
 	_, cmd := sizedModel(t).Update(speakerReadyMsg{
-		title: "Elsewhere", ip: "192.168.1.77", speaker: newSpeakerModel(device),
+		title: "Elsewhere", ip: "192.168.1.77", speaker: newSpeakerModel(context.Background(), device),
 	})
 	runBatch(cmd)
 
@@ -257,7 +258,7 @@ func TestQueueCurrent_AVerifiedSpeakerIsReadToo(t *testing.T) {
 	device, _ := queueDevice(t, 6)
 
 	m := sizedModel(t)
-	m.tabs.Items[0].Content = newSpeakerModel(device)
+	m.tabs.Items[0].Content = newSpeakerModel(context.Background(), device)
 
 	_, cmd := m.Update(speakerVerifiedMsg{ip: "192.168.1.10", title: "Kitchen", speaker: device})
 	runBatch(cmd)

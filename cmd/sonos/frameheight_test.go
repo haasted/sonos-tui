@@ -71,7 +71,7 @@ func loadedModel(t *testing.T) appModel {
 	if !ok {
 		t.Fatal("no device for the first cached speaker")
 	}
-	if err := device.HandleAVTransportEvent(playingBody("A Fairly Long Track Title Indeed")); err != nil {
+	if err := device.HandleAVTransportEvent(context.Background(), playingBody("A Fairly Long Track Title Indeed")); err != nil {
 		t.Fatalf("handling event: %v", err)
 	}
 	<-device.Events()
