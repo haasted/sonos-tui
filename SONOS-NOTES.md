@@ -367,6 +367,36 @@ little. A delay before reading is not needed.
 ContentDirectory did. Its number during those seconds is the part-written
 queue, so it is the earlier signal and the wrong one.
 
+### The speaker checks the id you send it, and refuses with 1028
+
+Verified 2026-09-24 against a real speaker, four removals out of four.
+
+`RemoveTrackFromQueue` carries the version the caller believes the queue is
+at. The speaker **enforces** it. A removal aimed one version behind is refused
+with **UPnP error 1028**; the identical removal sent again with the current
+version succeeds:
+
+```
+position 9   sent 247 (one behind)   UPnP error 1028
+position 9   sent 248 (current)      ok
+position 12  sent 248 (one behind)   UPnP error 1028
+position 12  sent 249 (current)      ok
+```
+
+Only the id differed between the two attempts, so this also fixes what 1028
+means: **the queue has moved on since you read it.** The code is Sonos's own —
+it is not in the UPnP AVTransport:1 list, which stops at 718.
+
+**This is a real guard, not decoration**, and it is worth what it costs. A
+queue addressed by position is dangerous exactly when it has changed
+underneath the reader, and this is the speaker refusing to act on a stale
+picture rather than deleting whatever moved into that slot.
+
+**What it implies for a fast run of writes, not yet observed.** A caller's id
+only advances when its re-read lands. So a second write sent before then
+carries a stale id and must be refused. Anything sending writes faster than it
+re-reads should expect 1028 rather than success.
+
 ### Removing the playing track advances rather than stops it
 
 Verified 2026-09-23 by removing the track playing on a real speaker.

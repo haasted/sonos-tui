@@ -92,10 +92,12 @@ func (c *SonosClient) GetQueue(ctx context.Context) (Queue, error) {
 // through AVTransport under /MediaRenderer. Two services for one queue, and
 // this is the second of them.
 //
-// updateID is the version the caller believes the queue is at. A speaker that
-// checks it refuses a command aimed at a queue that has since changed, which
-// is the difference between removing the track the reader saw and removing
-// whatever moved into its place.
+// updateID is the version the caller believes the queue is at, and the
+// speaker DOES check it: a removal carrying anything but the current version
+// is refused with UPnP 1028, verified against a real speaker. That is the
+// difference between removing the track the reader saw and removing whatever
+// moved into its place, so a caller must pass the freshest version it has
+// rather than a convenient zero.
 func (c *SonosClient) RemoveTrackFromQueue(ctx context.Context, position, updateID int) error {
 	if position < 1 {
 		return fmt.Errorf("removing from the queue: position %d is not a track", position)

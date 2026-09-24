@@ -118,7 +118,8 @@ func parseSOAPFault(data []byte) *UPnPError {
 }
 
 // upnpErrorDescriptions covers the generic UPnP codes plus the AVTransport
-// ones, per the UPnP AVTransport:1 service specification.
+// ones, per the UPnP AVTransport:1 service specification. 1028 is outside
+// that specification and was read off a speaker instead — see SONOS-NOTES.md.
 var upnpErrorDescriptions = map[int]string{
 	401: "invalid action",
 	402: "invalid args",
@@ -142,4 +143,8 @@ var upnpErrorDescriptions = map[int]string{
 	716: "resource not found",
 	717: "play speed not supported",
 	718: "invalid InstanceID",
+
+	// Sonos's own, observed rather than specified: the UpdateID sent with a
+	// queue write is not the version the queue is at now.
+	1028: "the queue has changed since it was read",
 }
