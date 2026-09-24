@@ -180,9 +180,9 @@ func (q queueContent) shift(delta int) (queueContent, tea.Cmd) {
 	q.cursor = target
 	q = q.follow()
 
-	if q.moveGen != 0 {
-		return q, nil // a tick is already pending; this press joins that window
-	}
+	// Every press restarts the wait, taking a generation of its own so the
+	// tick the last press left behind is ignored when it arrives. The move
+	// therefore goes out once the keys are still, however long the run.
 	q.moveGen = nextQueueGen()
 	return q, queueMoveTick(q.moveGen)
 }

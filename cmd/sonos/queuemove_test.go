@@ -64,29 +64,75 @@ func TestQueueMove_NothingElseMoves(t *testing.T) {
 
 // Case: a run of presses, which must reach the speaker as ONE move from where
 // the track started. Ten presses are not ten reorders.
+//
+// Each press restarts the wait and so leaves a tick of its own behind. All but
+// the last are superseded by generation and send nothing, which is what counts
+// here rather than how many ticks were scheduled on the way.
 func TestQueueMove_ARunOfPressesIsOneMove(t *testing.T) {
-	q := navQueue(60, 10)
+	m, _ := deliverQueue(t, 60)
 
-	var cmds int
-	model := any(q)
+	var gens []int
 	for range 5 {
-		updated, cmd := model.(queueContent).Update(keyMsgFor("J"))
-		model = updated
-		if cmd != nil {
-			cmds++
-		}
+		model, _ := m.Update(keyMsgFor("J"))
+		m = model.(appModel)
+		gens = append(gens, queueOf(t, m).moveGen)
 	}
 
-	if cmds != 1 {
-		t.Fatalf("five presses opened %d windows, want 1", cmds)
-	}
-
-	from, to, pending := model.(queueContent).pendingMove()
+	from, to, pending := queueOf(t, m).pendingMove()
 	if !pending {
 		t.Fatal("nothing is waiting to be sent")
 	}
-	if from != 11 || to != 16 {
-		t.Fatalf("the move is %d -> %d, want 11 -> 16", from, to)
+	if from != 1 || to != 6 {
+		t.Fatalf("the move is %d -> %d, want 1 -> 6", from, to)
+	}
+
+	var sent int
+	for _, gen := range gens {
+		if _, cmd := m.Update(queueMoveCommitMsg{gen: gen}); cmd != nil {
+			sent++
+		}
+	}
+	if sent != 1 {
+		t.Fatalf("five presses sent %d moves, want 1", sent)
+	}
+}
+
+// Case: the wait must be trailing rather than a fixed window from the first
+// press. A fixed one closes while the reader is still pressing, and the settle
+// that follows then discards whatever comes next.
+func TestQueueMove_EachPressRestartsTheWait(t *testing.T) {
+	first, _ := navQueue(60, 10).Update(keyMsgFor("J"))
+	second, cmd := first.(queueContent).Update(keyMsgFor("J"))
+
+	if first.(queueContent).moveGen == second.(queueContent).moveGen {
+		t.Fatal("the second press joined the first one's window instead of restarting the wait")
+	}
+	if cmd == nil {
+		t.Fatal("the second press left no wait of its own behind")
+	}
+}
+
+// Case: the defect this replaced. A fixed window committed part-way through a
+// run, and the settle that followed swallowed the presses that came next --
+// measured at forty-four percent of them, with nothing said. Every press in a
+// run must move the track.
+func TestQueueMove_ARunLosesNoPresses(t *testing.T) {
+	q := navQueue(60, 10)
+	moving := q.items[10].URI
+
+	model := any(q)
+	for range 20 {
+		updated, _ := model.(queueContent).Update(keyMsgFor("J"))
+		model = updated
+	}
+
+	content := model.(queueContent)
+	if content.cursor != 30 {
+		t.Fatalf("twenty presses left the cursor on row %d, want 30", content.cursor)
+	}
+	if content.items[30].URI != moving {
+		t.Fatalf("twenty presses left %q on row 30, not the track being moved",
+			content.items[30].Title)
 	}
 }
 

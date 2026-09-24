@@ -16,10 +16,14 @@ import (
 )
 
 const (
-	// queueMoveDebounce is how long a move window stays open. Longer than the
-	// volume's, because a reader shifts a track with separate presses where
-	// they hold a volume key down, and each press must join the same window.
-	queueMoveDebounce = 300 * time.Millisecond
+	// queueMoveQuiet is how long the keys must be still before a move is sent.
+	// Every press restarts it, so the send lands after the reader has stopped
+	// rather than part-way through what they are doing -- a fixed window from
+	// the first press committed mid-run and the settle that followed then ate
+	// the presses that came next.
+	//
+	// Generous against an observed press interval of about 150ms. Tune here.
+	queueMoveQuiet = 700 * time.Millisecond
 
 	// queueMoveSettle is how long a sent move waits for the queue it produced.
 	// A read takes about a tenth of a second; this is long enough for a slow one
@@ -78,9 +82,11 @@ type queuePlayFromMsg struct{ position int }
 // commit a move nobody is making any more.
 type queueMoveCommitMsg struct{ gen int }
 
-// queueMoveTick schedules the close of the window identified by gen.
+// queueMoveTick schedules the send of the move identified by gen. A press
+// arriving first takes a newer generation, and this one is then ignored on
+// arrival -- which is what makes the wait trailing rather than fixed.
 func queueMoveTick(gen int) tea.Cmd {
-	return tea.Tick(queueMoveDebounce, func(time.Time) tea.Msg {
+	return tea.Tick(queueMoveQuiet, func(time.Time) tea.Msg {
 		return queueMoveCommitMsg{gen: gen}
 	})
 }
