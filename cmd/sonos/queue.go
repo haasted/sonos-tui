@@ -73,8 +73,17 @@ type selectedTrack struct {
 // queueContent lists a speaker's queue inside a modal. It holds what it was
 // given and where the reader has scrolled to; it fetches nothing itself.
 type queueContent struct {
-	room    string
-	items   []sonos.QueueItem
+	room  string
+	items []sonos.QueueItem
+
+	// all is the whole queue while a filter narrows items to part of it, and
+	// nil otherwise -- with no filter, items already IS everything. Read it
+	// through everything(), never directly.
+	//
+	// Anything that decides a track's identity has to read the whole queue:
+	// nth counts the copies of a URI above a track, and counted against a
+	// filtered list it would change with whatever the reader typed.
+	all     []sonos.QueueItem
 	playing int
 	err     error
 	loading bool
@@ -440,21 +449,35 @@ func (q queueContent) withSelection(change func([]selectedTrack) []selectedTrack
 	return q
 }
 
-// eachTrack calls visit for every row with the track that names it. The one
-// place that decides which copy of a repeated URI a row is, so the answer
-// cannot differ between the reader picking a row and the list drawing it.
-func (q queueContent) eachTrack(visit func(index int, track selectedTrack)) {
-	seen := make(map[string]int, len(q.items))
-	for i, item := range q.items {
-		visit(i, selectedTrack{uri: item.URI, nth: seen[item.URI]})
+// everything is the whole queue, filtered or not.
+func (q queueContent) everything() []sonos.QueueItem {
+	if q.all != nil {
+		return q.all
+	}
+	return q.items
+}
+
+// eachTrack calls visit for every track in the WHOLE queue with the position
+// it sits at and the track that names it. The one place that decides which
+// copy of a repeated URI a track is, so the answer cannot differ between the
+// reader picking it and the list drawing it -- nor with what a filter is
+// showing at the time.
+func (q queueContent) eachTrack(visit func(position int, track selectedTrack)) {
+	all := q.everything()
+
+	seen := make(map[string]int, len(all))
+	for _, item := range all {
+		visit(item.Position, selectedTrack{uri: item.URI, nth: seen[item.URI]})
 		seen[item.URI]++
 	}
 }
 
-// trackAt names the track on one row. The caller must hold a row that exists.
-func (q queueContent) trackAt(index int) (found selectedTrack) {
-	q.eachTrack(func(i int, track selectedTrack) {
-		if i == index {
+// trackOf names one track, by counting the copies of its URI that sit above
+// it. Taken from the item rather than from a row, because a row belongs to
+// whatever the reader is being shown and the answer must not.
+func (q queueContent) trackOf(item sonos.QueueItem) (found selectedTrack) {
+	q.eachTrack(func(position int, track selectedTrack) {
+		if position == item.Position {
 			found = track
 		}
 	})
@@ -480,9 +503,9 @@ func (q queueContent) pickedPositions() map[int]bool {
 	}
 
 	positions := make(map[int]bool, len(q.selected))
-	q.eachTrack(func(i int, track selectedTrack) {
+	q.eachTrack(func(position int, track selectedTrack) {
 		if picked[track] {
-			positions[q.items[i].Position] = true
+			positions[position] = true
 		}
 	})
 	return positions
@@ -504,7 +527,7 @@ func (q queueContent) toggleSelect() (queueContent, tea.Cmd) {
 		return q, nil // an empty queue, or one still being read
 	}
 
-	track := q.trackAt(q.cursor)
+	track := q.trackOf(q.items[q.cursor])
 	q = q.withSelection(func(selected []selectedTrack) []selectedTrack {
 		if at := slices.Index(selected, track); at >= 0 {
 			return slices.Delete(selected, at, at+1)
@@ -536,16 +559,51 @@ func (q queueContent) clearSelection() queueContent {
 // is no longer here is dropped by the inversion rather than carried.
 func (q queueContent) invertSelection() queueContent {
 	picked := q.pickedPositions()
+	named := q.tracksByPosition()
 
-	next := make([]selectedTrack, 0, len(q.items))
-	q.eachTrack(func(i int, track selectedTrack) {
-		if !picked[q.items[i].Position] {
+	shown := make(map[int]bool, len(q.items))
+	for _, item := range q.items {
+		shown[item.Position] = true
+	}
+
+	// Picks the reader cannot see are left as they are. Inverting what is on
+	// screen must not silently reach the rest of the queue behind a filter.
+	next := make([]selectedTrack, 0, len(q.selected)+len(q.items))
+	for _, track := range q.selected {
+		if position, here := q.positionOfTrack(track); here && !shown[position] {
 			next = append(next, track)
 		}
-	})
+	}
+	for _, item := range q.items {
+		if !picked[item.Position] {
+			next = append(next, named[item.Position])
+		}
+	}
 
 	q.selected = next
 	return q
+}
+
+// tracksByPosition names every track in the whole queue.
+func (q queueContent) tracksByPosition() map[int]selectedTrack {
+	named := make(map[int]selectedTrack, len(q.everything()))
+	q.eachTrack(func(position int, track selectedTrack) {
+		named[position] = track
+	})
+	return named
+}
+
+// positionOfTrack is where a named track sits now, false when the queue no
+// longer holds it.
+func (q queueContent) positionOfTrack(want selectedTrack) (int, bool) {
+	var at int
+	var found bool
+	q.eachTrack(func(position int, track selectedTrack) {
+		if track == want {
+			at, found = position, true
+		}
+	})
+	return at, found
 }
 
 // selectedPositions is where the picked tracks sit in the queue, 1-based and
@@ -676,7 +734,8 @@ func (q queueContent) clearRemoving() queueContent {
 	return q
 }
 
-// pickedInPressOrder is the picked tracks as rows, in the order the reader
+// pickedInPressOrder is the picked tracks as queue positions, in the order
+// the reader
 // picked them. selected holds that order; pickedPositions says which of them
 // are still in the queue.
 func (q queueContent) pickedInPressOrder() []int {
@@ -686,16 +745,16 @@ func (q queueContent) pickedInPressOrder() []int {
 	}
 
 	at := make(map[selectedTrack]int, len(picked))
-	q.eachTrack(func(i int, track selectedTrack) {
-		if picked[q.items[i].Position] {
-			at[track] = i
+	q.eachTrack(func(position int, track selectedTrack) {
+		if picked[position] {
+			at[track] = position
 		}
 	})
 
 	ordered := make([]int, 0, len(picked))
 	for _, track := range q.selected {
-		if row, here := at[track]; here {
-			ordered = append(ordered, row)
+		if position, here := at[track]; here {
+			ordered = append(ordered, position)
 		}
 	}
 	return ordered
@@ -714,28 +773,37 @@ func (q queueContent) pickedInPressOrder() []int {
 // one playing: the last one lands there first and the ones before it push it
 // down, so they end up in the order asked for. A track already in the place
 // its turn would put it is left alone rather than sent to where it is.
-func (q queueContent) playNextMoves(rows []int) ([]queueMove, []string) {
-	model := make([]string, len(q.items))
-	for i, item := range q.items {
-		model[i] = item.URI
+func (q queueContent) playNextMoves(positions []int) ([]queueMove, []string) {
+	all := q.everything()
+
+	// The model holds POSITIONS, not URIs. A position names one track even
+	// when the queue holds the same track twice, where a URI names both and
+	// the first copy would be moved for the second.
+	model := make([]int, 0, len(all))
+	uriAt := make(map[int]string, len(all))
+	for _, item := range all {
+		model = append(model, item.Position)
+		uriAt[item.Position] = item.URI
 	}
 
-	wanted := make([]string, 0, len(rows))
-	for _, row := range rows {
-		if q.items[row].Position == q.playing {
+	wanted := make([]int, 0, len(positions))
+	for _, position := range positions {
+		if position == q.playing {
 			continue // it cannot be next of itself
 		}
-		wanted = append(wanted, q.items[row].URI)
+		wanted = append(wanted, position)
 	}
 
 	var moves []queueMove
 	var carried []string
 	for i := len(wanted) - 1; i >= 0; i-- {
-		uri := wanted[i]
+		position := wanted[i]
 
-		from := slices.Index(model, uri)
-		playing := q.playing - 1 // the playing row in the model, 0-based
-		if from < 0 || from == playing+1 {
+		from := slices.Index(model, position)
+		// Read from the model each time round: a track lifted from above the
+		// playing one shifts it up, so where it sits is not where it started.
+		playing := slices.Index(model, q.playing)
+		if from < 0 || playing < 0 || from == playing+1 {
 			continue // gone from the queue, or already where this step wants it
 		}
 
@@ -745,10 +813,10 @@ func (q queueContent) playNextMoves(rows []int) ([]queueMove, []string) {
 		}
 
 		moves = append(moves, queueMove{from: from + 1, to: to + 1})
-		carried = append(carried, uri)
+		carried = append(carried, uriAt[position])
 
 		model = slices.Delete(model, from, from+1)
-		model = slices.Insert(model, to, uri)
+		model = slices.Insert(model, to, position)
 	}
 	return moves, carried
 }
@@ -768,13 +836,13 @@ func (q queueContent) playNext() (queueContent, tea.Cmd) {
 		return q, nil // a move already sent has not been answered yet
 	}
 
-	rows := q.pickedInPressOrder()
-	picked := len(rows) > 0
+	positions := q.pickedInPressOrder()
+	picked := len(positions) > 0
 	if !picked {
 		if q.cursor >= len(q.items) {
 			return q, nil // an empty queue, or one still being read
 		}
-		rows = []int{q.cursor}
+		positions = []int{q.items[q.cursor].Position}
 	}
 
 	// A station plays past the queue without touching it. DeviceState.Track
@@ -788,7 +856,7 @@ func (q queueContent) playNext() (queueContent, tea.Cmd) {
 	// and is worth saying so. A selection says it with the count instead: a
 	// picked track in either place is simply left where it is.
 	if !picked {
-		switch q.items[rows[0]].Position {
+		switch positions[0] {
 		case q.playing:
 			return q, notify(panes.NoticeInfo, queueAlreadyPlaying)
 		case q.playing + 1:
@@ -796,7 +864,7 @@ func (q queueContent) playNext() (queueContent, tea.Cmd) {
 		}
 	}
 
-	moves, carried := q.playNextMoves(rows)
+	moves, carried := q.playNextMoves(positions)
 	if len(moves) == 0 {
 		q = q.clearSelection()
 		return q, notify(panes.NoticeInfo, queueAlreadyNext)
