@@ -213,11 +213,11 @@ func (m appModel) applyQueueRemoveCommit(msg queueRemoveCommitMsg) (tea.Model, t
 	}
 
 	positions, pending := content.pendingRemove()
-	content = content.clearRemoving()
 	if !pending {
-		m.queue.Content = content
+		m.queue.Content = content.clearRemoving()
 		return m, nil
 	}
+	content = content.closeRemoveWindow()
 
 	// The speaker is about to renumber, so nothing else may name a position
 	// until its queue comes back.
@@ -425,9 +425,11 @@ func (m appModel) applyQueueLoaded(msg queueLoadedMsg) (tea.Model, tea.Cmd) {
 	// positions were read from the queue this one replaces, so they can no
 	// longer be trusted to name the same tracks.
 	if _, pending := content.pendingRemove(); pending {
-		content = content.clearRemoving()
 		abandoned = notify(panes.NoticeWarn, queueRemoveAbandoned)
 	}
+	// Whether they were sent or abandoned, this queue is the speaker's own
+	// answer and the rows in it are the ones that are staying.
+	content = content.clearRemoving()
 
 	content.room = msg.room
 	content.items = msg.items

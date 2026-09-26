@@ -2,6 +2,7 @@ package main
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -27,26 +28,64 @@ func TestQueueRemove_TakesTheTrackUnderTheCursor(t *testing.T) {
 	}
 }
 
-// Case: the row itself, which must go AT ONCE. The speaker is told once the
-// keys are still, and a reader who saw nothing happen in between would think
-// the key was broken -- the reason shift edits the list too.
-func TestQueueRemove_TheRowGoesAtOnce(t *testing.T) {
+// Case: the row itself, which must answer AT ONCE but not disappear. The
+// speaker is told once the keys are still; a row that vanished first would
+// shorten the list under the reader and hide what is on its way out.
+func TestQueueRemove_TheRowIsMarkedAtOnce(t *testing.T) {
 	q := navQueue(60, 42)
-	going := q.items[42].URI
 
 	after := moveQueue(q, "x")
 
-	if len(after.items) != 59 {
-		t.Fatalf("the list holds %d rows, want 59 -- the row must go on the keypress", len(after.items))
+	if len(after.items) != 60 {
+		t.Fatalf("the list holds %d rows, want all 60 until the speaker answers", len(after.items))
 	}
-	for _, item := range after.items {
-		if item.URI == going {
-			t.Fatal("the removed track is still in the list")
-		}
+	if !after.isRemoving(43) {
+		t.Fatal("the track under the cursor is not marked as going")
 	}
-	if after.items[42].Position != 44 {
-		t.Fatalf("row 42 now holds position %d, want 44 -- the rest keep the speaker's numbering",
-			after.items[42].Position)
+	if after.isRemoving(44) {
+		t.Fatal("the row below was marked too")
+	}
+}
+
+// Case: how a going row is drawn. It has to read as leaving rather than as
+// another kind of important, and only its colouring may change -- a row whose
+// text changed would move the columns under the reader.
+func TestQueueRemove_AGoingRowIsDimmed(t *testing.T) {
+	plainRow := strings.Split(navQueue(20, 5).View().Content, "\n")[queueHeaderRows+4]
+	goingRow := strings.Split(moveQueue(navQueue(20, 4), "x").View().Content, "\n")[queueHeaderRows+4]
+
+	if plainRow == goingRow {
+		t.Fatal("removing a track changed nothing about how its row is drawn")
+	}
+	if plain(plainRow) != plain(goingRow) {
+		t.Fatalf("the row's text changed, not just its colouring:\n%q\n%q",
+			plain(plainRow), plain(goingRow))
+	}
+}
+
+// Case: the cursor, which must not be left on a row that is going. x would
+// do nothing there, and a key that does nothing reads as a broken one.
+func TestQueueRemove_TheCursorLeavesTheGoingRow(t *testing.T) {
+	after := moveQueue(navQueue(20, 4), "x")
+
+	if after.isRemoving(after.items[after.cursor].Position) {
+		t.Fatalf("the cursor sits on row %d, which is on its way out", after.cursor)
+	}
+	if after.cursor != 5 {
+		t.Fatalf("the cursor is on row %d, want the next row that is staying", after.cursor)
+	}
+}
+
+// Case: pressing x twice on one track. The second naming would reach
+// whatever the speaker puts in its place, so it must be ignored.
+func TestQueueRemove_WillNotSendOneTrackTwice(t *testing.T) {
+	q := navQueue(20, 4)
+	once := moveQueue(q, "x")
+
+	twice := moveQueue(moveQueue(once, "up"), "x")
+
+	if got, _ := twice.pendingRemove(); len(got) != 1 {
+		t.Fatalf("the window holds %v, want the track named once", got)
 	}
 }
 
@@ -62,8 +101,8 @@ func TestQueueRemove_ARunOfPressesIsOneCall(t *testing.T) {
 		model, _ = m.Update(keyMsgFor("x"))
 		m = model.(appModel)
 	}
-	if got := len(queueOf(t, m).items); got != 17 {
-		t.Fatalf("the list holds %d rows after three presses, want 17", got)
+	if got := len(queueOf(t, m).items); got != 20 {
+		t.Fatalf("the list holds %d rows, want all 20 until the speaker answers", got)
 	}
 
 	// One window holding all three, so closing it is one command rather than
@@ -238,5 +277,50 @@ func TestQueueRemove_TheQueueComingBackEndsTheWait(t *testing.T) {
 	}
 	if _, cmd := m.Update(keyMsgFor("x")); cmd == nil {
 		t.Fatal("removing is still blocked after the queue came back")
+	}
+}
+
+// Case: the queue coming back without the tracks. The marks go with it: the
+// speaker's own list is what is staying, so nothing is left struck through.
+func TestQueueRemove_TheMarksGoWhenTheQueueLands(t *testing.T) {
+	m, _, _ := withQueueServer(t, 20)
+	model, _ := m.Update(keyMsgFor("enter"))
+	m = model.(appModel)
+	speaker, _ := m.activeSpeaker()
+
+	model, _ = m.Update(keyMsgFor("x"))
+	m = model.(appModel)
+	model, _ = m.Update(queueRemoveCommitMsg{gen: queueOf(t, m).removeGen})
+	m = model.(appModel)
+
+	if content := queueOf(t, m); !content.isRemoving(1) {
+		t.Fatal("the track stopped being marked as soon as it was sent")
+	}
+
+	model, _ = m.Update(queueLoadedMsg{
+		device: speaker.device, room: speaker.device.RoomName(),
+		items: queueItems(19), playing: 1,
+	})
+	content := queueOf(t, model.(appModel))
+
+	if _, pending := content.pendingRemove(); pending {
+		t.Fatal("the window is still open after the queue landed")
+	}
+	if content.isRemoving(1) {
+		t.Fatal("a row is still struck through after the speaker answered")
+	}
+}
+
+// Case: the size of the list through a whole removal. It must not shorten on
+// the keypress -- that is what made the modal jump, and what hid from the
+// reader which tracks were on their way out.
+func TestQueueRemove_TheListKeepsItsLengthUntilTheSpeakerAnswers(t *testing.T) {
+	q := navQueue(20, 0)
+
+	for range 4 {
+		q = moveQueue(q, "x")
+		if len(q.items) != 20 {
+			t.Fatalf("the list is down to %d rows before the speaker said anything", len(q.items))
+		}
 	}
 }

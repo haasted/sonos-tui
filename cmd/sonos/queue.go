@@ -99,13 +99,20 @@ type queueContent struct {
 	moveFrom int
 	moveGen  int // id of the open commit window, matched against arriving ticks
 
-	// removing are the tracks the reader has taken off the list but the
-	// speaker has not been told about yet, by their 1-based position in ITS
-	// queue. Positions, because that is what the speaker is told, and they
-	// stay right while only this list is edited: taking a row out here
-	// renumbers nothing, since Position is a field and not an index.
-	removing  []int
-	removeGen int // id of the open window, matched against arriving ticks
+	// removing are the tracks the reader has taken off, by their 1-based
+	// position in the speaker's queue. They stay in items and are drawn
+	// struck through until the speaker's own queue arrives without them, so
+	// the reader can see what is on its way out rather than watching rows
+	// vanish and the list jump.
+	//
+	// Positions, because that is what the speaker is told, and they stay
+	// right while only this list is edited: nothing here renumbers anything.
+	removing []int
+
+	// removeGen is the open window, matched against arriving ticks, and zero
+	// once the window has closed. Zero with removing still full is the state
+	// between telling the speaker and hearing its answer.
+	removeGen int
 
 	// awaitingAt is when the speaker was last told to change its queue, and
 	// is zero once it has answered with one.
@@ -599,6 +606,13 @@ func (q queueContent) remove() (queueContent, tea.Cmd) {
 		positions = []int{q.items[q.cursor].Position}
 	}
 
+	// A track already on its way out must not be named twice: the second
+	// naming would reach whatever the first left in its place.
+	positions = slices.DeleteFunc(positions, q.isRemoving)
+	if len(positions) == 0 {
+		return q, nil
+	}
+
 	var dropped tea.Cmd
 	if _, _, pending := q.pendingMove(); pending {
 		q = q.clearMove()
@@ -609,8 +623,7 @@ func (q queueContent) remove() (queueContent, tea.Cmd) {
 	// Cloned rather than appended to, for the reason withSelection carries:
 	// every copy of this content shares the array behind it.
 	q.removing = append(slices.Clone(q.removing), positions...)
-	q.items = withoutPositions(q.items, positions)
-	q.cursor = min(q.cursor, q.lastRow())
+	q.cursor = q.restingRow(q.cursor)
 	q = q.follow()
 
 	// Every press restarts the wait, taking a generation of its own, so the
@@ -619,9 +632,41 @@ func (q queueContent) remove() (queueContent, tea.Cmd) {
 	return q, tea.Batch(queueRemoveTick(q.removeGen), dropped)
 }
 
-// pendingRemove reports the tracks taken off the list and not yet sent.
+// pendingRemove reports the tracks taken off the list and NOT YET SENT. A
+// window still open, as against one closed and waiting for the answer.
 func (q queueContent) pendingRemove() ([]int, bool) {
-	return q.removing, len(q.removing) > 0
+	return q.removing, q.removeGen != 0 && len(q.removing) > 0
+}
+
+// closeRemoveWindow ends the wait for more presses, keeping the tracks
+// themselves: they are on their way out and stay struck through until the
+// speaker's queue says they have gone.
+func (q queueContent) closeRemoveWindow() queueContent {
+	q.removeGen = 0
+	return q
+}
+
+// isRemoving reports a track already on its way out, which must not be sent
+// twice and is not drawn as if it were staying.
+func (q queueContent) isRemoving(position int) bool {
+	return slices.Contains(q.removing, position)
+}
+
+// restingRow is the nearest row that is not on its way out, looking down
+// first and then up. The cursor never sits on a struck-through row: the key
+// would do nothing there, which reads as the key being broken.
+func (q queueContent) restingRow(from int) int {
+	for i := from; i < len(q.items); i++ {
+		if !q.isRemoving(q.items[i].Position) {
+			return i
+		}
+	}
+	for i := min(from, len(q.items)) - 1; i >= 0; i-- {
+		if !q.isRemoving(q.items[i].Position) {
+			return i
+		}
+	}
+	return min(from, q.lastRow()) // every row is going
 }
 
 // clearRemoving closes the window, whether the tracks went to the speaker or
@@ -629,24 +674,6 @@ func (q queueContent) pendingRemove() ([]int, bool) {
 func (q queueContent) clearRemoving() queueContent {
 	q.removing, q.removeGen = nil, 0
 	return q
-}
-
-// withoutPositions is the list without the tracks at these queue positions.
-// The rest keep the positions they had: they are the speaker's numbering, and
-// the speaker has not been told yet.
-func withoutPositions(items []sonos.QueueItem, positions []int) []sonos.QueueItem {
-	going := make(map[int]bool, len(positions))
-	for _, position := range positions {
-		going[position] = true
-	}
-
-	kept := make([]sonos.QueueItem, 0, len(items))
-	for _, item := range items {
-		if !going[item.Position] {
-			kept = append(kept, item)
-		}
-	}
-	return kept
 }
 
 // pickedInPressOrder is the picked tracks as rows, in the order the reader
@@ -1095,6 +1122,17 @@ func (q queueContent) row(item sonos.QueueItem, index int, picked bool, title, a
 	// picked row can still be the one playing, or the one that just landed.
 	if picked {
 		style = style.Background(themedSelectedBackground())
+	}
+
+	// A track on its way out is drawn over whatever else the row is saying:
+	// it is leaving, so what it was is no longer the useful thing to read.
+	//
+	// Dimmed and not struck through. lipgloss re-emits the whole style for
+	// every grapheme of a struck line -- 1750 bytes and 140 escapes against
+	// 92 and 2, measured -- and the list repaints every 50ms while the
+	// arrows breathe. The contrast drop is large enough on its own.
+	if q.isRemoving(item.Position) {
+		style = style.Foreground(themedGoingColor()).Bold(false)
 	}
 
 	// The arrow column exists only where the queue overflows, so a short queue

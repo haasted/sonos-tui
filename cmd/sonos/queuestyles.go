@@ -151,3 +151,11 @@ func queueCountStyle() lipgloss.Style {
 	return lipgloss.NewStyle().
 		Foreground(theme.LightDark(lipgloss.Color("#4A4A4A"), lipgloss.Color("#9B9B9B")))
 }
+
+// themedGoingColor draws a track the reader has removed and the speaker has
+// not yet confirmed gone. Dimmer than a resting row in both themes: it is on
+// its way out, so it should read as less present than what is staying, not
+// as another kind of important.
+func themedGoingColor() color.Color {
+	return theme.LightDark(lipgloss.Color("#9CA3AF"), lipgloss.Color("#6B7280"))
+}
