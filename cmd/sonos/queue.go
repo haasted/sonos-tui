@@ -102,17 +102,27 @@ type queueContent struct {
 	removing  []int
 	removeGen int // id of the open window, matched against arriving ticks
 
-	// settling are the tracks a move is waiting to see land: the queue the
-	// speaker sends back is what says where they really went. URIs rather
-	// than positions, because the position is precisely what changed. More
-	// than one when a whole selection was played next.
+	// awaitingAt is when the speaker was last told to change its queue, and
+	// is zero once it has answered with one.
+	//
+	// While it is set, every Position on this list describes the queue from
+	// BEFORE that change, so no command naming a position may be sent: the
+	// speaker has renumbered and this list has not heard. The version check
+	// does not cover it -- the version is the one the change produced, so a
+	// stale position is accepted and reaches the wrong track.
+	awaitingAt time.Time
+
+	// settling are the tracks to look for in the queue that comes back: the
+	// speaker is what says where they really went. URIs rather than
+	// positions, because the position is precisely what changed. More than
+	// one when a whole selection was played next, and none for a removal,
+	// which has no track left to find.
 	//
 	// settlingFollow says whether landing should also move the cursor onto
 	// the track (a shift committed with J/K, which the reader is watching
 	// move) or only flash it (play next, which deliberately leaves the
 	// cursor where it was -- see playNext).
 	settling       []string
-	settlingAt     time.Time
 	settlingFollow bool
 
 	// highlightURIs are the tracks flashing briefly after a move landed, so
@@ -194,7 +204,7 @@ func (q queueContent) shift(delta int) (queueContent, tea.Cmd) {
 	// move built on them would name the wrong track. Wait: the list is about to
 	// be replaced, and moving rows that are about to be thrown away is what
 	// makes tracks appear to jump.
-	if q.settlingMove() {
+	if q.awaitingQueue() {
 		return q, nil
 	}
 
@@ -258,23 +268,41 @@ func (q queueContent) clearMove() queueContent {
 // the track to look for in the queue that comes back, moving the cursor onto
 // it once found.
 func (q queueContent) settleMove(uri string) queueContent {
-	q.settling, q.settlingAt, q.settlingFollow = []string{uri}, time.Now(), true
-	return q
+	q.settling, q.settlingFollow = []string{uri}, true
+	return q.awaitQueue()
 }
 
 // awaitHighlight is settleMove without moving the cursor: the queue that
 // comes back is still recognised as this command's own answer, but only the
 // flash follows the track, the way playNext wants it.
 func (q queueContent) awaitHighlight(uris ...string) queueContent {
-	q.settling, q.settlingAt, q.settlingFollow = uris, time.Now(), false
+	q.settling, q.settlingFollow = uris, false
+	return q.awaitQueue()
+}
+
+// awaitQueue records that the speaker has been told to change its queue, so
+// nothing naming a position is sent until it answers.
+func (q queueContent) awaitQueue() queueContent {
+	q.awaitingAt = time.Now()
 	return q
 }
 
-// settlingMove reports a move still waiting for its queue. It expires, because
-// the event that would end it can be dropped -- Device says so when its channel
-// fills -- and a reader must not be left unable to move anything.
-func (q queueContent) settlingMove() bool {
-	return len(q.settling) > 0 && time.Since(q.settlingAt) < queueMoveSettle
+// awaitingQueue reports a change sent to the speaker whose queue has not come
+// back. Every command that names a position asks it first, and they all name
+// positions: a move, a removal and a played-next move alike.
+//
+// It expires, because the event that would end it can be dropped -- Device
+// says so when its channel fills -- and a reader must not be left unable to
+// change anything.
+func (q queueContent) awaitingQueue() bool {
+	return !q.awaitingAt.IsZero() && time.Since(q.awaitingAt) < queueWriteSettle
+}
+
+// clearAwaiting closes the wait without looking for any track, which is what
+// a removal leaves behind: the tracks it was about are gone.
+func (q queueContent) clearAwaiting() queueContent {
+	q.awaitingAt = time.Time{}
+	return q
 }
 
 // followSettled puts the cursor back on the track a move sent away, now that
@@ -345,7 +373,8 @@ func (q queueContent) restOn(moved map[string]bool) queueContent {
 // track it was waiting for, or empty if none was.
 func (q queueContent) clearSettling() (queueContent, []string) {
 	uris := q.settling
-	q.settling, q.settlingAt, q.settlingFollow = nil, time.Time{}, false
+	q.settling, q.settlingFollow = nil, false
+	q = q.clearAwaiting()
 	return q, uris
 }
 
@@ -549,6 +578,14 @@ func (q queueContent) selectedPositions() []int {
 // tracks by position, and a removal shifts every position below it -- so a move
 // committed afterwards would name a track the reader never chose.
 func (q queueContent) remove() (queueContent, tea.Cmd) {
+	// A change already sent has not been answered. Every position here still
+	// describes the queue from before it, so a removal built on them would
+	// take the wrong track -- and the version check would not notice, since
+	// the version is the one that change produced.
+	if q.awaitingQueue() {
+		return q, nil
+	}
+
 	positions := q.selectedPositions()
 	if len(positions) == 0 {
 		if q.cursor >= len(q.items) {
@@ -695,7 +732,7 @@ func (q queueContent) playNextMoves(rows []int) ([]queueMove, []string) {
 // The cursor does not follow the tracks. Once the reordered queue arrives it
 // settles on the nearest track that did not move -- see restOn.
 func (q queueContent) playNext() (queueContent, tea.Cmd) {
-	if q.settlingMove() {
+	if q.awaitingQueue() {
 		return q, nil // a move already sent has not been answered yet
 	}
 

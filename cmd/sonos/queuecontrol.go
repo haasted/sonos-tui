@@ -31,10 +31,11 @@ const (
 	// nothing says the two keys want the same feel once both are tuned.
 	queueRemoveQuiet = 700 * time.Millisecond
 
-	// queueMoveSettle is how long a sent move waits for the queue it produced.
+	// queueWriteSettle is how long a change sent to the speaker waits for the
+	// queue it produced.
 	// A read takes about a tenth of a second; this is long enough for a slow one
 	// and short enough that a dropped event does not strand the reader.
-	queueMoveSettle = 2 * time.Second
+	queueWriteSettle = 2 * time.Second
 
 	queueRemoved = "removed"
 	queueMoved   = "moved"
@@ -212,10 +213,15 @@ func (m appModel) applyQueueRemoveCommit(msg queueRemoveCommitMsg) (tea.Model, t
 	}
 
 	positions, pending := content.pendingRemove()
-	m.queue.Content = content.clearRemoving()
+	content = content.clearRemoving()
 	if !pending {
+		m.queue.Content = content
 		return m, nil
 	}
+
+	// The speaker is about to renumber, so nothing else may name a position
+	// until its queue comes back.
+	m.queue.Content = content.awaitQueue()
 	return m.applyQueueRemove(queueRemoveMsg{positions: positions})
 }
 
@@ -409,7 +415,7 @@ func (m appModel) applyQueueLoaded(msg queueLoadedMsg) (tea.Model, tea.Cmd) {
 	// below: shift refuses to start another until its queue arrives, so a move
 	// cannot be both pending and waiting to land.
 	var abandoned tea.Cmd
-	settling := content.settlingMove()
+	awaiting := content.awaitingQueue()
 	if _, _, pending := content.pendingMove(); pending {
 		content = content.clearMove()
 		abandoned = notify(panes.NoticeWarn, queueMoveAbandoned)
@@ -444,10 +450,12 @@ func (m appModel) applyQueueLoaded(msg queueLoadedMsg) (tea.Model, tea.Cmd) {
 	// even existed on screen, so that instead lands on what is playing, as if
 	// the reader had pressed c right after opening.
 	switch {
-	case settling && content.settlingFollow:
+	case awaiting && content.settlingFollow:
 		content = content.followSettled()
-	case settling:
+	case awaiting && len(content.settling) > 0:
 		content = content.highlightSettled()
+	case awaiting:
+		content = content.clearAwaiting() // a removal: nothing left to look for
 	case firstLoad:
 		content = content.jumpToPlaying()
 	}

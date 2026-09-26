@@ -338,12 +338,12 @@ func TestQueueMove_PressesWaitForTheQueueToCatchUp(t *testing.T) {
 // be dropped, and a reader must not be left unable to move anything.
 func TestQueueMove_WaitingForAQueueExpires(t *testing.T) {
 	q := navQueue(40, 10).settleMove("x-sonos-http:track-11.mp3")
-	if !q.settlingMove() {
+	if !q.awaitingQueue() {
 		t.Fatal("a move just sent should be waiting")
 	}
 
-	q.settlingAt = time.Now().Add(-queueMoveSettle - time.Second)
-	if q.settlingMove() {
+	q.awaitingAt = time.Now().Add(-queueWriteSettle - time.Second)
+	if q.awaitingQueue() {
 		t.Fatal("a wait with no answer must give up rather than strand the reader")
 	}
 	if _, cmd := q.Update(keyMsgFor("J")); cmd == nil {

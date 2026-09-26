@@ -174,3 +174,69 @@ func TestQueueRemove_ConfirmsWhatHappened(t *testing.T) {
 }
 
 var _ tea.Msg = queueRemoveMsg{}
+
+// Case: a removal attempted while an earlier change is still unanswered. The
+// positions on this list describe the queue from before that change, so a
+// removal built on them would take the wrong track -- and the version check
+// would not catch it, the version being the one that change produced.
+func TestQueueRemove_RefusesWhileTheSpeakerHasNotAnswered(t *testing.T) {
+	q := navQueue(20, 5).awaitQueue()
+
+	after, cmd := q.Update(keyMsgFor("x"))
+
+	if len(after.(queueContent).items) != 20 {
+		t.Fatal("a row went while the queue was waiting to be replaced")
+	}
+	if cmd != nil {
+		t.Fatal("a removal was sent against positions that have since moved")
+	}
+}
+
+// Case: sending the removal, which must start that wait. Nothing naming a
+// position may follow until the speaker answers.
+func TestQueueRemove_CommittingWaitsForTheQueue(t *testing.T) {
+	m, _, _ := withQueueServer(t, 20)
+	model, _ := m.Update(keyMsgFor("enter"))
+	m = model.(appModel)
+
+	model, _ = m.Update(keyMsgFor("x"))
+	m = model.(appModel)
+	if queueOf(t, m).awaitingQueue() {
+		t.Fatal("the wait began before anything was sent")
+	}
+
+	model, _ = m.Update(queueRemoveCommitMsg{gen: queueOf(t, m).removeGen})
+	m = model.(appModel)
+
+	if !queueOf(t, m).awaitingQueue() {
+		t.Fatal("the removal went to the speaker without waiting for its queue")
+	}
+}
+
+// Case: the queue coming back after a removal. It names no track to follow
+// or flash -- the tracks are gone -- but it must still end the wait, or the
+// reader is locked out until the wait expires.
+func TestQueueRemove_TheQueueComingBackEndsTheWait(t *testing.T) {
+	m, _, _ := withQueueServer(t, 20)
+	model, _ := m.Update(keyMsgFor("enter"))
+	m = model.(appModel)
+	speaker, _ := m.activeSpeaker()
+
+	model, _ = m.Update(keyMsgFor("x"))
+	m = model.(appModel)
+	model, _ = m.Update(queueRemoveCommitMsg{gen: queueOf(t, m).removeGen})
+	m = model.(appModel)
+
+	model, _ = m.Update(queueLoadedMsg{
+		device: speaker.device, room: speaker.device.RoomName(),
+		items: queueItems(19), playing: 1,
+	})
+	m = model.(appModel)
+
+	if queueOf(t, m).awaitingQueue() {
+		t.Fatal("the queue came back and the wait did not end")
+	}
+	if _, cmd := m.Update(keyMsgFor("x")); cmd == nil {
+		t.Fatal("removing is still blocked after the queue came back")
+	}
+}
