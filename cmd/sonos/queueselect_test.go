@@ -19,6 +19,38 @@ func TestQueueSelect_TogglesAndStepsDown(t *testing.T) {
 	}
 }
 
+// Case: right, the second key for the same toggle. It must leave the list
+// exactly as s does, at an ordinary row and at the last one where the step
+// down turns into a bump.
+func TestQueueSelect_RightTogglesJustAsSDoes(t *testing.T) {
+	for _, row := range []int{4, 19} {
+		pressedS := moveQueue(navQueue(20, row), "s")
+		pressedRight := moveQueue(navQueue(20, row), "right")
+
+		if !slices.Equal(pressedS.selected, pressedRight.selected) {
+			t.Fatalf("row %d: s picked %v, right picked %v", row, pressedS.selected, pressedRight.selected)
+		}
+		if pressedS.cursor != pressedRight.cursor {
+			t.Fatalf("row %d: s left the cursor on %d, right on %d", row, pressedS.cursor, pressedRight.cursor)
+		}
+		if pressedS.bumping() != pressedRight.bumping() {
+			t.Fatalf("row %d: s bumped %v, right bumped %v", row, pressedS.bumping(), pressedRight.bumping())
+		}
+	}
+}
+
+// Case: the two keys inside one run, which a reader switching hands produces.
+// One binding rather than two that agree, so either key puts back what the
+// other picked.
+func TestQueueSelect_RightAndSReachTheSameMark(t *testing.T) {
+	picked := moveQueue(navQueue(20, 4), "s")
+	putBack := moveQueue(moveQueue(picked, "up"), "right")
+
+	if putBack.selectionCount() != 0 {
+		t.Fatalf("right did not put back what s picked: %d still picked", putBack.selectionCount())
+	}
+}
+
 // Case: pressing s again on a track already picked, which must put it back
 // rather than pick it twice.
 func TestQueueSelect_TogglesBackOff(t *testing.T) {
