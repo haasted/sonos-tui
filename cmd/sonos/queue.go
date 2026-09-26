@@ -157,7 +157,7 @@ func (q queueContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return q.remove()
 	case "n":
 		return q.playNext()
-	case "s":
+	case "s", "right":
 		return q.toggleSelect()
 	case "S":
 		q = q.clearSelection()

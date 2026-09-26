@@ -12,7 +12,7 @@ import (
 // helpKey is one row of the help popup: the keys that do a thing, and the
 // thing. Deliberately a literal table rather than generated from the
 // bindings, which live across speakerModel, appModel and panes.Tabs — see
-// TestHelp_ListsEveryKeyTheAppHandles for the guard against it drifting.
+// TestHelp_DocumentsEveryKeyTheAppHandles for the guard against it drifting.
 type helpKey struct {
 	keys string
 	what string
@@ -89,7 +89,7 @@ var queueHelp = helpTable{
 			{"x  delete", "remove a track"},
 			{"n", "play next"},
 			{"enter", "play from here"},
-			{"s", "select / deselect"},
+			{"s  →", "select / deselect"},
 			{"S", "select none"},
 			{"*", "invert the selection"},
 			{"J K ⇧↑ ⇧↓", "move a track"},
