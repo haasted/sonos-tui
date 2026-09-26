@@ -106,7 +106,10 @@ func TestQueuePlayNext_CursorStaysAndShowsWhatWasBeneath(t *testing.T) {
 	m, _ := deliverQueueWithPlaying(t, 20, 10)
 	speaker, _ := m.activeSpeaker()
 
-	model, _ := m.Update(keyMsgFor("down")) // cursor to Track 2, position 2
+	// Opening lands on the playing track (position 10); return to the top
+	// first so "down" is a known move to Track 2, position 2.
+	model, _ := m.Update(keyMsgFor("home"))
+	model, _ = model.(appModel).Update(keyMsgFor("down"))
 	m = model.(appModel)
 
 	model, cmd := m.Update(keyMsgFor("n"))

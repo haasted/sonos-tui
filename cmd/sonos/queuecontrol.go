@@ -116,7 +116,7 @@ func (m appModel) openQueue() (tea.Model, tea.Cmd) {
 
 	state := speaker.device.State()
 	m.queue = m.queue.Open()
-	m.queue.Content = queueContent{
+	content := queueContent{
 		room:     speaker.device.RoomName(),
 		items:    state.Queue,
 		playing:  playingPosition(state),
@@ -125,6 +125,12 @@ func (m appModel) openQueue() (tea.Model, tea.Cmd) {
 		width:    m.queue.ContentColumns(),
 		openedAt: time.Now(),
 	}
+
+	// Opening lands on the playing track, as if the reader had pressed c right
+	// after -- a no-op here if the queue is not known yet, since jumpToPlaying
+	// finds nothing in an empty list. applyQueueLoaded does the same once that
+	// first read arrives.
+	m.queue.Content = content.jumpToPlaying()
 
 	// Nothing to fetch in the ordinary case: the queue was read at startup and
 	// has been kept current by events since. A read here is the fallback for a
@@ -282,6 +288,11 @@ func (m appModel) applyQueueLoaded(msg queueLoadedMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// True only for the read that answers an open on a queue not yet known.
+	// Captured before loading is cleared below, since that is the one signal
+	// telling this load apart from an ordinary reload of one already on screen.
+	firstLoad := content.loading
+
 	// A queue arriving while the reader was still moving a track. The move was
 	// built from positions in the OLD queue, so it can no longer be sent: what
 	// sat at those positions may not be there now.
@@ -313,12 +324,16 @@ func (m appModel) applyQueueLoaded(msg queueLoadedMsg) (tea.Model, tea.Cmd) {
 	// The reader was watching a track, not a row. Now that the speaker has
 	// said where it put it, the cursor goes back onto it for a committed
 	// shift; play next leaves the cursor alone and only flashes the track.
-	if settling {
-		if content.settlingFollow {
-			content = content.followSettled()
-		} else {
-			content = content.highlightSettled()
-		}
+	// Neither applies to a first load: nothing was pending before the queue
+	// even existed on screen, so that instead lands on what is playing, as if
+	// the reader had pressed c right after opening.
+	switch {
+	case settling && content.settlingFollow:
+		content = content.followSettled()
+	case settling:
+		content = content.highlightSettled()
+	case firstLoad:
+		content = content.jumpToPlaying()
 	}
 
 	m.queue.Content = content
