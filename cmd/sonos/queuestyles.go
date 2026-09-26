@@ -80,6 +80,17 @@ func themedBumpPeak() color.Color {
 	return theme.LightDark(lipgloss.Color("#0F172A"), lipgloss.Color("#FFFFFF"))
 }
 
+// themedSelectedBackground marks a row the reader has picked out. Background
+// rather than foreground because the foreground already carries two meanings
+// here -- blue for the track playing, amber for one that just landed -- and a
+// selected row has to be able to be either of those at the same time.
+//
+// Neutral on purpose, for the same reason: a tinted grey reads as "marked"
+// without arguing with the two colours that mean something.
+func themedSelectedBackground() color.Color {
+	return theme.LightDark(lipgloss.Color("#D4D4D8"), lipgloss.Color("#3F3F46"))
+}
+
 func queueNoteStyle() lipgloss.Style {
 	return lipgloss.NewStyle().
 		Foreground(theme.LightDark(lipgloss.Color("#4A4A4A"), lipgloss.Color("#9B9B9B")))

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -53,6 +54,17 @@ const (
 	bumpBottom
 )
 
+// selectedTrack names one slot of the queue in a way that survives a reload.
+// The URI alone cannot: the same track can sit in a queue twice, so a URI
+// names both copies and a command meant for the second would reach the first.
+// A position cannot either, since any move changes it.
+//
+// nth is which copy of that URI this is, counting from the top of the queue.
+type selectedTrack struct {
+	uri string
+	nth int // 0-based, among the items sharing this URI
+}
+
 // queueContent lists a speaker's queue inside a modal. It holds what it was
 // given and where the reader has scrolled to; it fetches nothing itself.
 type queueContent struct {
@@ -70,6 +82,11 @@ type queueContent struct {
 
 	edge     bumpEdge  // which end the reader last pressed against
 	bumpedAt time.Time // when they did; zero when nothing is lit
+
+	// selected are the tracks the reader has picked out, in the order they
+	// picked them. A slice because that order is the point, and a map has
+	// none of its own.
+	selected []selectedTrack
 
 	// moveFrom is where the moving track sat when the window opened, 1-based.
 	// It is what the speaker is told, since the rows the reader now sees exist
@@ -135,6 +152,12 @@ func (q queueContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return q.remove()
 	case "n":
 		return q.playNext()
+	case "s":
+		return q.toggleSelect()
+	case "S":
+		q = q.clearSelection()
+	case "*":
+		q = q.invertSelection()
 	case "enter":
 		return q.playFromCursor()
 	case "K", "shift+up":
@@ -319,6 +342,126 @@ func (q queueContent) highlightGlow(uri string) float32 {
 // knows to keep ticking for it even where nothing else asks for a repaint.
 func (q queueContent) highlighting() bool {
 	return q.highlightURI != "" && time.Since(q.highlightAt) < highlightDuration
+}
+
+// withSelection returns the content carrying a changed selection, built by
+// change against a copy of the current one.
+//
+// Copied rather than appended to, because the backing array is the one thing
+// here every copy of queueContent shares: an append into spare capacity would
+// reach a copy a superseded update was about to throw away. The same reason
+// movedItems copies the item slice.
+func (q queueContent) withSelection(change func([]selectedTrack) []selectedTrack) queueContent {
+	q.selected = change(slices.Clone(q.selected))
+	return q
+}
+
+// eachTrack calls visit for every row with the track that names it. The one
+// place that decides which copy of a repeated URI a row is, so the answer
+// cannot differ between the reader picking a row and the list drawing it.
+func (q queueContent) eachTrack(visit func(index int, track selectedTrack)) {
+	seen := make(map[string]int, len(q.items))
+	for i, item := range q.items {
+		visit(i, selectedTrack{uri: item.URI, nth: seen[item.URI]})
+		seen[item.URI]++
+	}
+}
+
+// trackAt names the track on one row. The caller must hold a row that exists.
+func (q queueContent) trackAt(index int) (found selectedTrack) {
+	q.eachTrack(func(i int, track selectedTrack) {
+		if i == index {
+			found = track
+		}
+	})
+	return found
+}
+
+// selectedRows resolves the selection against the queue as it stands, giving
+// the rows that are picked out.
+//
+// Resolved in one walk rather than a lookup per row, because which copy a row
+// is depends on every row above it. A selected track no longer in the queue
+// resolves to no row and is kept rather than pruned, which is what stops a
+// read landing on a part-written queue from dropping a selection that is
+// about to come back -- see SONOS-NOTES.md.
+func (q queueContent) selectedRows() map[int]bool {
+	if len(q.selected) == 0 {
+		return nil
+	}
+
+	picked := make(map[selectedTrack]bool, len(q.selected))
+	for _, track := range q.selected {
+		picked[track] = true
+	}
+
+	rows := make(map[int]bool, len(q.selected))
+	q.eachTrack(func(i int, track selectedTrack) {
+		if picked[track] {
+			rows[i] = true
+		}
+	})
+	return rows
+}
+
+// selectionCount is how many of the picked tracks are in the queue as it
+// stands, which is not len(selected): the selection may name a track that a
+// reload has taken away.
+func (q queueContent) selectionCount() int { return len(q.selectedRows()) }
+
+// toggleSelect picks the track under the cursor out, or puts it back, and
+// then steps down a row. Marking a run is then s, s, s rather than a step
+// between each: the key answers with the row the reader wants next.
+//
+// The last row has no next to step to, so it answers with the bump every
+// other key that cannot go further already uses.
+func (q queueContent) toggleSelect() (queueContent, tea.Cmd) {
+	if q.cursor >= len(q.items) {
+		return q, nil // an empty queue, or one still being read
+	}
+
+	track := q.trackAt(q.cursor)
+	q = q.withSelection(func(selected []selectedTrack) []selectedTrack {
+		if at := slices.Index(selected, track); at >= 0 {
+			return slices.Delete(selected, at, at+1)
+		}
+		return append(selected, track)
+	})
+
+	if q.cursor >= q.lastRow() {
+		return q.bump(bumpBottom), nil
+	}
+	q.cursor++
+	return q.follow(), nil
+}
+
+// clearSelection drops every track from the selection at once. It does not
+// move the cursor: it answers the whole list rather than the row under it.
+// Replaces the slice rather than truncating it, for withSelection's reason:
+// the array it held is shared with every other copy of this content.
+func (q queueContent) clearSelection() queueContent {
+	q.selected = nil
+	return q
+}
+
+// invertSelection picks out everything that was not picked, and puts back
+// everything that was. Tracks it brings in are ordered by where they sit in
+// the queue: a track the reader never pressed s on has no order of its own.
+//
+// It reaches only the tracks in the queue as it stands, so a selection that
+// is no longer here is dropped by the inversion rather than carried.
+func (q queueContent) invertSelection() queueContent {
+	rows := q.selectedRows()
+
+	next := make([]selectedTrack, 0, len(q.items))
+	q.eachTrack(func(i int, track selectedTrack) {
+		if !rows[i] {
+			next = append(next, track)
+		}
+	})
+
+	q.selected = next
+	return q
 }
 
 // remove asks for the track under the cursor to go. The list does not do it
@@ -524,9 +667,15 @@ func (q queueContent) View() tea.View {
 		return tea.NewView(b.String())
 	}
 
+	// Resolved once for the whole pass: which copy of a repeated URI a row is
+	// depends on every row above it, so asking per row would walk the queue
+	// again for each one.
+	picked := q.selectedRows()
+
 	first, last := q.window()
 	for i, item := range q.items[first:last] {
-		b.WriteString(q.row(item, first+i, title, artist, q.arrow(first, last, i)) + "\n")
+		b.WriteString(q.row(item, first+i, picked[first+i], title, artist,
+			q.arrow(first, last, i)) + "\n")
 	}
 
 	return tea.NewView(strings.TrimRight(b.String(), "\n"))
@@ -655,7 +804,7 @@ func (q queueContent) arrow(first, last, row int) string {
 
 // row draws one queue item: the title and the artist, a marker on the one
 // that is playing, and a brief flash on one that just landed from a move.
-func (q queueContent) row(item sonos.QueueItem, index, title, artist int, arrow string) string {
+func (q queueContent) row(item sonos.QueueItem, index int, picked bool, title, artist int, arrow string) string {
 	mark := " "
 	if index == q.cursor {
 		mark = queueCursorGlyph
@@ -673,6 +822,12 @@ func (q queueContent) row(item sonos.QueueItem, index, title, artist int, arrow 
 	}
 	if glow := q.highlightGlow(item.URI); glow > 0 {
 		style = style.Foreground(highlightColour(base, glow))
+	}
+
+	// The selection sits behind whatever the foreground is saying, so a
+	// picked row can still be the one playing, or the one that just landed.
+	if picked {
+		style = style.Background(themedSelectedBackground())
 	}
 
 	// The arrow column exists only where the queue overflows, so a short queue
