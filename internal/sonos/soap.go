@@ -103,15 +103,20 @@ type (
 		Desired    int    `xml:"DesiredMute"`
 	}
 
-	// removeTrackAction takes the track away by naming it, not by its index:
-	// ObjectID is "Q:0/<position>", the same container the queue is browsed
-	// from. UpdateID is the version the caller believes the queue is at.
-	removeTrackAction struct {
-		XMLName    xml.Name
-		Namespace  string `xml:"xmlns:u,attr"`
-		InstanceID int    `xml:"InstanceID"`
-		ObjectID   string `xml:"ObjectID"`
-		UpdateID   int    `xml:"UpdateID"`
+	// removeTrackRangeAction takes a run of tracks away by where they sit.
+	// StartingIndex is 1-based, and UpdateID is the version the caller
+	// believes the queue is at.
+	//
+	// The fields are declared in the order the service documents them. UPnP
+	// reads arguments by name, but a speaker is free not to, and the order
+	// costs nothing to keep.
+	removeTrackRangeAction struct {
+		XMLName        xml.Name
+		Namespace      string `xml:"xmlns:u,attr"`
+		QueueID        int    `xml:"QueueID"`
+		UpdateID       int    `xml:"UpdateID"`
+		StartingIndex  int    `xml:"StartingIndex"`
+		NumberOfTracks int    `xml:"NumberOfTracks"`
 	}
 
 	// reorderTracksAction moves a run of tracks. StartingIndex and InsertBefore
@@ -120,7 +125,7 @@ type (
 	reorderTracksAction struct {
 		XMLName        xml.Name
 		Namespace      string `xml:"xmlns:u,attr"`
-		InstanceID     int    `xml:"InstanceID"`
+		QueueID        int    `xml:"QueueID"`
 		StartingIndex  int    `xml:"StartingIndex"`
 		NumberOfTracks int    `xml:"NumberOfTracks"`
 		InsertBefore   int    `xml:"InsertBefore"`

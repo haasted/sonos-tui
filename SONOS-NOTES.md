@@ -372,7 +372,9 @@ queue, so it is the earlier signal and the wrong one.
 Verified 2026-09-24 against a real speaker, four removals out of four.
 
 `RemoveTrackFromQueue` carries the version the caller believes the queue is
-at. The speaker **enforces** it. A removal aimed one version behind is refused
+at. The speaker **enforces** it. The client no longer sends that action, but
+the rule is the service's and not the action's: `Queue:1` enforces it the same
+way, measured the same way. A removal aimed one version behind is refused
 with **UPnP error 1028**; the identical removal sent again with the current
 version succeeds:
 
@@ -403,9 +405,11 @@ Verified 2026-09-23 by removing the track playing on a real speaker.
 
 The speaker advanced to whatever track slid into the vacated playing
 position, the same way `Next` would, rather than stopping or refusing the
-removal. `RemoveTrackFromQueue` names nothing about playback, only the track
-to take out of `Q:0` — the advance is the speaker's own reaction to losing the
-track it was on, not something the removal command asked for.
+removal. The action names nothing about playback, only the track to take out
+of the queue — the advance is the speaker's own reaction to losing the track
+it was on, not something the removal asked for. It was `RemoveTrackFromQueue`
+that was measured; the client sends `RemoveTrackRange` now, and the reaction
+belongs to the track going away rather than to either action.
 
 ### Only ContentDirectory sees a reorder
 
@@ -437,3 +441,117 @@ run 2   Ovenpå  Q:0=7     the queue was the last thing to change
 
 So a program learns the queue's id at subscription only by luck. Browse once at
 startup to establish it.
+
+## There is a second queue service, and it answers with the new version
+
+A speaker advertises 16 services. The client speaks to three of them. One of
+the others, `Queue:1` at `/MediaRenderer/Queue/Control`, holds a second set of
+queue actions, and they are not the same actions.
+
+The difference is what they return. Read the argument directions from the SCPD
+of a real speaker:
+
+```
+AVTransport:1
+  ReorderTracksInQueue       in  StartingIndex NumberOfTracks InsertBefore UpdateID
+                             out (nothing)
+  RemoveTrackFromQueue       in  ObjectID UpdateID
+                             out (nothing)
+  RemoveTrackRangeFromQueue  in  UpdateID StartingIndex NumberOfTracks
+                             out NewUpdateID
+
+Queue:1
+  ReorderTracks              in  QueueID StartingIndex NumberOfTracks InsertBefore UpdateID
+                             out NewUpdateID
+  RemoveTrackRange           in  QueueID UpdateID StartingIndex NumberOfTracks
+                             out NewUpdateID
+  RemoveAllTracks            in  QueueID UpdateID
+                             out NewUpdateID
+  ReplaceAllTracks           in  QueueID UpdateID ContainerURI ContainerMetaData
+                                 CurrentTrackIndex NewCurrentTrackIndices
+                                 NumberOfURIs EnqueuedURIsAndMetaData
+                             out NewQueueLength NewUpdateID
+```
+
+This explains a problem that looked like a race. The speaker refuses a write
+carrying a stale version with UPnP 1028, and the two AVTransport actions the
+client uses tell it nothing about the version they just created. So a second
+write cannot be correct until a Browse or an event says what the version is
+now. Two quick edits are therefore not slow: the second is **refused**.
+
+`Queue:1` hands the new version back on every action that changes the queue, so
+a run of edits can carry its own version forward and never wait.
+
+`ReplaceAllTracks` writes a whole queue in one call, which is the only form
+that expresses an edit with a gap in it. It needs the metadata of every track
+written back, and `parseDIDLTracks` keeps five fields of it: a queue rebuilt
+from what the client parses would lose the `<desc>` element that names the
+music service account.
+
+### What Queue:1 takes, measured
+
+Read from the SCPD and then sent to a real speaker, against a queue of 23
+tracks at version 32:
+
+```
+QueueID          0            a ui4, and 0 is the local queue
+StartingIndex    1-based      the same as AVTransport, NOT Browse's 0-based offset
+UpdateID         32           the SAME counter ContentDirectory reports
+```
+
+`Browse` is the trap. Its `StartingIndex` is a pagination offset, which UPnP
+defines as counting from 0 in every service, so what it accepts says nothing
+about what `ReorderTracks` means by a track index. Reading a 0 there and
+sending a 0 to `ReorderTracks` is refused with **402**, not 1028.
+
+The version chain works:
+
+```
+ReorderTracks  index 1, insertBefore 3, version 32   ACCEPTED, NewUpdateID 33
+  the track moved from position 1 to position 2, and the queue read version 33
+ReorderTracks  moving it back, version 33            ACCEPTED, with no read between
+ReorderTracks  index 1, insertBefore 3, version 32   REFUSED, UPnP 1028
+```
+
+So a run of edits can carry its own version forward and never wait for a
+Browse or an event. This also confirms the `InsertBefore` convention that
+`MoveQueueTrack` was written to and could not check: moving down names one
+place past the destination, and a track sent from index 1 with `InsertBefore`
+3 lands at position 2.
+
+### Version 0 means "do not check"
+
+```
+ReorderTracks  index 1, insertBefore 3, version 0    ACCEPTED
+```
+
+A zero is not treated as a version at all, so the speaker applies the edit
+whatever state its queue is in. This is a footgun rather than a shortcut: the
+version check is the only thing standing between removing the track the reader
+saw and removing whatever has since moved into its place. Send the freshest
+version there is, and let 1028 say when it was not fresh enough.
+
+`AttachQueue` was not called. A `Browse` that works answers the same question,
+and `AttachQueue` may have an effect of its own.
+
+### Which speakers have Queue:1
+
+Every speaker asked has it:
+
+```
+Køkken        Sonos Era 100              yes
+Ovenpå        Sonos Port                 yes
+Soveværelse   SYMFONISK Picture frame    yes
+Spisestue     Sonos Amp                  yes
+Værelse       Sonos Era 300              yes
+```
+
+Køkken's is confirmed by a write it accepted, the others by what they
+advertise. The sample is all S2 hardware, from 2018 to 2023, so it says
+nothing about an S1-era player. Read the `serviceList` of a speaker's
+description and branch on what is there, rather than on a model or a year.
+
+AVTransport's `RemoveTrackRangeFromQueue` returns `NewUpdateID` on all of
+them, so removal needs no second service and no branch at all. `Queue:1` is
+only needed for a reorder that chains, since AVTransport's
+`ReorderTracksInQueue` returns nothing.

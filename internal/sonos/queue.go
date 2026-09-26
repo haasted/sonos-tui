@@ -19,6 +19,25 @@ const (
 // or a music-service container.
 const queueObjectID = "Q:0"
 
+// The Queue service is the second place a speaker takes queue writes, and the
+// only one that answers with the version it created. AVTransport's reorder and
+// single-track removal return nothing, so a caller there cannot send a second
+// write until a Browse or an event says what the version is now.
+//
+// Every speaker asked has it, from a 2018 Amp to a 2023 Era, but that sample
+// holds no S1-era player. If one ever turns up it will refuse these actions,
+// and AVTransport is the way back: its RemoveTrackRangeFromQueue returns the
+// new version too, and only a reorder would have to re-read between writes.
+// See SONOS-NOTES.md.
+const (
+	queueService = "urn:schemas-sonos-com:service:Queue:1"
+	queuePath    = "/MediaRenderer/Queue/Control"
+)
+
+// localQueueID is the speaker's own queue, which the Queue service names with
+// a number where ContentDirectory names it with the "Q:0" object id.
+const localQueueID = 0
+
 // browsePageSize is how many items one Browse asks for. Sonos may return
 // fewer, which is why GetQueue pages rather than trusting a single call.
 const browsePageSize = 100
@@ -85,51 +104,54 @@ func (c *SonosClient) GetQueue(ctx context.Context) (Queue, error) {
 	}
 }
 
-// RemoveTrackFromQueue takes one track out of the speaker's queue. position is
-// 1-based, as QueueItem.Position counts.
+// RemoveTrackRange takes a run of tracks out of the queue and returns the
+// version the speaker moved to.
 //
-// The queue is READ from ContentDirectory under /MediaServer and CHANGED
-// through AVTransport under /MediaRenderer. Two services for one queue, and
-// this is the second of them.
+// The version comes back so a caller removing several runs can carry it into
+// the next call. Waiting for the ContentDirectory event instead is what makes
+// a second removal arrive stale, and the speaker refuses a stale one.
 //
-// updateID is the version the caller believes the queue is at, and the
-// speaker DOES check it: a removal carrying anything but the current version
-// is refused with UPnP 1028, verified against a real speaker. That is the
-// difference between removing the track the reader saw and removing whatever
-// moved into its place, so a caller must pass the freshest version it has
-// rather than a convenient zero.
-func (c *SonosClient) RemoveTrackFromQueue(ctx context.Context, position, updateID int) error {
-	if position < 1 {
-		return fmt.Errorf("removing from the queue: position %d is not a track", position)
+// start is 1-based, as QueueItem.Position counts. A zero updateID is accepted
+// by the speaker and means "do not check", which is never what a caller wants:
+// the check is the only thing between removing the track the reader saw and
+// removing whatever has since moved into its place.
+func (c *SonosClient) RemoveTrackRange(ctx context.Context, start, count, updateID int) (int, error) {
+	if start < 1 {
+		return 0, fmt.Errorf("removing from the queue: position %d is not a track", start)
+	}
+	if count < 1 {
+		return 0, fmt.Errorf("removing from the queue: %d tracks is not a run", count)
 	}
 
-	_, err := c.avTransport(ctx, "RemoveTrackFromQueue", removeTrackAction{
-		XMLName:   xml.Name{Local: "u:RemoveTrackFromQueue"},
-		Namespace: avtransportService,
-		ObjectID:  fmt.Sprintf("%s/%d", queueObjectID, position),
-		UpdateID:  updateID,
+	data, err := c.queueControl(ctx, "RemoveTrackRange", removeTrackRangeAction{
+		XMLName:        xml.Name{Local: "u:RemoveTrackRange"},
+		Namespace:      queueService,
+		QueueID:        localQueueID,
+		UpdateID:       updateID,
+		StartingIndex:  start,
+		NumberOfTracks: count,
 	})
 	if err != nil {
-		return fmt.Errorf("removing track %d from the queue: %w", position, err)
+		return 0, fmt.Errorf("removing %d tracks from the queue at %d: %w", count, start, err)
 	}
-	return nil
+	return parseNewUpdateID(data)
 }
 
-// MoveQueueTrack moves one track to another place in the queue. Both positions
-// are 1-based, as QueueItem.Position counts, and to is where the reader wants
-// the track to end up.
+// MoveQueueTrack moves one track to another place in the queue and returns the
+// version the speaker moved to. Both positions are 1-based, as
+// QueueItem.Position counts, and to is where the reader wants it to end up.
 //
 // THE OFF-BY-ONE. InsertBefore is read against the queue with the track still
 // in it, so moving DOWN has to name one place further on than the destination:
 // lifting the track out afterwards shifts everything below it up by one. Moving
-// up needs no such correction. This is the convention the action is documented
-// with and is NOT yet verified against a speaker.
-func (c *SonosClient) MoveQueueTrack(ctx context.Context, from, to, updateID int) error {
+// up needs no such correction. Verified against a speaker: a track sent from
+// index 1 with InsertBefore 3 lands at position 2 -- see SONOS-NOTES.md.
+func (c *SonosClient) MoveQueueTrack(ctx context.Context, from, to, updateID int) (int, error) {
 	if from < 1 || to < 1 {
-		return fmt.Errorf("moving in the queue: %d to %d is not a move between tracks", from, to)
+		return 0, fmt.Errorf("moving in the queue: %d to %d is not a move between tracks", from, to)
 	}
 	if from == to {
-		return nil
+		return updateID, nil
 	}
 
 	insertBefore := to
@@ -137,18 +159,40 @@ func (c *SonosClient) MoveQueueTrack(ctx context.Context, from, to, updateID int
 		insertBefore = to + 1
 	}
 
-	_, err := c.avTransport(ctx, "ReorderTracksInQueue", reorderTracksAction{
-		XMLName:        xml.Name{Local: "u:ReorderTracksInQueue"},
-		Namespace:      avtransportService,
+	data, err := c.queueControl(ctx, "ReorderTracks", reorderTracksAction{
+		XMLName:        xml.Name{Local: "u:ReorderTracks"},
+		Namespace:      queueService,
+		QueueID:        localQueueID,
 		StartingIndex:  from,
 		NumberOfTracks: 1,
 		InsertBefore:   insertBefore,
 		UpdateID:       updateID,
 	})
 	if err != nil {
-		return fmt.Errorf("moving track %d to %d in the queue: %w", from, to, err)
+		return 0, fmt.Errorf("moving track %d to %d in the queue: %w", from, to, err)
 	}
-	return nil
+	return parseNewUpdateID(data)
+}
+
+func (c *SonosClient) queueControl(ctx context.Context, action string, payload any) ([]byte, error) {
+	return c.Do(ctx, queuePath, queueService, action, payload)
+}
+
+// parseNewUpdateID reads the version a Queue write answers with. The element
+// sits inside a response named for the action, so the response element is
+// matched by position rather than by a name that differs per call.
+func parseNewUpdateID(data []byte) (int, error) {
+	var envelope struct {
+		Body struct {
+			Response struct {
+				NewUpdateID int `xml:"NewUpdateID"`
+			} `xml:",any"`
+		} `xml:"Body"`
+	}
+	if err := xml.Unmarshal(data, &envelope); err != nil {
+		return 0, fmt.Errorf("parsing the new queue version: %w", err)
+	}
+	return envelope.Body.Response.NewUpdateID, nil
 }
 
 // browsePage is one Browse response: the items it carried, and the counts that
