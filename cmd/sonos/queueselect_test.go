@@ -11,7 +11,7 @@ import (
 func TestQueueSelect_TogglesAndStepsDown(t *testing.T) {
 	after := moveQueue(navQueue(20, 4), "s")
 
-	if !after.selectedRows()[4] {
+	if !pickedRow(after, 4) {
 		t.Fatal("s did not pick the track under the cursor out")
 	}
 	if after.cursor != 5 {
@@ -57,7 +57,7 @@ func TestQueueSelect_TogglesBackOff(t *testing.T) {
 	on := moveQueue(navQueue(20, 4), "s")
 	off := moveQueue(moveQueue(on, "up"), "s")
 
-	if off.selectedRows()[4] {
+	if pickedRow(off, 4) {
 		t.Fatal("pressing s twice on one track left it picked")
 	}
 	if len(off.selected) != 0 {
@@ -74,9 +74,10 @@ func TestQueueSelect_TellsTwoCopiesOfOneTrackApart(t *testing.T) {
 		q := duplicateQueue(6, 0, 4)
 		q.cursor = pick
 
-		rows := moveQueue(q, "s").selectedRows()
+		after := moveQueue(q, "s")
+		rows := after.pickedPositions()
 
-		if !rows[pick] {
+		if !pickedRow(after, pick) {
 			t.Fatalf("picking row %d did not mark it", pick)
 		}
 		if len(rows) != 1 {
@@ -125,9 +126,9 @@ func TestQueueSelect_InvertSwapsBothSides(t *testing.T) {
 	was := q.cursor
 
 	after := moveQueue(q, "*")
-	rows := after.selectedRows()
+	rows := after.pickedPositions()
 
-	if rows[0] || rows[1] {
+	if pickedRow(after, 0) || pickedRow(after, 1) {
 		t.Fatal("invert left a row picked that was picked before")
 	}
 	if len(rows) != 18 {
@@ -187,8 +188,8 @@ func TestQueueSelect_SurvivesAReload(t *testing.T) {
 	if content.items[19].URI != picked {
 		t.Fatal("the reordered queue did not put the picked track last, so this proves nothing")
 	}
-	rows := content.selectedRows()
-	if !rows[19] {
+	rows := content.pickedPositions()
+	if !pickedRow(content, 19) {
 		t.Fatal("the picked track lost its mark when the queue came back reordered")
 	}
 	if len(rows) != 1 {
@@ -270,4 +271,14 @@ func duplicateQueue(items, original, copy int) queueContent {
 	q.items[copy] = q.items[original]
 	q.items[copy].Position = position
 	return q
+}
+
+// pickedRow reports whether the track on a row is picked. The selection is
+// held by the speaker's position, not by the row, so a test that means "this
+// row" has to ask the row which position it carries.
+func pickedRow(q queueContent, row int) bool {
+	if row < 0 || row >= len(q.items) {
+		return false
+	}
+	return q.pickedPositions()[q.items[row].Position]
 }

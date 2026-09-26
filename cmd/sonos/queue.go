@@ -469,7 +469,7 @@ func (q queueContent) trackAt(index int) (found selectedTrack) {
 // resolves to no row and is kept rather than pruned, which is what stops a
 // read landing on a part-written queue from dropping a selection that is
 // about to come back -- see SONOS-NOTES.md.
-func (q queueContent) selectedRows() map[int]bool {
+func (q queueContent) pickedPositions() map[int]bool {
 	if len(q.selected) == 0 {
 		return nil
 	}
@@ -479,19 +479,19 @@ func (q queueContent) selectedRows() map[int]bool {
 		picked[track] = true
 	}
 
-	rows := make(map[int]bool, len(q.selected))
+	positions := make(map[int]bool, len(q.selected))
 	q.eachTrack(func(i int, track selectedTrack) {
 		if picked[track] {
-			rows[i] = true
+			positions[q.items[i].Position] = true
 		}
 	})
-	return rows
+	return positions
 }
 
 // selectionCount is how many of the picked tracks are in the queue as it
 // stands, which is not len(selected): the selection may name a track that a
 // reload has taken away.
-func (q queueContent) selectionCount() int { return len(q.selectedRows()) }
+func (q queueContent) selectionCount() int { return len(q.pickedPositions()) }
 
 // toggleSelect picks the track under the cursor out, or puts it back, and
 // then steps down a row. Marking a run is then s, s, s rather than a step
@@ -535,11 +535,11 @@ func (q queueContent) clearSelection() queueContent {
 // It reaches only the tracks in the queue as it stands, so a selection that
 // is no longer here is dropped by the inversion rather than carried.
 func (q queueContent) invertSelection() queueContent {
-	rows := q.selectedRows()
+	picked := q.pickedPositions()
 
 	next := make([]selectedTrack, 0, len(q.items))
 	q.eachTrack(func(i int, track selectedTrack) {
-		if !rows[i] {
+		if !picked[q.items[i].Position] {
 			next = append(next, track)
 		}
 	})
@@ -555,14 +555,14 @@ func (q queueContent) invertSelection() queueContent {
 // Queue order rather than the order they were pressed. Removal sorts them
 // anyway, and a command that needs the reader's own order has it in selected.
 func (q queueContent) selectedPositions() []int {
-	rows := q.selectedRows()
-	if len(rows) == 0 {
+	picked := q.pickedPositions()
+	if len(picked) == 0 {
 		return nil
 	}
 
-	positions := make([]int, 0, len(rows))
-	for i, item := range q.items {
-		if rows[i] {
+	positions := make([]int, 0, len(picked))
+	for _, item := range q.items {
+		if picked[item.Position] {
 			positions = append(positions, item.Position)
 		}
 	}
@@ -677,22 +677,22 @@ func (q queueContent) clearRemoving() queueContent {
 }
 
 // pickedInPressOrder is the picked tracks as rows, in the order the reader
-// picked them. selected holds that order; selectedRows says which of them
+// picked them. selected holds that order; pickedPositions says which of them
 // are still in the queue.
 func (q queueContent) pickedInPressOrder() []int {
-	rows := q.selectedRows()
-	if len(rows) == 0 {
+	picked := q.pickedPositions()
+	if len(picked) == 0 {
 		return nil
 	}
 
-	at := make(map[selectedTrack]int, len(rows))
+	at := make(map[selectedTrack]int, len(picked))
 	q.eachTrack(func(i int, track selectedTrack) {
-		if rows[i] {
+		if picked[q.items[i].Position] {
 			at[track] = i
 		}
 	})
 
-	ordered := make([]int, 0, len(rows))
+	ordered := make([]int, 0, len(picked))
 	for _, track := range q.selected {
 		if row, here := at[track]; here {
 			ordered = append(ordered, row)
@@ -944,12 +944,13 @@ func (q queueContent) View() tea.View {
 
 	// Resolved once for the whole pass: which copy of a repeated URI a row is
 	// depends on every row above it, so asking per row would walk the queue
-	// again for each one.
-	picked := q.selectedRows()
+	// again for each one. Keyed by the speaker's own position, which a row
+	// carries with it wherever the row sits.
+	picked := q.pickedPositions()
 
 	first, last := q.window()
 	for i, item := range q.items[first:last] {
-		b.WriteString(q.row(item, first+i, picked[first+i], title, artist,
+		b.WriteString(q.row(item, first+i, picked[item.Position], title, artist,
 			q.arrow(first, last, i)) + "\n")
 	}
 
