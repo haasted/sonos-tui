@@ -76,6 +76,12 @@ type queueContent struct {
 	room  string
 	items []sonos.QueueItem
 
+	// filter is what the reader has typed, and filtering says the box is open
+	// and taking their keys. Open with nothing typed still shows everything,
+	// so the two are not one field.
+	filter    string
+	filtering bool
+
 	// all is the whole queue while a filter narrows items to part of it, and
 	// nil otherwise -- with no filter, items already IS everything. Read it
 	// through everything(), never directly.
@@ -173,7 +179,17 @@ func (q queueContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return q, nil
 	}
 
+	// The filter box has the keyboard while it is open: a reader typing a
+	// title must not be moving the cursor with every letter of it.
+	if q.filtering {
+		return q.filterKey(key.String()), nil
+	}
+
 	switch key.String() {
+	case "esc":
+		return q.closeFilter(), nil
+	case "/":
+		return q.openFilter(), nil
 	case "up", "k":
 		q = q.moveBy(-1)
 	case "down", "j":
@@ -447,6 +463,110 @@ func (q queueContent) highlighting() bool {
 func (q queueContent) withSelection(change func([]selectedTrack) []selectedTrack) queueContent {
 	q.selected = change(slices.Clone(q.selected))
 	return q
+}
+
+// matchesFilter reports whether a track answers what the reader typed. The
+// title and the artist both, and case-insensitively: a reader typing "nick"
+// is naming an artist as readily as a song.
+func matchesFilter(item sonos.QueueItem, filter string) bool {
+	if filter == "" {
+		return true
+	}
+	want := strings.ToLower(filter)
+	return strings.Contains(strings.ToLower(item.Title), want) ||
+		strings.Contains(strings.ToLower(item.Artist), want)
+}
+
+// applyFilter narrows items to the tracks that answer the filter, keeping the
+// whole queue in all so nothing that decides identity loses sight of it.
+//
+// The cursor keeps the track it was on where that track is still shown, and
+// otherwise goes to the top: a cursor left on a row number would land on a
+// different track every keystroke.
+func (q queueContent) applyFilter() queueContent {
+	all := q.everything()
+
+	var on string
+	if q.cursor < len(q.items) {
+		on = q.items[q.cursor].URI
+	}
+
+	if q.filter == "" {
+		q.items, q.all = all, nil
+	} else {
+		shown := make([]sonos.QueueItem, 0, len(all))
+		for _, item := range all {
+			if matchesFilter(item, q.filter) {
+				shown = append(shown, item)
+			}
+		}
+		q.items, q.all = shown, all
+	}
+
+	q.cursor = 0
+	for i, item := range q.items {
+		if item.URI == on {
+			q.cursor = i
+			break
+		}
+	}
+	return q.follow()
+}
+
+// ClaimsEsc keeps esc from closing the modal while there is a filter to
+// clear. The reader's first esc undoes the narrowing; a second closes the
+// queue, as it always did.
+func (q queueContent) ClaimsEsc() bool { return q.filtering || q.filter != "" }
+
+// filterKey is one key while the filter box is open. enter leaves the box but
+// keeps the narrowing, so the keys that act on tracks reach the rows it left.
+func (q queueContent) filterKey(key string) queueContent {
+	switch key {
+	case "esc":
+		return q.closeFilter()
+	case "enter":
+		q.filtering = false
+		return q
+	case "backspace":
+		return q.typeFilter("backspace")
+	}
+	if len([]rune(key)) == 1 {
+		return q.typeFilter(key)
+	}
+	return q
+}
+
+// openFilter starts taking the reader's keys as a filter.
+func (q queueContent) openFilter() queueContent {
+	q.filtering = true
+	return q
+}
+
+// closeFilter stops filtering and shows the whole queue again. What the
+// reader did while it was narrowed stays done: the selection is held by
+// track, and tracks on their way out by position, neither of which the
+// filter ever touched.
+func (q queueContent) closeFilter() queueContent {
+	if !q.filtering && q.filter == "" {
+		return q
+	}
+	q.filtering, q.filter = false, ""
+	return q.applyFilter()
+}
+
+// typeFilter adds to what the reader has typed, or takes the last rune back.
+func (q queueContent) typeFilter(key string) queueContent {
+	switch key {
+	case "backspace":
+		if q.filter == "" {
+			return q
+		}
+		runes := []rune(q.filter)
+		q.filter = string(runes[:len(runes)-1])
+	default:
+		q.filter += key
+	}
+	return q.applyFilter()
 }
 
 // everything is the whole queue, filtered or not.
@@ -1096,6 +1216,20 @@ func (q queueContent) headingParts() (label, count string) {
 // queueLabel is the room and the size of its queue, which is the whole
 // heading until something is picked.
 func (q queueContent) queueLabel() string {
+	return q.sizeLabel() + q.filterLabel()
+}
+
+// filterLabel shows what the reader typed, so the count beside it is not read
+// as the whole queue. Shown while the box is open, so they can see what they
+// are typing, and after it closes, so they remember the list is narrowed.
+func (q queueContent) filterLabel() string {
+	if !q.filtering && q.filter == "" {
+		return ""
+	}
+	return " · /" + q.filter
+}
+
+func (q queueContent) sizeLabel() string {
 	switch {
 	case q.loading, len(q.items) == 0:
 		return q.room

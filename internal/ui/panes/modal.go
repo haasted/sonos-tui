@@ -78,6 +78,13 @@ type BorderCell struct {
 // the light means, and when it runs, belong to the caller.
 type BorderLight func(edge ModalEdge, fromCentre float32) BorderCell
 
+// EscClaimer is modal content that sometimes wants esc for itself, having
+// something of its own to close before the modal closes. Content that does
+// not implement it lets esc close the modal, as it always has.
+type EscClaimer interface {
+	ClaimsEsc() bool
+}
+
 // Modal is an overlay drawn on top of another view. It owns only its own
 // framing, sizing and dismissal; what it contains, when it opens, and what the
 // caller does underneath are all the caller's business.
@@ -193,8 +200,14 @@ func (m Modal) Update(msg tea.Msg) (Modal, tea.Cmd) {
 		return m, nil
 	}
 
+	// esc closes the modal, unless its content has a mode of its own to
+	// unwind first -- a filter box, say. The content is asked rather than
+	// named here, so Modal stays ignorant of what it is holding.
 	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "esc" {
-		return m.Close(), nil
+		claimer, claims := m.Content.(EscClaimer)
+		if !claims || !claimer.ClaimsEsc() {
+			return m.Close(), nil
+		}
 	}
 	if m.Content == nil {
 		return m, nil
