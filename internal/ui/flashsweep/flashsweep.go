@@ -66,6 +66,20 @@ func (r Ramp) blend(burst float32) movy.V3 {
 	return r.Base.Lerp(r.Flash, burst)
 }
 
+// GlintTail is how far past each end of a path a glint still reaches, so a
+// caller laying out its own path knows what run-in and run-out to allow.
+const GlintTail = glintTail
+
+// GlintBurst is how lit a cell sits d cells from the travelling light, with
+// the falloff Glint gives a line.
+//
+// Exported for a light that runs somewhere other than along a string -- a
+// border's perimeter, say. The caller owns the geometry; only the shape of
+// the light is shared, which is what keeps the effects looking alike.
+func GlintBurst(d float32) float32 {
+	return glintWeight * gauss(d, glintSigma)
+}
+
 func Glint(text string, progress float32, fg Ramp) string {
 	runes := []rune(text)
 	if len(runes) == 0 {

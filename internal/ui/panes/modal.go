@@ -3,6 +3,7 @@ package panes
 import (
 	"image/color"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -93,6 +94,12 @@ type Modal struct {
 	Mode    ModalMode
 	Light   BorderLight // nil leaves the border in one resting colour
 
+	// sweep and sweptAt are the light that runs once round the border as the
+	// modal opens: where it began, which way it goes, and when. Zero sweptAt
+	// is a modal that has never been opened, whose border is simply resting.
+	sweep   sweepCorner
+	sweptAt time.Time
+
 	open   bool
 	width  int // terminal width, not the box's
 	height int
@@ -106,6 +113,7 @@ func (m Modal) IsOpen() bool { return m.open }
 
 func (m Modal) Open() Modal {
 	m.open = true
+	m.sweep, m.sweptAt = startSweep()
 	return m
 }
 
@@ -271,6 +279,23 @@ func (m Modal) box() string {
 
 	// Width counts the border, Height does not — an asymmetry in lipgloss
 	// that silently costs two columns if the box is sized as if they matched.
+	// The sweep owns all four sides while it runs, so the content is rendered
+	// without a border for it to draw around. The bump only ever wanted the
+	// two horizontal ones, and keeps lipgloss's own border underneath.
+	// A bump answers a keypress and the sweep only announces the box, so a
+	// reader who presses against an edge during the opening light sees their
+	// own answer. Light is nil whenever nothing is bumping, so the sweep has
+	// the border back as soon as the pulse cools.
+	if m.sweeping() && m.Light == nil {
+		// inner-2, not inner: lipgloss counts the border in a bordered
+		// style's Height, so the resting box renders inner lines in total.
+		// A swept box that drew inner rows INSIDE its own border would be two
+		// rows taller, and the modal would shrink as the light finished.
+		rows := max(inner-2, 0)
+		content := modalInnerStyle.Width(width - 2).Height(rows).Render(body)
+		return m.sweptBorder(content, width, rows)
+	}
+
 	box := modalStyle.Width(width).Height(inner).Render(body)
 	if m.Light == nil {
 		return box
@@ -352,6 +377,11 @@ func abs32(v float32) float32 {
 }
 
 func clamp(v, lo, hi int) int { return min(max(v, lo), hi) }
+
+// modalInnerStyle is modalStyle without its border, for the sweep to draw its
+// own around. The padding and the sizing must match, or the box would change
+// shape as the light finished.
+var modalInnerStyle = lipgloss.NewStyle().Padding(0, 1)
 
 var modalStyle = lipgloss.NewStyle().
 	Border(lipgloss.RoundedBorder()).

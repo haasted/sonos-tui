@@ -52,3 +52,23 @@ func DividerActive(t Tabs) (float32, bool) { return t.dividerProgress() }
 func NoticeHoldFor(msg NoticeMsg) time.Duration {
 	return notice{confirmation: msg.Confirmation}.hold()
 }
+
+const ModalSweepDuration = modalSweepDuration
+
+// SetModalSweptAt rewinds the opening sweep so it reads as `elapsed` old.
+func SetModalSweptAt(m Modal, elapsed time.Duration) Modal {
+	m.sweptAt = time.Now().Add(-elapsed)
+	return m
+}
+
+// SetModalSweep fixes the corner and direction a sweep rolled at random.
+func SetModalSweep(m Modal, corner int, clockwise bool) Modal {
+	m.sweep = sweepCorner{at: corner, clockwise: clockwise}
+	return m
+}
+
+// ModalSweepCorner reports the corner and direction a sweep rolled.
+func ModalSweepCorner(m Modal) (int, bool) { return m.sweep.at, m.sweep.clockwise }
+
+// ModalBox renders just the box, without compositing it over anything.
+func ModalBox(m Modal) string { return m.box() }
