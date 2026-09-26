@@ -308,12 +308,10 @@ func TestQueue_KeepsBothColumnsWholeWhenTheyFit(t *testing.T) {
 		t.Fatalf("the artist was shortened with room to spare:\n%s", body)
 	}
 
-	// And the row takes only what it needs. Padding both columns out to the
-	// modal's full allowance would keep the text whole but leave a wide, mostly
-	// empty box around one track.
-	want := queueMarkWidth + lipgloss.Width("HellWalkers") + queueGap + lipgloss.Width(artist)
-	if got := lipgloss.Width(strings.Split(body, "\n")[2]); got != want {
-		t.Fatalf("the row spans %d columns for %d columns of content", got, want)
+	// And the row fills the width. The box is a fixed size now, so a row that
+	// took only what it needed would stop short of the rule above it.
+	if got := lipgloss.Width(strings.Split(body, "\n")[2]); got != 70 {
+		t.Fatalf("the row spans %d columns, want the box's full 70", got)
 	}
 }
 

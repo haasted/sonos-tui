@@ -63,7 +63,13 @@ func (m simpleTabsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "?", "q":
 				m.modal = m.modal.Close()
 			case "m":
-				m.modal.Mode = (m.modal.Mode + 1) % 2
+				// The two this demo is about, named rather than counted: a
+				// third mode existing does not belong in its cycle.
+				if m.modal.Mode == panes.ModalFullScreen {
+					m.modal.Mode = panes.ModalHover
+				} else {
+					m.modal.Mode = panes.ModalFullScreen
+				}
 			default:
 				modal, cmd := m.modal.Update(msg)
 				m.modal = modal

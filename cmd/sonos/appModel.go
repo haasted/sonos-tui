@@ -62,8 +62,11 @@ func newAppModel(ctx context.Context, events *sonos.EventManager, cached []sonos
 	help := panes.NewModal(helpContent{table: playerHelp})
 	help.Mode = panes.ModalHover
 
+	// Fixed rather than hovering: the queue changes under the reader as they
+	// remove and move tracks, and a box that resized and re-centred on every
+	// keypress was one they could not aim at.
 	queue := panes.NewModal(queueContent{})
-	queue.Mode = panes.ModalHover
+	queue.Mode = panes.ModalFixed
 
 	m := appModel{ctx: ctx, tabs: tabs, eventManager: events, fromCache: len(cached) > 0,
 		help: help, queue: queue}

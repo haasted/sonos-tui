@@ -40,6 +40,11 @@ const (
 	highlightDuration = 500 * time.Millisecond
 )
 
+// selectionCountFloor is how many tracks must be picked before the heading
+// says how many. Up to it the marks on the rows are the answer and the reader
+// has not lost count; a number appearing on the first press is noise.
+const selectionCountFloor = 3
+
 // queueCursorGlyph marks the row the reader is on. It used to mark the playing
 // track, which now shows as colour alone: the cursor moves and so needs the
 // stronger signal of the two.
@@ -897,8 +902,13 @@ func (q queueContent) View() tea.View {
 	title, artist := q.columns()
 
 	var b strings.Builder
-	b.WriteString(queueRoomStyle().Render(q.heading()) + "\n")
-	b.WriteString(queueRuleStyle().Render(strings.Repeat("─", q.ruleWidth(title, artist))) + "\n")
+	label, count := q.headingParts()
+	heading := queueRoomStyle().Render(label)
+	if count != "" {
+		heading += queueCountStyle().Render(count)
+	}
+	b.WriteString(heading + "\n")
+	b.WriteString(queueRuleStyle().Render(strings.Repeat("─", q.ruleWidth())) + "\n")
 
 	if note := q.note(); note != "" {
 		b.WriteString(queueNoteStyle().Render(note))
@@ -932,8 +942,14 @@ func (q queueContent) columns() (title, artist int) {
 	if q.overflows() {
 		room -= queueGap + queueArrowWidth
 	}
-	if room <= 0 || title+artist <= room {
+	if room <= 0 {
 		return title, artist
+	}
+	if title+artist <= room {
+		// The box is a fixed width, so the row fills it rather than stopping
+		// short of the rule above. The title takes the slack, being the field
+		// that most often wants it.
+		return room - artist, artist
 	}
 
 	// The artist is the shorter field and the one a reader recognises from
@@ -945,21 +961,45 @@ func (q queueContent) columns() (title, artist int) {
 
 // ruleWidth spans the widest thing under it, so the rule marks the list out
 // rather than stopping short of it or running past.
-func (q queueContent) ruleWidth(title, artist int) int {
-	widest := max(q.widestHeading(), lipgloss.Width(q.note()))
-	if len(q.items) > 0 {
-		row := queueMarkWidth + title + queueGap + artist
-		if q.overflows() {
-			row += queueGap + queueArrowWidth
-		}
-		widest = max(widest, row)
-	}
-	return widest
-}
+func (q queueContent) ruleWidth() int { return q.width }
 
 // heading names the room and the size of its queue, so a reader knows what
-// they are looking at and how much of it they can see.
+// they are looking at and how much of it they can see, and says how many
+// tracks are picked when any are.
+//
+// The count is here because the rows alone cannot carry it: a reader who has
+// scrolled away from what they picked, or who inverted the selection, has
+// nothing else to read it from.
 func (q queueContent) heading() string {
+	label, count := q.headingParts()
+	return label + count
+}
+
+// headingParts is the heading split where its colour changes: the room and
+// the size of the queue, then the selection count that follows them. The
+// count is empty when there is none to show, or no room to show it in.
+func (q queueContent) headingParts() (label, count string) {
+	label = q.queueLabel()
+
+	if picked := q.selectionCount(); picked > selectionCountFloor {
+		count = fmt.Sprintf(" · %d selected", picked)
+	}
+	if count == "" {
+		return clip(label, q.width), ""
+	}
+
+	// A narrow box cannot hold both. The range says where in the queue the
+	// reader is, which they need before they need the count, so the count is
+	// what goes rather than either being cut in half.
+	if q.width > 0 && lipgloss.Width(label)+lipgloss.Width(count) > q.width {
+		return clip(label, q.width), ""
+	}
+	return label, count
+}
+
+// queueLabel is the room and the size of its queue, which is the whole
+// heading until something is picked.
+func (q queueContent) queueLabel() string {
 	switch {
 	case q.loading, len(q.items) == 0:
 		return q.room
@@ -976,17 +1016,6 @@ func (q queueContent) heading() string {
 // rangeLabel says which part of the queue is on screen.
 func (q queueContent) rangeLabel(first, last int) string {
 	return fmt.Sprintf("%d-%d of %d", first+1, last, len(q.items))
-}
-
-// widestHeading is how wide the heading can ever get for this queue. Both
-// numbers in the range only grow, so the last window is the longest one. The
-// rule measures against this rather than the heading on screen, which holds
-// the box at one width while leaving the heading itself unpadded.
-func (q queueContent) widestHeading() int {
-	if !q.overflows() {
-		return lipgloss.Width(q.heading())
-	}
-	return lipgloss.Width(q.room + " · " + q.rangeLabel(q.maxOffset(), len(q.items)))
 }
 
 // note is the whole body when there are no rows to draw, and empty otherwise.

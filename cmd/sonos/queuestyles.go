@@ -139,3 +139,15 @@ func smoothstep01(edge0, edge1, x float32) float32 {
 	t := min(max((x-edge0)/(edge1-edge0), 0), 1)
 	return t * t * (3 - 2*t)
 }
+
+// queueCountStyle draws the selection count in the heading. Quieter than the
+// room name beside it, and not bold: the room says what the reader is looking
+// at, where the count answers a question they ask only now and then.
+//
+// Deliberately the same grey as queueNoteStyle rather than a fourth colour.
+// The heading already carries amber, and the list below it blue and amber
+// again; a new hue here would mean something it does not.
+func queueCountStyle() lipgloss.Style {
+	return lipgloss.NewStyle().
+		Foreground(theme.LightDark(lipgloss.Color("#4A4A4A"), lipgloss.Color("#9B9B9B")))
+}

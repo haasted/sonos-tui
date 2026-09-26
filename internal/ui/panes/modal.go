@@ -21,6 +21,13 @@ const (
 	// inline frame, which pushes terminal scrollback up.
 	ModalHover ModalMode = iota
 
+	// ModalFixed is a hovering modal that takes its whole allowance and sits
+	// at the top, rather than fitting itself to its content and floating in
+	// the middle. For content that changes while the reader is working in it:
+	// a box that resizes and re-centres under a keypress is one they cannot
+	// aim at.
+	ModalFixed
+
 	// ModalFullScreen fills the terminal via the alternate screen. Unlimited
 	// height and no scroll cost, at the price of blanking the screen.
 	ModalFullScreen
@@ -127,6 +134,9 @@ func (m Modal) BoxSize() (width, height int) {
 	if m.Mode == ModalFullScreen {
 		return m.width, m.height
 	}
+	if m.Mode == ModalFixed {
+		return m.allowance() // the whole allowance, whatever the content is
+	}
 
 	allowedWidth, allowedHeight := m.allowance()
 	wanted, wantedHeight := m.contentSize()
@@ -195,7 +205,8 @@ func (m Modal) Update(msg tea.Msg) (Modal, tea.Cmd) {
 	return m, cmd
 }
 
-// ViewOver composites the modal onto the view behind it, centred.
+// ViewOver composites the modal onto the view behind it, centred, or at the
+// top for ModalFixed.
 //
 // The two modes differ in what "behind" means. ModalFullScreen draws onto the
 // alternate screen, which starts blank, so background is redrawn here padded to
@@ -212,12 +223,20 @@ func (m Modal) ViewOver(background string) string {
 		backdrop = lipgloss.NewStyle().Width(m.width).Height(m.height).Render(background)
 	}
 
+	// ModalFixed sits at the top. Its size does not change with its content,
+	// so centring it vertically would only move it when the terminal did --
+	// but the top is where the reader is already looking.
 	box := m.box()
+	y := max((lipgloss.Height(backdrop)-lipgloss.Height(box))/2, 0)
+	if m.Mode == ModalFixed {
+		y = 0
+	}
+
 	return lipgloss.NewCompositor(
 		lipgloss.NewLayer(backdrop),
 		lipgloss.NewLayer(box).
 			X(max((lipgloss.Width(backdrop)-lipgloss.Width(box))/2, 0)).
-			Y(max((lipgloss.Height(backdrop)-lipgloss.Height(box))/2, 0)).
+			Y(y).
 			Z(1),
 	).Render()
 }
