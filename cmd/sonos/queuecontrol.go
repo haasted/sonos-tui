@@ -39,6 +39,8 @@ const (
 	// that the whole selection went.
 	queueRemovedSeveral = "removed %d tracks"
 	queueRemovedPartly  = "removed %d of %d tracks"
+	queueMovedSeveral   = "moved %d tracks"
+	queueMovedPartly    = "moved %d of %d tracks"
 
 	// queueMoveAbandoned is said when someone else changed the queue while a
 	// move was still being made here. The positions the move was built from no
@@ -51,6 +53,7 @@ const (
 	queueRemoveFailed        = "could not remove the track"
 	queueRemoveFailedSeveral = "could not remove the tracks"
 	queueMoveFailed          = "could not move the track"
+	queueMoveFailedSeveral   = "could not move the tracks"
 
 	// queuePlayNextNoTrack answers a station: its queue can be seen but nothing
 	// in it is playing, so there is no current track to be "next" of.
@@ -76,10 +79,15 @@ type queueLoadedMsg struct {
 // addresses a track by.
 type queueRemoveMsg struct{ positions []int }
 
-// queuePlayNextMsg asks for one track to move directly after the one playing.
-// Sent and answered in one step, unlike a shifted move: there is no window of
-// presses to close first.
-type queuePlayNextMsg struct{ from, to int }
+// queueMove is one track going from one place in the queue to another, both
+// 1-based. A run of them is worked out together, each against the queue the
+// one before it left -- see playNextMoves.
+type queueMove struct{ from, to int }
+
+// queuePlayNextMsg asks for tracks to move directly after the one playing,
+// in the order given. Sent and answered in one step, unlike a shifted move:
+// there is no window of presses to close first.
+type queuePlayNextMsg struct{ moves []queueMove }
 
 // queuePlayFromMsg asks for one track to start playing now, wherever the
 // speaker's attention was before.
@@ -228,13 +236,41 @@ func (m appModel) applyQueuePlayNext(msg queuePlayNextMsg) (tea.Model, tea.Cmd) 
 
 	device := speaker.device
 	ctx := m.ctx
+	moves := make([]sonos.QueueMove, 0, len(msg.moves))
+	for _, move := range msg.moves {
+		moves = append(moves, sonos.QueueMove{From: move.from, To: move.to})
+	}
+
+	asked := len(moves)
 	return m, func() tea.Msg {
-		if err := device.MoveQueueTrack(ctx, msg.from, msg.to); err != nil {
-			slog.Warn("moving a track to play next",
-				"speaker", device.RoomName(), "from", msg.from, "to", msg.to, "err", err)
-			return panes.NoticeMsg{Level: panes.NoticeError, Text: queueMoveFailed}
+		moved, err := device.MoveQueueTracks(ctx, moves)
+		if err != nil {
+			slog.Warn("moving tracks to play next", "speaker", device.RoomName(),
+				"moves", asked, "moved", moved, "err", err)
+			return panes.NoticeMsg{Level: panes.NoticeError, Text: moveFailedNotice(moved, asked)}
 		}
-		return panes.NoticeMsg{Level: panes.NoticeInfo, Text: queueMoved, Confirmation: true}
+		return panes.NoticeMsg{Level: panes.NoticeInfo, Text: movedNotice(moved), Confirmation: true}
+	}
+}
+
+// movedNotice and moveFailedNotice read as the removal ones do: a count only
+// where there were several, and a partial failure saying how many really
+// went, since the queue is then in an order nobody asked for.
+func movedNotice(moved int) string {
+	if moved == 1 {
+		return queueMoved
+	}
+	return fmt.Sprintf(queueMovedSeveral, moved)
+}
+
+func moveFailedNotice(moved, asked int) string {
+	switch {
+	case moved > 0:
+		return fmt.Sprintf(queueMovedPartly, moved, asked)
+	case asked > 1:
+		return queueMoveFailedSeveral
+	default:
+		return queueMoveFailed
 	}
 }
 

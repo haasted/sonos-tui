@@ -13,7 +13,7 @@ func TestQueuePlayNext_FromBelowMovesUpOnePlace(t *testing.T) {
 	q.playing = 10
 
 	_, cmd := q.Update(keyMsgFor("n"))
-	sent, ok := playNextSent(cmd)
+	sent, ok := playNextOne(t, cmd)
 	if !ok {
 		t.Fatal("nothing was asked for")
 	}
@@ -30,7 +30,7 @@ func TestQueuePlayNext_FromAboveMovesDownOnePlace(t *testing.T) {
 	q.playing = 10
 
 	_, cmd := q.Update(keyMsgFor("n"))
-	sent, ok := playNextSent(cmd)
+	sent, ok := playNextOne(t, cmd)
 	if !ok {
 		t.Fatal("nothing was asked for")
 	}
@@ -52,7 +52,7 @@ func TestQueuePlayNext_ThePlayingTrackAnswersRatherThanMoving(t *testing.T) {
 	if !noticed(cmd, queueAlreadyPlaying) {
 		t.Fatal("the reader was not told the track is already playing")
 	}
-	if moved.(queueContent).settling != "" {
+	if moved.(queueContent).settling != nil {
 		t.Fatal("nothing was sent, so nothing should be waited on")
 	}
 }
@@ -115,7 +115,7 @@ func TestQueuePlayNext_CursorStaysAndShowsWhatWasBeneath(t *testing.T) {
 	model, cmd := m.Update(keyMsgFor("n"))
 	m = model.(appModel)
 
-	sent, ok := playNextSent(cmd)
+	sent, ok := playNextOne(t, cmd)
 	if !ok {
 		t.Fatal("nothing was asked for")
 	}
@@ -152,7 +152,7 @@ func TestQueuePlayNext_TheBottomRowLandsOnTheTrackBefore(t *testing.T) {
 	model, cmd := m.Update(keyMsgFor("n"))
 	m = model.(appModel)
 
-	sent, ok := playNextSent(cmd)
+	sent, ok := playNextOne(t, cmd)
 	if !ok {
 		t.Fatal("nothing was asked for")
 	}
@@ -197,6 +197,21 @@ func TestQueuePlayNext_APendingShiftIsDropped(t *testing.T) {
 	if !noticed(cmd, queueMoveAbandoned) {
 		t.Fatal("the reader was not told the shift was dropped")
 	}
+}
+
+// playNextOne reports the single move a command asks for, for the cases that
+// act on one track. It fails the test if the command asks for several.
+func playNextOne(t *testing.T, cmd tea.Cmd) (queueMove, bool) {
+	t.Helper()
+
+	sent, ok := playNextSent(cmd)
+	if !ok {
+		return queueMove{}, false
+	}
+	if len(sent.moves) != 1 {
+		t.Fatalf("the command asks for %d moves, want one", len(sent.moves))
+	}
+	return sent.moves[0], true
 }
 
 // playNextSent reports the queuePlayNextMsg a command asks for, unpacking a

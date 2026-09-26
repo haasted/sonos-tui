@@ -348,6 +348,22 @@ func (d *Device) RemoveQueueTracks(ctx context.Context, positions []int) (int, e
 	return removed, nil
 }
 
+// QueueMove is one track going from one place in the queue to another, both
+// 1-based positions.
+type QueueMove struct{ From, To int }
+
+// MoveQueueTracks makes a run of moves in order, and answers with how many
+// were made. The caller works out the positions: each move must be read
+// against the queue the one before it left, which needs the queue itself.
+func (d *Device) MoveQueueTracks(ctx context.Context, moves []QueueMove) (int, error) {
+	for i, move := range moves {
+		if err := d.MoveQueueTrack(ctx, move.From, move.To); err != nil {
+			return i, err
+		}
+	}
+	return len(moves), nil
+}
+
 // MoveQueueTrack moves one track within this speaker's queue.
 func (d *Device) MoveQueueTrack(ctx context.Context, from, to int) error {
 	return d.writeQueue(ctx, func(updateID int) (int, error) {

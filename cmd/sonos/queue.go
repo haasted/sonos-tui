@@ -94,23 +94,28 @@ type queueContent struct {
 	moveFrom int
 	moveGen  int // id of the open commit window, matched against arriving ticks
 
-	// settling is the track a move is waiting to see land: the queue the
-	// speaker sends back is what says where it really went. Its URI rather
-	// than its position, because the position is precisely what changed.
+	// settling are the tracks a move is waiting to see land: the queue the
+	// speaker sends back is what says where they really went. URIs rather
+	// than positions, because the position is precisely what changed. More
+	// than one when a whole selection was played next.
 	//
 	// settlingFollow says whether landing should also move the cursor onto
 	// the track (a shift committed with J/K, which the reader is watching
 	// move) or only flash it (play next, which deliberately leaves the
 	// cursor where it was -- see playNext).
-	settling       string
+	settling       []string
 	settlingAt     time.Time
 	settlingFollow bool
 
-	// highlightURI is the track flashing briefly after a move landed, so the
-	// reader sees where it went even when the cursor does not follow it
-	// there. Empty when nothing is highlighted.
-	highlightURI string
-	highlightAt  time.Time
+	// highlightURIs are the tracks flashing briefly after a move landed, so
+	// the reader sees where they went even when the cursor does not follow
+	// them there. Nil when nothing is highlighted.
+	//
+	// A map, so a row asks in one lookup rather than searching a list every
+	// time it is drawn. Replaced wholesale rather than written to, for the
+	// reason selected carries: every copy of this content shares it.
+	highlightURIs map[string]bool
+	highlightAt   time.Time
 }
 
 var _ tea.Model = queueContent{}
@@ -245,15 +250,15 @@ func (q queueContent) clearMove() queueContent {
 // the track to look for in the queue that comes back, moving the cursor onto
 // it once found.
 func (q queueContent) settleMove(uri string) queueContent {
-	q.settling, q.settlingAt, q.settlingFollow = uri, time.Now(), true
+	q.settling, q.settlingAt, q.settlingFollow = []string{uri}, time.Now(), true
 	return q
 }
 
 // awaitHighlight is settleMove without moving the cursor: the queue that
 // comes back is still recognised as this command's own answer, but only the
 // flash follows the track, the way playNext wants it.
-func (q queueContent) awaitHighlight(uri string) queueContent {
-	q.settling, q.settlingAt, q.settlingFollow = uri, time.Now(), false
+func (q queueContent) awaitHighlight(uris ...string) queueContent {
+	q.settling, q.settlingAt, q.settlingFollow = uris, time.Now(), false
 	return q
 }
 
@@ -261,20 +266,22 @@ func (q queueContent) awaitHighlight(uri string) queueContent {
 // the event that would end it can be dropped -- Device says so when its channel
 // fills -- and a reader must not be left unable to move anything.
 func (q queueContent) settlingMove() bool {
-	return q.settling != "" && time.Since(q.settlingAt) < queueMoveSettle
+	return len(q.settling) > 0 && time.Since(q.settlingAt) < queueMoveSettle
 }
 
 // followSettled puts the cursor back on the track a move sent away, now that
 // the speaker has said where it went. The reader was watching that track, not
 // that row.
 func (q queueContent) followSettled() queueContent {
-	q, uri := q.clearSettling()
-	if uri == "" {
+	q, uris := q.clearSettling()
+	if len(uris) == 0 {
 		return q
 	}
 
+	// Only ever one: J and K commit a single track, and the cursor cannot
+	// follow more than one anyway.
 	for i, item := range q.items {
-		if item.URI == uri {
+		if item.URI == uris[0] {
 			q.cursor = i
 			return q.follow()
 		}
@@ -282,35 +289,63 @@ func (q queueContent) followSettled() queueContent {
 	return q
 }
 
-// highlightSettled flashes the track a played-next move sent away, now that
-// the speaker has said where it landed, without moving the cursor onto it --
-// see playNext for why it stays where it was.
+// highlightSettled flashes the tracks a played-next move sent away, now that
+// the speaker has said where they landed, and leaves the cursor on a track
+// that did not move -- see playNext for why it does not follow them.
 func (q queueContent) highlightSettled() queueContent {
-	q, uri := q.clearSettling()
-	if uri == "" {
+	q, uris := q.clearSettling()
+	if len(uris) == 0 {
 		return q
 	}
 
-	for _, item := range q.items {
-		if item.URI == uri {
-			return q.highlight(uri)
+	moved := make(map[string]bool, len(uris))
+	for _, uri := range uris {
+		moved[uri] = true
+	}
+
+	q = q.restOn(moved)
+	return q.highlight(moved)
+}
+
+// restOn puts the cursor on the nearest track that did NOT move, looking
+// down first and then up.
+//
+// The tracks the reader sent away are now somewhere else, and a cursor left
+// sitting on one would have followed them there without being asked. Looking
+// down first keeps it near the rows they were working through.
+func (q queueContent) restOn(moved map[string]bool) queueContent {
+	if q.cursor >= len(q.items) || !moved[q.items[q.cursor].URI] {
+		return q.follow()
+	}
+
+	for i := q.cursor + 1; i < len(q.items); i++ {
+		if !moved[q.items[i].URI] {
+			q.cursor = i
+			return q.follow()
 		}
 	}
-	return q
+	for i := q.cursor - 1; i >= 0; i-- {
+		if !moved[q.items[i].URI] {
+			q.cursor = i
+			return q.follow()
+		}
+	}
+	return q.follow() // every track moved; there is nowhere untouched to go
 }
 
 // clearSettling closes the wait, returning the updated content alongside the
 // track it was waiting for, or empty if none was.
-func (q queueContent) clearSettling() (queueContent, string) {
-	uri := q.settling
-	q.settling, q.settlingAt, q.settlingFollow = "", time.Time{}, false
-	return q, uri
+func (q queueContent) clearSettling() (queueContent, []string) {
+	uris := q.settling
+	q.settling, q.settlingAt, q.settlingFollow = nil, time.Time{}, false
+	return q, uris
 }
 
-// highlight marks uri as the track that just landed, to flash briefly the
-// next time the queue holding it is drawn.
-func (q queueContent) highlight(uri string) queueContent {
-	q.highlightURI, q.highlightAt = uri, time.Now()
+// highlight marks the tracks that just landed, to flash briefly the next
+// time the queue holding them is drawn. The map is taken as given and never
+// written to afterwards -- see the field.
+func (q queueContent) highlight(uris map[string]bool) queueContent {
+	q.highlightURIs, q.highlightAt = uris, time.Now()
 	return q
 }
 
@@ -323,7 +358,7 @@ func (q queueContent) highlight(uri string) queueContent {
 const highlightHold = 0.35
 
 func (q queueContent) highlightGlow(uri string) float32 {
-	if q.highlightURI == "" || uri != q.highlightURI {
+	if !q.highlightURIs[uri] {
 		return 0
 	}
 
@@ -341,7 +376,7 @@ func (q queueContent) highlightGlow(uri string) float32 {
 // highlighting reports whether a flash is still fading, so the repaint chain
 // knows to keep ticking for it even where nothing else asks for a repaint.
 func (q queueContent) highlighting() bool {
-	return q.highlightURI != "" && time.Since(q.highlightAt) < highlightDuration
+	return len(q.highlightURIs) > 0 && time.Since(q.highlightAt) < highlightDuration
 }
 
 // withSelection returns the content carrying a changed selection, built by
@@ -520,21 +555,105 @@ func (q queueContent) remove() (queueContent, tea.Cmd) {
 	return q, tea.Batch(ask, dropped)
 }
 
-// playNext asks for the track under the cursor to move directly after the one
-// playing, so it is the next thing heard. Unlike shift's debounced window this
-// is decided and sent in one step: there is no run of presses to gather, so
-// the list waits for the ContentDirectory event like remove does.
+// pickedInPressOrder is the picked tracks as rows, in the order the reader
+// picked them. selected holds that order; selectedRows says which of them
+// are still in the queue.
+func (q queueContent) pickedInPressOrder() []int {
+	rows := q.selectedRows()
+	if len(rows) == 0 {
+		return nil
+	}
+
+	at := make(map[selectedTrack]int, len(rows))
+	q.eachTrack(func(i int, track selectedTrack) {
+		if rows[i] {
+			at[track] = i
+		}
+	})
+
+	ordered := make([]int, 0, len(rows))
+	for _, track := range q.selected {
+		if row, here := at[track]; here {
+			ordered = append(ordered, row)
+		}
+	}
+	return ordered
+}
+
+// playNextMoves works out the moves that put tracks directly after the one
+// playing, in the order given, and returns them with the URIs they carry.
 //
-// The cursor stays where it is, exactly as remove leaves it: once the
-// reordered queue arrives, the track that was beneath the one that moved has
-// slid up into this row. At the last row, which has nothing beneath it, the
-// same clamp remove relies on lands it on the track that was above instead.
+// Built against a model of the queue rather than against arithmetic. Every
+// move shifts the tracks around it, upwards or downwards depending on which
+// way it travelled, so where a track sits when its turn comes is not where
+// the reader saw it. The model is walked forward move by move, and each move
+// reads its own starting place from it.
+//
+// The tracks go in REVERSE order, each aimed at the same slot right after the
+// one playing: the last one lands there first and the ones before it push it
+// down, so they end up in the order asked for. A track already in the place
+// its turn would put it is left alone rather than sent to where it is.
+func (q queueContent) playNextMoves(rows []int) ([]queueMove, []string) {
+	model := make([]string, len(q.items))
+	for i, item := range q.items {
+		model[i] = item.URI
+	}
+
+	wanted := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if q.items[row].Position == q.playing {
+			continue // it cannot be next of itself
+		}
+		wanted = append(wanted, q.items[row].URI)
+	}
+
+	var moves []queueMove
+	var carried []string
+	for i := len(wanted) - 1; i >= 0; i-- {
+		uri := wanted[i]
+
+		from := slices.Index(model, uri)
+		playing := q.playing - 1 // the playing row in the model, 0-based
+		if from < 0 || from == playing+1 {
+			continue // gone from the queue, or already where this step wants it
+		}
+
+		to := playing + 1
+		if from < playing {
+			to = playing // lifting it from above shifts the playing track up first
+		}
+
+		moves = append(moves, queueMove{from: from + 1, to: to + 1})
+		carried = append(carried, uri)
+
+		model = slices.Delete(model, from, from+1)
+		model = slices.Insert(model, to, uri)
+	}
+	return moves, carried
+}
+
+// playNext asks for the picked tracks to move directly after the one
+// playing, so they are the next things heard, in the order the reader picked
+// them. With nothing picked it acts on the track under the cursor.
+//
+// Unlike shift's debounced window this is decided and sent in one step: there
+// is no run of presses to gather, so the list waits for the ContentDirectory
+// event like remove does.
+//
+// The cursor does not follow the tracks. Once the reordered queue arrives it
+// settles on the nearest track that did not move -- see restOn.
 func (q queueContent) playNext() (queueContent, tea.Cmd) {
 	if q.settlingMove() {
 		return q, nil // a move already sent has not been answered yet
 	}
-	if q.cursor >= len(q.items) {
-		return q, nil // an empty queue, or one still being read
+
+	rows := q.pickedInPressOrder()
+	picked := len(rows) > 0
+	if !picked {
+		if q.cursor >= len(q.items) {
+			return q, nil // an empty queue, or one still being read
+		}
+		rows = []int{q.cursor}
 	}
 
 	// A station plays past the queue without touching it. DeviceState.Track
@@ -544,20 +663,22 @@ func (q queueContent) playNext() (queueContent, tea.Cmd) {
 		return q, notify(panes.NoticeInfo, queuePlayNextNoTrack)
 	}
 
-	track := q.items[q.cursor]
-	switch track.Position {
-	case q.playing:
-		return q, notify(panes.NoticeInfo, queueAlreadyPlaying)
-	case q.playing + 1:
-		return q, notify(panes.NoticeInfo, queueAlreadyNext)
+	// One track that is already playing, or already next, has nothing to do
+	// and is worth saying so. A selection says it with the count instead: a
+	// picked track in either place is simply left where it is.
+	if !picked {
+		switch q.items[rows[0]].Position {
+		case q.playing:
+			return q, notify(panes.NoticeInfo, queueAlreadyPlaying)
+		case q.playing + 1:
+			return q, notify(panes.NoticeInfo, queueAlreadyNext)
+		}
 	}
 
-	// to is where the track should end up once it is lifted out, in the
-	// numbering that leaves it in -- see MoveQueueTrack. Lifting a track from
-	// above the playing one shifts the playing one up by one place first.
-	to := q.playing + 1
-	if track.Position < q.playing {
-		to = q.playing
+	moves, carried := q.playNextMoves(rows)
+	if len(moves) == 0 {
+		q = q.clearSelection()
+		return q, notify(panes.NoticeInfo, queueAlreadyNext)
 	}
 
 	var dropped tea.Cmd
@@ -565,10 +686,10 @@ func (q queueContent) playNext() (queueContent, tea.Cmd) {
 		q = q.clearMove()
 		dropped = notify(panes.NoticeWarn, queueMoveAbandoned)
 	}
+	q = q.clearSelection()
 
-	from := track.Position
-	ask := func() tea.Msg { return queuePlayNextMsg{from: from, to: to} }
-	return q.awaitHighlight(track.URI), tea.Batch(ask, dropped)
+	ask := func() tea.Msg { return queuePlayNextMsg{moves: moves} }
+	return q.awaitHighlight(carried...), tea.Batch(ask, dropped)
 }
 
 // playFromCursor asks for the track under the cursor to start playing now,

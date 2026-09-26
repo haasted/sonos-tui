@@ -21,7 +21,7 @@ func TestQueuePlayNext_HighlightsTheTrackItMoved(t *testing.T) {
 	model, cmd := m.Update(keyMsgFor("n"))
 	m = model.(appModel)
 
-	sent, ok := playNextSent(cmd)
+	sent, ok := playNextOne(t, cmd)
 	if !ok {
 		t.Fatal("nothing was asked for")
 	}
@@ -77,7 +77,7 @@ func TestQueueMove_DoesNotHighlightTheTrackItMoved(t *testing.T) {
 // anything else acting on it.
 func TestQueueHighlight_FadesToZeroAfterItsDuration(t *testing.T) {
 	const uri = "x-sonos-http:track-1.mp3"
-	q := navQueue(5, 0).highlight(uri)
+	q := navQueue(5, 0).highlight(map[string]bool{uri: true})
 
 	if !q.highlighting() {
 		t.Fatal("a highlight just set should be active")
@@ -100,7 +100,7 @@ func TestQueueHighlight_FadesToZeroAfterItsDuration(t *testing.T) {
 // than already mid-fade -- a flash with no hold is only ever seen fading.
 func TestQueueHighlight_HoldsAtFullGlowBeforeFading(t *testing.T) {
 	const uri = "x-sonos-http:track-1.mp3"
-	q := navQueue(5, 0).highlight(uri)
+	q := navQueue(5, 0).highlight(map[string]bool{uri: true})
 
 	withinHold := time.Duration(float64(highlightDuration) * highlightHold / 2)
 	q.highlightAt = time.Now().Add(-withinHold)
@@ -157,7 +157,7 @@ func TestQueuePlayNext_RepaintsEvenWhenTheQueueFits(t *testing.T) {
 	model, cmd := m.Update(keyMsgFor("n"))
 	m = model.(appModel)
 
-	sent, ok := playNextSent(cmd)
+	sent, ok := playNextOne(t, cmd)
 	if !ok {
 		t.Fatal("nothing was asked for")
 	}
