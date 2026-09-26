@@ -94,6 +94,14 @@ type queueContent struct {
 	moveFrom int
 	moveGen  int // id of the open commit window, matched against arriving ticks
 
+	// removing are the tracks the reader has taken off the list but the
+	// speaker has not been told about yet, by their 1-based position in ITS
+	// queue. Positions, because that is what the speaker is told, and they
+	// stay right while only this list is edited: taking a row out here
+	// renumbers nothing, since Position is a field and not an index.
+	removing  []int
+	removeGen int // id of the open window, matched against arriving ticks
+
 	// settling are the tracks a move is waiting to see land: the queue the
 	// speaker sends back is what says where they really went. URIs rather
 	// than positions, because the position is precisely what changed. More
@@ -520,17 +528,22 @@ func (q queueContent) selectedPositions() []int {
 	return positions
 }
 
-// remove asks for the picked tracks to go, or for the one under the cursor
-// when nothing is picked. The list does not do it itself and does not know
-// the speaker: it says which tracks, and whoever holds the device acts.
+// remove takes the picked tracks off the list, or the one under the cursor
+// when nothing is picked, and starts the wait before the speaker is told.
 //
-// The cursor stays where it is. Once the shorter queue arrives the row below
-// has moved up into it, which is what a reader clearing several in a row
-// wants; at the end of the list the cursor is clamped back by one.
+// THE ROWS GO AT ONCE, for the reason shift edits the list: a key that
+// answers only when the speaker has been round trips through an event and a
+// read, and a reader pressing x four times sees nothing happen and then
+// everything happen. The speaker is told once the keys are still, and a run
+// of presses is then one call rather than one each.
 //
-// The selection is dropped at once rather than when the speaker answers. It
-// names tracks that are about to stop existing, and a reader whose removal
-// fails would rather pick again than wonder what is still marked.
+// The cursor keeps its place, so the row below slides up under it, which is
+// what a reader clearing several in a row wants; at the end of the list it is
+// clamped back by one.
+//
+// The selection is dropped at once. It names tracks that have just left the
+// list, and a reader whose removal fails would rather pick again than wonder
+// what is still marked.
 //
 // A move still waiting to be sent is dropped first. Both commands address
 // tracks by position, and a removal shifts every position below it -- so a move
@@ -551,8 +564,47 @@ func (q queueContent) remove() (queueContent, tea.Cmd) {
 	}
 	q = q.clearSelection()
 
-	ask := func() tea.Msg { return queueRemoveMsg{positions: positions} }
-	return q, tea.Batch(ask, dropped)
+	// Cloned rather than appended to, for the reason withSelection carries:
+	// every copy of this content shares the array behind it.
+	q.removing = append(slices.Clone(q.removing), positions...)
+	q.items = withoutPositions(q.items, positions)
+	q.cursor = min(q.cursor, q.lastRow())
+	q = q.follow()
+
+	// Every press restarts the wait, taking a generation of its own, so the
+	// tick an earlier press left behind is ignored when it arrives.
+	q.removeGen = nextQueueGen()
+	return q, tea.Batch(queueRemoveTick(q.removeGen), dropped)
+}
+
+// pendingRemove reports the tracks taken off the list and not yet sent.
+func (q queueContent) pendingRemove() ([]int, bool) {
+	return q.removing, len(q.removing) > 0
+}
+
+// clearRemoving closes the window, whether the tracks went to the speaker or
+// the window was abandoned.
+func (q queueContent) clearRemoving() queueContent {
+	q.removing, q.removeGen = nil, 0
+	return q
+}
+
+// withoutPositions is the list without the tracks at these queue positions.
+// The rest keep the positions they had: they are the speaker's numbering, and
+// the speaker has not been told yet.
+func withoutPositions(items []sonos.QueueItem, positions []int) []sonos.QueueItem {
+	going := make(map[int]bool, len(positions))
+	for _, position := range positions {
+		going[position] = true
+	}
+
+	kept := make([]sonos.QueueItem, 0, len(items))
+	for _, item := range items {
+		if !going[item.Position] {
+			kept = append(kept, item)
+		}
+	}
+	return kept
 }
 
 // pickedInPressOrder is the picked tracks as rows, in the order the reader

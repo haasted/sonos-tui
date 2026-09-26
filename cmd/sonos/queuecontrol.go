@@ -26,6 +26,11 @@ const (
 	// Generous against an observed press interval of about 150ms. Tune here.
 	queueMoveQuiet = 700 * time.Millisecond
 
+	// queueRemoveQuiet is the same wait before removals are sent, and for the
+	// same reason: a run of presses becomes one call. Its own constant, since
+	// nothing says the two keys want the same feel once both are tuned.
+	queueRemoveQuiet = 700 * time.Millisecond
+
 	// queueMoveSettle is how long a sent move waits for the queue it produced.
 	// A read takes about a tenth of a second; this is long enough for a slow one
 	// and short enough that a dropped event does not strand the reader.
@@ -46,6 +51,10 @@ const (
 	// move was still being made here. The positions the move was built from no
 	// longer name the same tracks, so it cannot be sent.
 	queueMoveAbandoned = "the queue changed — move dropped"
+
+	// queueRemoveAbandoned answers the same case for a removal that had not
+	// been sent: the rows come back rather than the wrong tracks going.
+	queueRemoveAbandoned = "the queue changed — removal dropped"
 
 	// queueRemoveFailed says nothing about why. A speaker refusing because the
 	// queue moved under the reader and a speaker that could not be reached look
@@ -97,6 +106,18 @@ type queuePlayFromMsg struct{ position int }
 // up with. It carries the generation so a tick from an abandoned window cannot
 // commit a move nobody is making any more.
 type queueMoveCommitMsg struct{ gen int }
+
+// queueRemoveCommitMsg closes a removal window, sending whatever the reader
+// took off the list. It carries the generation, so a tick from a superseded
+// window cannot send a removal twice.
+type queueRemoveCommitMsg struct{ gen int }
+
+// queueRemoveTick schedules the send of the removals identified by gen.
+func queueRemoveTick(gen int) tea.Cmd {
+	return tea.Tick(queueRemoveQuiet, func(time.Time) tea.Msg {
+		return queueRemoveCommitMsg{gen: gen}
+	})
+}
 
 // queueMoveTick schedules the send of the move identified by gen. A press
 // arriving first takes a newer generation, and this one is then ignored on
@@ -181,6 +202,23 @@ func refreshQueue(ctx context.Context, device *sonos.Device) tea.Cmd {
 // list: the removal raises a ContentDirectory event, which the program already
 // answers by reading the queue again, and a second answer here would disagree
 // with that one while it was in flight.
+// applyQueueRemoveCommit closes a removal window and tells the speaker. The
+// rows left the list when the key was pressed; this is the part that was
+// waiting to see whether more were coming.
+func (m appModel) applyQueueRemoveCommit(msg queueRemoveCommitMsg) (tea.Model, tea.Cmd) {
+	content, ok := m.queue.Content.(queueContent)
+	if !ok || !m.queue.IsOpen() || msg.gen != content.removeGen {
+		return m, nil
+	}
+
+	positions, pending := content.pendingRemove()
+	m.queue.Content = content.clearRemoving()
+	if !pending {
+		return m, nil
+	}
+	return m.applyQueueRemove(queueRemoveMsg{positions: positions})
+}
+
 func (m appModel) applyQueueRemove(msg queueRemoveMsg) (tea.Model, tea.Cmd) {
 	speaker, ok := m.activeSpeaker()
 	if !ok {
@@ -375,6 +413,14 @@ func (m appModel) applyQueueLoaded(msg queueLoadedMsg) (tea.Model, tea.Cmd) {
 	if _, _, pending := content.pendingMove(); pending {
 		content = content.clearMove()
 		abandoned = notify(panes.NoticeWarn, queueMoveAbandoned)
+	}
+
+	// The same for removals the reader has made but nobody has sent. Their
+	// positions were read from the queue this one replaces, so they can no
+	// longer be trusted to name the same tracks.
+	if _, pending := content.pendingRemove(); pending {
+		content = content.clearRemoving()
+		abandoned = notify(panes.NoticeWarn, queueRemoveAbandoned)
 	}
 
 	content.room = msg.room

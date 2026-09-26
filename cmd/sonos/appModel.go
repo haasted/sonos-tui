@@ -324,6 +324,8 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.applyQueuePlayNext(msg)
 	case queuePlayFromMsg:
 		return m.applyQueuePlayFrom(msg)
+	case queueRemoveCommitMsg:
+		return m.applyQueueRemoveCommit(msg)
 	case queueMoveCommitMsg:
 		return m.applyQueueMoveCommit(msg)
 	case queueTickMsg:

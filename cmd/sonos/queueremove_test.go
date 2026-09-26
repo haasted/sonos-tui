@@ -9,24 +9,101 @@ import (
 	"github.com/haasted/sonos-sandbox/internal/ui/panes"
 )
 
-// Case: the key, which must ask for the track the cursor is on rather than the
+// Case: the key, which must take the track the cursor is on rather than the
 // row it sits at. A queue scrolled down has the two far apart.
-func TestQueueRemove_AsksForTheTrackUnderTheCursor(t *testing.T) {
+func TestQueueRemove_TakesTheTrackUnderTheCursor(t *testing.T) {
 	for _, key := range []string{"x", "delete"} {
 		q := navQueue(60, 42)
 
-		_, cmd := q.Update(keyMsgFor(key))
-		if cmd == nil {
-			t.Fatalf("%q asked for nothing", key)
-		}
+		after := moveQueue(q, key)
 
-		msg, ok := cmd().(queueRemoveMsg)
-		if !ok {
-			t.Fatalf("%q produced %T", key, cmd())
+		positions, pending := after.pendingRemove()
+		if !pending {
+			t.Fatalf("%q took nothing off the list", key)
 		}
-		if !slices.Equal(msg.positions, []int{43}) {
-			t.Fatalf("%q asked for positions %v, want just 43 for row 42", key, msg.positions)
+		if !slices.Equal(positions, []int{43}) {
+			t.Fatalf("%q is removing %v, want just 43 for row 42", key, positions)
 		}
+	}
+}
+
+// Case: the row itself, which must go AT ONCE. The speaker is told once the
+// keys are still, and a reader who saw nothing happen in between would think
+// the key was broken -- the reason shift edits the list too.
+func TestQueueRemove_TheRowGoesAtOnce(t *testing.T) {
+	q := navQueue(60, 42)
+	going := q.items[42].URI
+
+	after := moveQueue(q, "x")
+
+	if len(after.items) != 59 {
+		t.Fatalf("the list holds %d rows, want 59 -- the row must go on the keypress", len(after.items))
+	}
+	for _, item := range after.items {
+		if item.URI == going {
+			t.Fatal("the removed track is still in the list")
+		}
+	}
+	if after.items[42].Position != 44 {
+		t.Fatalf("row 42 now holds position %d, want 44 -- the rest keep the speaker's numbering",
+			after.items[42].Position)
+	}
+}
+
+// Case: a run of presses, which must reach the speaker as ONE command. Each
+// press restarts the wait, so a reader clearing several pays one round trip
+// rather than one each.
+func TestQueueRemove_ARunOfPressesIsOneCall(t *testing.T) {
+	m, _, _ := withQueueServer(t, 20)
+	model, _ := m.Update(keyMsgFor("enter"))
+	m = model.(appModel)
+
+	for range 3 {
+		model, _ = m.Update(keyMsgFor("x"))
+		m = model.(appModel)
+	}
+	if got := len(queueOf(t, m).items); got != 17 {
+		t.Fatalf("the list holds %d rows after three presses, want 17", got)
+	}
+
+	// One window holding all three, so closing it is one command rather than
+	// the three a press-by-press send would make.
+	positions, pending := queueOf(t, m).pendingRemove()
+	if !pending {
+		t.Fatal("three presses left nothing waiting to be sent")
+	}
+	if !slices.Equal(positions, []int{1, 2, 3}) {
+		t.Fatalf("the window holds %v, want all three tracks", positions)
+	}
+
+	gen := queueOf(t, m).removeGen
+	model, cmd := m.Update(queueRemoveCommitMsg{gen: gen})
+	m = model.(appModel)
+
+	if cmd == nil {
+		t.Fatal("the window closed without telling the speaker")
+	}
+	if _, pending := queueOf(t, m).pendingRemove(); pending {
+		t.Fatal("the window is still open after committing")
+	}
+}
+
+// Case: a tick from a window a later press superseded. It must send nothing:
+// the newer window carries the same tracks and more.
+func TestQueueRemove_AStaleTickSendsNothing(t *testing.T) {
+	m, _, _ := withQueueServer(t, 20)
+	model, _ := m.Update(keyMsgFor("enter"))
+	m = model.(appModel)
+
+	model, _ = m.Update(keyMsgFor("x"))
+	m = model.(appModel)
+	stale := queueOf(t, m).removeGen
+
+	model, _ = m.Update(keyMsgFor("x"))
+	m = model.(appModel)
+
+	if _, cmd := m.Update(queueRemoveCommitMsg{gen: stale}); cmd != nil {
+		t.Fatal("a superseded window sent a removal")
 	}
 }
 
@@ -37,13 +114,12 @@ func TestQueueRemove_AsksForTheWholeSelection(t *testing.T) {
 	q = moveQueue(moveQueue(moveQueue(q, "s"), "s"), "s") // rows 0, 1 and 2
 	q = moveQueue(q, "end")                               // the cursor leaves them
 
-	_, cmd := q.Update(keyMsgFor("x"))
-	msg, ok := cmd().(queueRemoveMsg)
-	if !ok {
-		t.Fatalf("x produced %T", cmd())
+	positions, pending := moveQueue(q, "x").pendingRemove()
+	if !pending {
+		t.Fatal("x took nothing off the list")
 	}
-	if !slices.Equal(msg.positions, []int{1, 2, 3}) {
-		t.Fatalf("x asked for %v, want the three picked tracks and not the cursor's", msg.positions)
+	if !slices.Equal(positions, []int{1, 2, 3}) {
+		t.Fatalf("x is removing %v, want the three picked tracks and not the cursor's", positions)
 	}
 }
 
@@ -55,18 +131,6 @@ func TestQueueRemove_DropsTheSelection(t *testing.T) {
 	updated, _ := q.Update(keyMsgFor("x"))
 	if got := updated.(queueContent).selectionCount(); got != 0 {
 		t.Fatalf("%d tracks are still picked after removing them", got)
-	}
-}
-
-// Case: the list itself, which must not shorten. The removal raises an event
-// that brings the new queue in, and a second answer here would disagree with
-// that one while it was in flight.
-func TestQueueRemove_TheListIsNotEditedHere(t *testing.T) {
-	q := navQueue(60, 10)
-
-	updated, _ := q.Update(keyMsgFor("x"))
-	if got := len(updated.(queueContent).items); got != 60 {
-		t.Fatalf("the list now holds %d items; it must wait for the speaker", got)
 	}
 }
 
