@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync/atomic"
 	"time"
@@ -33,6 +34,12 @@ const (
 	queueRemoved = "removed"
 	queueMoved   = "moved"
 
+	// queueRemovedSeveral and queueRemovedPartly carry a count, which one
+	// track does not need: a reader who removed several cannot otherwise tell
+	// that the whole selection went.
+	queueRemovedSeveral = "removed %d tracks"
+	queueRemovedPartly  = "removed %d of %d tracks"
+
 	// queueMoveAbandoned is said when someone else changed the queue while a
 	// move was still being made here. The positions the move was built from no
 	// longer name the same tracks, so it cannot be sent.
@@ -41,8 +48,9 @@ const (
 	// queueRemoveFailed says nothing about why. A speaker refusing because the
 	// queue moved under the reader and a speaker that could not be reached look
 	// the same from here, and which error means which is not yet established.
-	queueRemoveFailed = "could not remove the track"
-	queueMoveFailed   = "could not move the track"
+	queueRemoveFailed        = "could not remove the track"
+	queueRemoveFailedSeveral = "could not remove the tracks"
+	queueMoveFailed          = "could not move the track"
 
 	// queuePlayNextNoTrack answers a station: its queue can be seen but nothing
 	// in it is playing, so there is no current track to be "next" of.
@@ -66,7 +74,7 @@ type queueLoadedMsg struct {
 // queueRemoveMsg asks for one track to leave the queue on screen. It carries
 // the 1-based position rather than the row, since that is what the speaker
 // addresses a track by.
-type queueRemoveMsg struct{ position int }
+type queueRemoveMsg struct{ positions []int }
 
 // queuePlayNextMsg asks for one track to move directly after the one playing.
 // Sent and answered in one step, unlike a shifted move: there is no window of
@@ -173,13 +181,39 @@ func (m appModel) applyQueueRemove(msg queueRemoveMsg) (tea.Model, tea.Cmd) {
 
 	device := speaker.device
 	ctx := m.ctx
+	asked := len(msg.positions)
 	return m, func() tea.Msg {
-		if err := device.RemoveQueueTrack(ctx, msg.position); err != nil {
-			slog.Warn("removing a track from the queue",
-				"speaker", device.RoomName(), "position", msg.position, "err", err)
-			return panes.NoticeMsg{Level: panes.NoticeError, Text: queueRemoveFailed}
+		removed, err := device.RemoveQueueTracks(ctx, msg.positions)
+		if err != nil {
+			slog.Warn("removing tracks from the queue", "speaker", device.RoomName(),
+				"positions", msg.positions, "removed", removed, "err", err)
+			return panes.NoticeMsg{Level: panes.NoticeError, Text: removeFailedNotice(removed, asked)}
 		}
-		return panes.NoticeMsg{Level: panes.NoticeInfo, Text: queueRemoved, Confirmation: true}
+		return panes.NoticeMsg{Level: panes.NoticeInfo, Text: removedNotice(removed), Confirmation: true}
+	}
+}
+
+// removedNotice says one thing for the whole command rather than one thing
+// per track. A reader removing one knows which one, so the count is only
+// worth saying when there were several.
+func removedNotice(removed int) string {
+	if removed == 1 {
+		return queueRemoved
+	}
+	return fmt.Sprintf(queueRemovedSeveral, removed)
+}
+
+// removeFailedNotice tells a removal that did nothing from one that stopped
+// part way. The second leaves the queue in a state the reader did not ask
+// for, so the count is the whole point of the message.
+func removeFailedNotice(removed, asked int) string {
+	switch {
+	case removed > 0:
+		return fmt.Sprintf(queueRemovedPartly, removed, asked)
+	case asked > 1:
+		return queueRemoveFailedSeveral
+	default:
+		return queueRemoveFailed
 	}
 }
 

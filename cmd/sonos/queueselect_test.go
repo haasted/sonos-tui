@@ -215,18 +215,18 @@ func TestQueueSelect_OneCopyDoesNotWriteIntoAnother(t *testing.T) {
 	}
 }
 
-// Case: the commands that act on one track. Until the selection is wired into
-// them, each must still answer for the cursor's track alone.
-func TestQueueSelect_TheOneTrackCommandsIgnoreIt(t *testing.T) {
-	q := moveQueue(moveQueue(navQueue(20, 0), "*"), "home") // everything picked
+// Case: a command with nothing picked, which must still answer for the track
+// under the cursor. An empty selection means "this one", not "none of them".
+func TestQueueSelect_AnEmptySelectionLeavesTheCursorInCharge(t *testing.T) {
+	q := navQueue(20, 4)
 
 	_, cmd := q.Update(keyMsgFor("x"))
 	msg, ok := cmd().(queueRemoveMsg)
 	if !ok {
 		t.Fatalf("x produced %T", cmd())
 	}
-	if msg.position != 1 {
-		t.Fatalf("x asked for position %d; it must still answer for the cursor alone", msg.position)
+	if len(msg.positions) != 1 || msg.positions[0] != 5 {
+		t.Fatalf("x asked for %v, want just position 5 for the cursor on row 4", msg.positions)
 	}
 }
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"slices"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -23,9 +24,37 @@ func TestQueueRemove_AsksForTheTrackUnderTheCursor(t *testing.T) {
 		if !ok {
 			t.Fatalf("%q produced %T", key, cmd())
 		}
-		if msg.position != 43 {
-			t.Fatalf("%q asked for position %d, want 43 for row 42", key, msg.position)
+		if !slices.Equal(msg.positions, []int{43}) {
+			t.Fatalf("%q asked for positions %v, want just 43 for row 42", key, msg.positions)
 		}
+	}
+}
+
+// Case: a selection, which the key must act on instead of the cursor's track.
+// The positions are the picked tracks, whether or not the cursor is on one.
+func TestQueueRemove_AsksForTheWholeSelection(t *testing.T) {
+	q := navQueue(20, 0)
+	q = moveQueue(moveQueue(moveQueue(q, "s"), "s"), "s") // rows 0, 1 and 2
+	q = moveQueue(q, "end")                               // the cursor leaves them
+
+	_, cmd := q.Update(keyMsgFor("x"))
+	msg, ok := cmd().(queueRemoveMsg)
+	if !ok {
+		t.Fatalf("x produced %T", cmd())
+	}
+	if !slices.Equal(msg.positions, []int{1, 2, 3}) {
+		t.Fatalf("x asked for %v, want the three picked tracks and not the cursor's", msg.positions)
+	}
+}
+
+// Case: what the selection is afterwards. The tracks are about to stop
+// existing, so the marks go with them rather than being left to puzzle over.
+func TestQueueRemove_DropsTheSelection(t *testing.T) {
+	q := moveQueue(moveQueue(navQueue(20, 0), "s"), "s")
+
+	updated, _ := q.Update(keyMsgFor("x"))
+	if got := updated.(queueContent).selectionCount(); got != 0 {
+		t.Fatalf("%d tracks are still picked after removing them", got)
 	}
 }
 
@@ -62,7 +91,7 @@ func TestQueueRemove_ConfirmsWhatHappened(t *testing.T) {
 	model, _ := m.Update(keyMsgFor("enter"))
 	m = model.(appModel)
 
-	_, cmd := m.Update(queueRemoveMsg{position: 3})
+	_, cmd := m.Update(queueRemoveMsg{positions: []int{3}})
 	if cmd == nil {
 		t.Fatal("nothing was sent to the speaker")
 	}

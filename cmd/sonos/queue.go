@@ -464,31 +464,59 @@ func (q queueContent) invertSelection() queueContent {
 	return q
 }
 
-// remove asks for the track under the cursor to go. The list does not do it
-// itself and does not know the speaker: it says which track, and whoever holds
-// the device acts on it.
+// selectedPositions is where the picked tracks sit in the queue, 1-based and
+// in queue order. Empty when nothing is picked, which is how a command tells
+// "act on the selection" from "act on the cursor".
+//
+// Queue order rather than the order they were pressed. Removal sorts them
+// anyway, and a command that needs the reader's own order has it in selected.
+func (q queueContent) selectedPositions() []int {
+	rows := q.selectedRows()
+	if len(rows) == 0 {
+		return nil
+	}
+
+	positions := make([]int, 0, len(rows))
+	for i, item := range q.items {
+		if rows[i] {
+			positions = append(positions, item.Position)
+		}
+	}
+	return positions
+}
+
+// remove asks for the picked tracks to go, or for the one under the cursor
+// when nothing is picked. The list does not do it itself and does not know
+// the speaker: it says which tracks, and whoever holds the device acts.
 //
 // The cursor stays where it is. Once the shorter queue arrives the row below
 // has moved up into it, which is what a reader clearing several in a row
 // wants; at the end of the list the cursor is clamped back by one.
 //
+// The selection is dropped at once rather than when the speaker answers. It
+// names tracks that are about to stop existing, and a reader whose removal
+// fails would rather pick again than wonder what is still marked.
+//
 // A move still waiting to be sent is dropped first. Both commands address
 // tracks by position, and a removal shifts every position below it -- so a move
 // committed afterwards would name a track the reader never chose.
 func (q queueContent) remove() (queueContent, tea.Cmd) {
-	if q.cursor >= len(q.items) {
-		return q, nil // an empty queue, or one still being read
+	positions := q.selectedPositions()
+	if len(positions) == 0 {
+		if q.cursor >= len(q.items) {
+			return q, nil // an empty queue, or one still being read
+		}
+		positions = []int{q.items[q.cursor].Position}
 	}
-
-	position := q.items[q.cursor].Position
 
 	var dropped tea.Cmd
 	if _, _, pending := q.pendingMove(); pending {
 		q = q.clearMove()
 		dropped = notify(panes.NoticeWarn, queueMoveAbandoned)
 	}
+	q = q.clearSelection()
 
-	ask := func() tea.Msg { return queueRemoveMsg{position: position} }
+	ask := func() tea.Msg { return queueRemoveMsg{positions: positions} }
 	return q, tea.Batch(ask, dropped)
 }
 
