@@ -14,7 +14,11 @@ import "slices"
 // a copy taken while an event is being applied is a whole older answer
 // rather than half of a newer one.
 type Household struct {
-	groups []ZoneGroup
+	// systems holds each Sonos system's groups apart from the others'. Kept
+	// apart rather than merged because the difference is real: speakers can
+	// only be grouped with others of their own system, and a flat list
+	// cannot say which those are.
+	systems [][]ZoneGroup
 }
 
 // Apply folds in what one speaker reported.
@@ -24,31 +28,73 @@ type Household struct {
 // that the report leaves out has stopped being true. Groups it says nothing
 // about belong to another system and are left alone.
 func (h Household) Apply(reported Topology) Household {
-	kept := make([]ZoneGroup, 0, len(h.groups)+len(reported.Groups))
-	for _, group := range h.groups {
-		if !overlaps(group, reported.Groups) {
-			kept = append(kept, group)
+	if len(reported.Groups) == 0 {
+		return h
+	}
+
+	kept := make([][]ZoneGroup, 0, len(h.systems)+1)
+	for _, system := range h.systems {
+		if !sharesSpeaker(system, reported.Groups) {
+			kept = append(kept, system)
 		}
 	}
 
-	h.groups = append(kept, reported.Groups...)
+	h.systems = append(kept, reported.Groups)
 	return h
 }
 
 // Known reports that something has been heard at all, so a caller can tell
 // a speaker that stands alone from one nobody has asked about yet.
-func (h Household) Known() bool { return len(h.groups) > 0 }
+func (h Household) Known() bool { return len(h.systems) > 0 }
 
 // GroupOf is the group a speaker is in, false when nothing heard so far
 // mentions it -- it may be off, or it may belong to a system that has not
 // been asked.
 func (h Household) GroupOf(id string) (ZoneGroup, bool) {
-	for _, group := range h.groups {
-		if slices.ContainsFunc(group.Members, func(m ZoneMember) bool { return m.ID == id }) {
-			return group, true
+	for _, system := range h.systems {
+		for _, group := range system {
+			if holds(group, id) {
+				return group, true
+			}
 		}
 	}
 	return ZoneGroup{}, false
+}
+
+// Companions is every OTHER speaker of the same Sonos system, whether or not
+// it is already grouped with this one. They are the speakers this one can be
+// grouped with: a system is the boundary, and one on another system is no
+// more reachable than one that is switched off.
+func (h Household) Companions(id string) []ZoneMember {
+	system, found := h.systemOf(id)
+	if !found {
+		return nil
+	}
+
+	var others []ZoneMember
+	for _, group := range system {
+		for _, member := range group.Members {
+			if member.ID != id {
+				others = append(others, member)
+			}
+		}
+	}
+	return others
+}
+
+func (h Household) systemOf(id string) ([]ZoneGroup, bool) {
+	for _, system := range h.systems {
+		for _, group := range system {
+			if holds(group, id) {
+				return system, true
+			}
+		}
+	}
+	return nil, false
+}
+
+func holds(group ZoneGroup, id string) bool {
+	return slices.ContainsFunc(group.Members, func(m ZoneMember) bool { return m.ID == id })
 }
 
 // CoordinatorOf is the speaker that owns the queue a speaker plays from,
@@ -89,13 +135,15 @@ func (h Household) Drives(id string) []ZoneMember {
 	return driven
 }
 
-// overlaps reports a group sharing a speaker with any of these, which is how
-// one system's report is told from another's.
-func overlaps(group ZoneGroup, others []ZoneGroup) bool {
-	for _, other := range others {
-		for _, member := range other.Members {
-			if slices.ContainsFunc(group.Members, func(m ZoneMember) bool { return m.ID == member.ID }) {
-				return true
+// sharesSpeaker reports one system's groups holding a speaker that appears
+// in another's, which is how a report is matched to the system it describes.
+func sharesSpeaker(system, reported []ZoneGroup) bool {
+	for _, group := range system {
+		for _, other := range reported {
+			for _, member := range other.Members {
+				if holds(group, member.ID) {
+					return true
+				}
 			}
 		}
 	}

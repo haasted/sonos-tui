@@ -132,6 +132,24 @@ type (
 		UpdateID       int    `xml:"UpdateID"`
 	}
 
+	// setAVTransportURIAction points a speaker's transport somewhere. Used
+	// here only to point it at another speaker, which is how a group is made.
+	setAVTransportURIAction struct {
+		XMLName            xml.Name
+		Namespace          string `xml:"xmlns:u,attr"`
+		InstanceID         int    `xml:"InstanceID"`
+		CurrentURI         string `xml:"CurrentURI"`
+		CurrentURIMetaData string `xml:"CurrentURIMetaData"`
+	}
+
+	// becomeCoordinatorAction takes a speaker out of its group. It takes no
+	// arguments beyond the instance.
+	becomeCoordinatorAction struct {
+		XMLName    xml.Name
+		Namespace  string `xml:"xmlns:u,attr"`
+		InstanceID int    `xml:"InstanceID"`
+	}
+
 	// zoneGroupStateAction asks how the household is grouped. It takes no
 	// arguments of its own.
 	zoneGroupStateAction struct {

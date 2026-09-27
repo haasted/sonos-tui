@@ -368,6 +368,17 @@ func (d *Device) HandleZoneGroupTopologyEvent(body []byte) error {
 	return nil
 }
 
+// JoinGroup makes this speaker follow another, and LeaveGroup takes it out
+// of whatever group it is in. Both throw away what this speaker was doing --
+// see the client for what that costs.
+func (d *Device) JoinGroup(ctx context.Context, coordinator string) error {
+	return d.client.JoinGroup(ctx, coordinator)
+}
+
+func (d *Device) LeaveGroup(ctx context.Context) error {
+	return d.client.LeaveGroup(ctx)
+}
+
 // RemoveQueueTracks takes several tracks out of this speaker's queue, named
 // by their 1-based positions. It answers with how many left, which is all of
 // them unless the speaker refused part way through.

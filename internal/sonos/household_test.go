@@ -111,3 +111,41 @@ func group(coordinator string, members ...string) sonos.ZoneGroup {
 func reported(groups ...sonos.ZoneGroup) sonos.Topology {
 	return sonos.Topology{Groups: groups}
 }
+
+// Case: who a speaker may be grouped with. Its own system and nobody else's:
+// another Sonos system on the same network is no more reachable than a
+// speaker that is switched off.
+func TestHousehold_CompanionsStopAtTheSystemBoundary(t *testing.T) {
+	var house sonos.Household
+	house = house.Apply(reported(group("a", "a", "b"), group("c", "c")))
+	house = house.Apply(reported(group("z", "z")))
+
+	companions := ids(house.Companions("a"))
+	assert.ElementsMatch(t, []string{"b", "c"}, companions,
+		"a speaker may be grouped with the rest of its own system")
+	assert.NotContains(t, companions, "z", "another Sonos system was offered")
+
+	assert.Empty(t, house.Companions("z"), "a system of one has nobody to group with")
+	assert.Empty(t, house.Companions("unknown"), "a speaker nobody mentioned has no companions")
+}
+
+// Case: a system re-reporting itself. The replacement must be of that system
+// alone, leaving the other where it was.
+func TestHousehold_ARereportReplacesOneSystemOnly(t *testing.T) {
+	var house sonos.Household
+	house = house.Apply(reported(group("a", "a", "b")))
+	house = house.Apply(reported(group("z", "z")))
+	house = house.Apply(reported(group("a", "a"), group("b", "b")))
+
+	assert.ElementsMatch(t, []string{"b"}, ids(house.Companions("a")))
+	_, found := house.GroupOf("z")
+	assert.True(t, found, "the other system was dropped by an unrelated report")
+}
+
+func ids(members []sonos.ZoneMember) []string {
+	out := make([]string, 0, len(members))
+	for _, member := range members {
+		out = append(out, member.ID)
+	}
+	return out
+}
