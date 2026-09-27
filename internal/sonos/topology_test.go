@@ -188,3 +188,36 @@ func TestSpeakerID_MatchesTheTopology(t *testing.T) {
 	_, found := topologyFrom(t, "zonegroupstate_grouped.xml").GroupOf(speaker.ID())
 	assert.True(t, found, "a discovered speaker must find itself in the topology")
 }
+
+// Case: the event itself, captured from a speaker as another pair was
+// grouped. It carries the WHOLE grouping rather than word that it changed,
+// so nothing has to be read back.
+func TestTopologyEvent_CarriesTheWholeGrouping(t *testing.T) {
+	device := sonos.NewDevice(sonos.Speaker{IP: "127.0.0.1", USN: "uuid:" + upstairs})
+	require.NoError(t, device.HandleZoneGroupTopologyEvent([]byte(readFile(t, "zonegrouptopology_event.xml"))))
+
+	event := <-device.Events()
+	assert.Equal(t, sonos.EventZoneGroupTopology, event.Kind)
+
+	group, found := event.Topology.GroupOf(kitchen)
+	require.True(t, found, "the event did not carry the grouping")
+	assert.Equal(t, upstairs, group.Coordinator)
+	assert.Len(t, event.Topology.Groups, 2, "both groups should be in one event")
+}
+
+// Case: an event carrying none of the grouping. The first after subscribing
+// replays every variable the service has, and a later one carries only what
+// changed -- which may be nothing we asked about.
+func TestTopologyEvent_SaysNothingWhenItCarriesNoGrouping(t *testing.T) {
+	device := sonos.NewDevice(sonos.Speaker{IP: "127.0.0.1", USN: "uuid:" + upstairs})
+
+	body := []byte(`<e:propertyset xmlns:e="urn:schemas-upnp-org:event-1-0">` +
+		`<e:property><AlarmRunSequence>17</AlarmRunSequence></e:property></e:propertyset>`)
+	require.NoError(t, device.HandleZoneGroupTopologyEvent(body))
+
+	select {
+	case event := <-device.Events():
+		t.Fatalf("an event with no grouping published %#v", event.Kind)
+	default:
+	}
+}

@@ -14,6 +14,15 @@ const (
 	// /MediaRenderer. The queue is served by the MediaServer half of the
 	// device, which is a separate UPnP device behind the same address.
 	contentDirectoryEventPath = "/MediaServer/ContentDirectory/Event"
+
+	// zoneGroupTopologyEventPath is how the household says its grouping
+	// changed. It sits outside both halves of the device, as its control
+	// endpoint does.
+	//
+	// Every speaker is subscribed, though one answer would do: a household
+	// holds few enough of them for that to cost nothing, and subscribing to
+	// only one leaves the grouping unwatched the moment that one is off.
+	zoneGroupTopologyEventPath = "/ZoneGroupTopology/Event"
 )
 
 // subscribedServices are the event services each device is subscribed to.
@@ -21,6 +30,7 @@ var subscribedServices = []string{
 	avTransportEventPath,
 	renderingControlEventPath,
 	contentDirectoryEventPath,
+	zoneGroupTopologyEventPath,
 }
 
 const subscriptionSeconds = 300

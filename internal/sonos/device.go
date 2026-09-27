@@ -91,6 +91,7 @@ const (
 	EventAVTransport EventKind = iota
 	EventRenderingControl
 	EventContentDirectory
+	EventZoneGroupTopology
 )
 
 type Event struct {
@@ -103,6 +104,11 @@ type Event struct {
 	// Directory is set on a ContentDirectory event only. It says which
 	// containers changed, and carries no playback state at all.
 	Directory ContentDirectoryEvent
+
+	// Topology is set on a ZoneGroupTopology event only, and holds the whole
+	// grouping of the household that sent it: the event carries the answer
+	// rather than word that the answer changed.
+	Topology Topology
 }
 
 // NewDevice creates a Device for the given discovered speaker.
@@ -330,6 +336,36 @@ func (d *Device) RemoveQueueTrack(ctx context.Context, position int) error {
 // all of them, so a caller needs only one of these however many it holds.
 func (d *Device) Topology(ctx context.Context) (Topology, error) {
 	return d.client.GetZoneGroupState(ctx)
+}
+
+// HandleZoneGroupTopologyEvent reads how the household is now grouped and
+// publishes it. Nothing is stored on the device: the grouping is the
+// household's and belongs to whoever holds one, where a copy per speaker
+// would be the same answer written down five times.
+//
+// A body carrying no grouping is not an error. The first event after
+// subscribing replays every variable the service has, and a later one
+// carries only what changed, which may be none of our business.
+func (d *Device) HandleZoneGroupTopologyEvent(body []byte) error {
+	state, err := zoneGroupStateFrom(body)
+	if err != nil {
+		return err
+	}
+	if state == "" {
+		return nil
+	}
+
+	topology, err := parseZoneGroupState(state)
+	if err != nil {
+		return err
+	}
+
+	select {
+	case d.events <- Event{Kind: EventZoneGroupTopology, Speaker: d.Speaker, Topology: topology}:
+	default:
+		slog.Warn("event channel full — dropping event", "speaker", d.Speaker)
+	}
+	return nil
 }
 
 // RemoveQueueTracks takes several tracks out of this speaker's queue, named

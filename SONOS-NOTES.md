@@ -2,8 +2,9 @@
 
 Protocol findings about how Sonos actually behaves, as distinct from how the
 docs say UPnP works. Everything here was verified against the real event
-captures in `captured-data/` and `internal/sonos/testdata/`, recorded with
-`cmd/sonos -capture`, rather than taken from documentation. The earliest
+captures in `captured-data/` and `internal/sonos/testdata/` rather than taken
+from documentation. Those were recorded by a `-capture` flag the program no
+longer carries; the captures stand, the flag does not. The earliest
 findings here predate that flag and came from the retired `cmd/listening`.
 
 Design *decisions* live in `ADRs/`. This file is for observed facts.
@@ -209,7 +210,7 @@ optimization".
 
 ## Radio: two schemes, and the station name lives in the URI metadata
 
-Verified 2026-09-09 against a 31-event capture (`cmd/sonos -capture`).
+Verified 2026-09-09 against a 31-event capture.
 
 `AVTransportURI` identifies what kind of thing is loaded, and there is more
 than one radio scheme:
@@ -609,3 +610,44 @@ No `Invisible`, `ChannelMapSet` or `HTSatChanMapSet` appears in either
 capture, which agrees with the household having no stereo pair, surround set
 or sub. How a bonded zone is marked is therefore still unknown, and nothing
 in this repository should claim otherwise until one has been captured.
+
+### The topology event carries the whole grouping
+
+`ZoneGroupTopology` at `/ZoneGroupTopology/Event` events `ZoneGroupState`
+itself, escaped, holding the entire household. Nothing has to be read back:
+the event IS the answer, unlike ContentDirectory, which only names the
+containers that changed.
+
+Captured 2026-09-27 by grouping one pair while another stayed grouped, then
+ungrouping it again.
+
+### Every speaker in a household reports the change, and they disagree on order
+
+One regrouping produced four notifications, one per speaker in that
+household. They agree on the grouping and differ on how they write it down:
+
+```
+from Ovenpå        ZoneGroup[Ovenpå, Køkken]     ZoneGroup[Soveværelse, Spisestue]
+from Køkken        ZoneGroup[Køkken, Ovenpå]     ZoneGroup[Soveværelse, Spisestue]
+from Soveværelse   ZoneGroup[Soveværelse, …]     ZoneGroup[Ovenpå, Køkken]
+from Spisestue     ZoneGroup[Spisestue, …]       ZoneGroup[Ovenpå, Køkken]
+```
+
+Each speaker lists ITSELF first, both among the members of its group and
+among the groups. So neither order carries meaning, and two reports of one
+arrangement are not equal as strings or as structs. Anything asking whether
+the topology changed has to compare it as a set.
+
+The speaker whose own group changed also sends `ZoneGroupName`,
+`ZoneGroupID` and `ZonePlayerUUIDsInGroup`; the others send only
+`ZoneGroupState`. The first event after SUBSCRIBE carries eleven variables,
+which is the usual full replay.
+
+### A separate household hears nothing
+
+The fifth speaker on the network belongs to another Sonos system. Its own
+first event reported one group holding only itself, and it sent NOTHING for
+either change in the other household -- no empty update, no mention.
+
+So a household is a real boundary in the eventing too: a speaker's silence
+says nothing about anyone else's arrangement.

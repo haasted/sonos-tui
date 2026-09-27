@@ -15,26 +15,6 @@ import (
 
 const notifyPrefix = "/notify/"
 
-// RawEvent is one NOTIFY exactly as it arrived, handed to a capture hook
-// before anything tries to interpret it.
-type RawEvent struct {
-	// Speaker is the device the NOTIFY was routed to, zero-valued when the
-	// path matched no subscription. An unrouted NOTIFY is itself worth
-	// recording: it means we are being sent something we did not expect.
-	Speaker Speaker
-
-	// Service is the event service the body came from, empty when unrouted.
-	Service string
-
-	Path string
-	Body []byte
-}
-
-// CaptureFunc receives every NOTIFY the listener accepts. It is called before
-// parsing, so a body this package cannot understand is still captured — those
-// are the ones worth having, being exactly the schema we do not handle yet.
-type CaptureFunc func(RawEvent)
-
 type eventListener struct {
 	server  *http.Server
 	baseURL string
@@ -144,6 +124,9 @@ func (r route) handle(ctx context.Context, body []byte) error {
 		return r.device.HandleRenderingControlEvent(body)
 	case contentDirectoryEventPath:
 		return r.device.HandleContentDirectoryEvent(body)
+
+	case zoneGroupTopologyEventPath:
+		return r.device.HandleZoneGroupTopologyEvent(body)
 	}
 	return fmt.Errorf("no parser for event service %q", r.service)
 }

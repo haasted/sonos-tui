@@ -16,7 +16,7 @@ func TestGrouping_AFollowerIsMarkedInTheTabs(t *testing.T) {
 	m, _, _ := withQueueServer(t, 20)
 	id := speakerIDOf(t, m)
 
-	m.topology, m.topologyKnown = groupOf("RINCON_COORDINATOR", id), true
+	m.household = m.household.Apply(groupOf("RINCON_COORDINATOR", id))
 	m = m.syncPlaying()
 
 	if !m.tabs.Items[0].Following {
@@ -30,7 +30,7 @@ func TestGrouping_ACoordinatorIsNotMarked(t *testing.T) {
 	m, _, _ := withQueueServer(t, 20)
 	id := speakerIDOf(t, m)
 
-	m.topology, m.topologyKnown = groupOf(id, "RINCON_FOLLOWER"), true
+	m.household = m.household.Apply(groupOf(id, "RINCON_FOLLOWER"))
 	m = m.syncPlaying()
 
 	if m.tabs.Items[0].Following {
@@ -44,7 +44,7 @@ func TestGrouping_AStandaloneSpeakerIsNotMarked(t *testing.T) {
 	m, _, _ := withQueueServer(t, 20)
 	id := speakerIDOf(t, m)
 
-	m.topology, m.topologyKnown = groupOf(id), true
+	m.household = m.household.Apply(groupOf(id))
 	m = m.syncPlaying()
 
 	if m.tabs.Items[0].Following {
@@ -59,7 +59,7 @@ func TestGrouping_AStandaloneSpeakerIsNotMarked(t *testing.T) {
 func TestGrouping_ASpeakerFromAnotherHouseholdIsNotMarked(t *testing.T) {
 	m, _, _ := withQueueServer(t, 20)
 
-	m.topology, m.topologyKnown = groupOf("RINCON_SOMEONE", "RINCON_ELSE"), true
+	m.household = m.household.Apply(groupOf("RINCON_SOMEONE", "RINCON_ELSE"))
 	m = m.syncPlaying()
 
 	if m.tabs.Items[0].Following {
@@ -74,8 +74,8 @@ func TestGrouping_NothingIsMarkedBeforeTheTopologyIsRead(t *testing.T) {
 
 	m = m.syncPlaying()
 
-	if m.topologyKnown {
-		t.Fatal("the topology counts as read before anything asked for it")
+	if m.household.Known() {
+		t.Fatal("the grouping counts as known before anything asked for it")
 	}
 	if m.tabs.Items[0].Following {
 		t.Fatal("a speaker was marked as following before anything was read")
@@ -110,15 +110,14 @@ func TestGrouping_TheCoordinatorNamesWhatItDrives(t *testing.T) {
 	m, _, _ := withQueueServer(t, 20)
 	id := speakerIDOf(t, m)
 
-	m.topology = sonos.Topology{Groups: []sonos.ZoneGroup{{
+	m.household = m.household.Apply(sonos.Topology{Groups: []sonos.ZoneGroup{{
 		Coordinator: id,
 		Members: []sonos.ZoneMember{
 			{ID: id, RoomName: "Ovenpå"},
 			{ID: "RINCON_A", RoomName: "Køkken"},
 			{ID: "RINCON_B", RoomName: "Spisestue"},
 		},
-	}}}
-	m.topologyKnown = true
+	}}})
 	m = m.syncPlaying()
 
 	notes := m.tabs.Items[0].Notes
@@ -146,7 +145,7 @@ func TestGrouping_AStandaloneSpeakerNamesNothing(t *testing.T) {
 	m, _, _ := withQueueServer(t, 20)
 	id := speakerIDOf(t, m)
 
-	m.topology, m.topologyKnown = groupOf(id), true
+	m.household = m.household.Apply(groupOf(id))
 	m = m.syncPlaying()
 
 	if notes := m.tabs.Items[0].Notes; len(notes) != 0 {
@@ -161,7 +160,7 @@ func TestGrouping_AFollowerNamesNothing(t *testing.T) {
 	m, _, _ := withQueueServer(t, 20)
 	id := speakerIDOf(t, m)
 
-	m.topology, m.topologyKnown = groupOf("RINCON_COORDINATOR", id), true
+	m.household = m.household.Apply(groupOf("RINCON_COORDINATOR", id))
 	m = m.syncPlaying()
 
 	if notes := m.tabs.Items[0].Notes; len(notes) != 0 {
@@ -177,7 +176,7 @@ func TestGrouping_TheTabRowKeepsEverySpeaker(t *testing.T) {
 	id := speakerIDOf(t, m)
 	before := len(m.tabs.Items)
 
-	m.topology, m.topologyKnown = groupOf("RINCON_COORDINATOR", id), true
+	m.household = m.household.Apply(groupOf("RINCON_COORDINATOR", id))
 	m = m.syncPlaying()
 
 	if got := len(m.tabs.Items); got != before {
@@ -203,14 +202,13 @@ func TestGrouping_ANameSitsUnderTheNameItBelongsTo(t *testing.T) {
 		}
 
 		id := speaker.device.Speaker.ID()
-		m.topology = sonos.Topology{Groups: []sonos.ZoneGroup{{
+		m.household = m.household.Apply(sonos.Topology{Groups: []sonos.ZoneGroup{{
 			Coordinator: id,
 			Members: []sonos.ZoneMember{
 				{ID: id, RoomName: m.tabs.Items[at].Title},
 				{ID: "RINCON_A", RoomName: "Køkken"},
 			},
-		}}}
-		m.topologyKnown = true
+		}}})
 		m = m.syncPlaying()
 
 		lines := strings.Split(plain(m.View().Content), "\n")
@@ -248,10 +246,9 @@ func TestGrouping_AHouseholdIsAskedOnce(t *testing.T) {
 		}
 		members = append(members, sonos.ZoneMember{ID: speaker.device.Speaker.ID()})
 	}
-	m.topology = sonos.Topology{Groups: []sonos.ZoneGroup{{
+	m.household = m.household.Apply(sonos.Topology{Groups: []sonos.ZoneGroup{{
 		Coordinator: members[0].ID, Members: members,
-	}}}
-	m.topologyKnown = true
+	}}})
 
 	if _, ask := m.readUncovered(); ask != nil {
 		t.Fatal("a speaker already accounted for was asked again")
@@ -264,11 +261,10 @@ func TestGrouping_AHouseholdIsAskedOnce(t *testing.T) {
 func TestGrouping_ASpeakerNoAnswerMentionedIsAsked(t *testing.T) {
 	m, _, _ := withQueueServer(t, 20)
 
-	m.topology = sonos.Topology{Groups: []sonos.ZoneGroup{{
+	m.household = m.household.Apply(sonos.Topology{Groups: []sonos.ZoneGroup{{
 		Coordinator: "RINCON_ELSEWHERE",
 		Members:     []sonos.ZoneMember{{ID: "RINCON_ELSEWHERE"}},
-	}}}
-	m.topologyKnown = true
+	}}})
 
 	if _, ask := m.readUncovered(); ask == nil {
 		t.Fatal("a speaker from another household was never asked about itself")

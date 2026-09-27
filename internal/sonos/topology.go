@@ -125,6 +125,26 @@ func parseZoneGroupState(raw string) (Topology, error) {
 	return topology, nil
 }
 
+// zoneGroupStateFrom pulls the grouping out of a NOTIFY body, and empty
+// when that body carried none of it.
+func zoneGroupStateFrom(body []byte) (string, error) {
+	var propertyset struct {
+		Properties []struct {
+			State string `xml:"ZoneGroupState"`
+		} `xml:"property"`
+	}
+	if err := xml.Unmarshal(body, &propertyset); err != nil {
+		return "", fmt.Errorf("parsing a topology event: %w", err)
+	}
+
+	for _, property := range propertyset.Properties {
+		if property.State != "" {
+			return property.State, nil
+		}
+	}
+	return "", nil
+}
+
 // GroupOf is the group a speaker is in, false when this household does not
 // hold it -- it may be off, or it may belong to another Sonos system.
 func (t Topology) GroupOf(id string) (ZoneGroup, bool) {

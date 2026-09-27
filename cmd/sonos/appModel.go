@@ -50,12 +50,10 @@ type appModel struct {
 	// only ever grows: see growFrame.
 	frameRows int
 
-	// topology is how the household was grouped when it was last read, and
-	// topologyKnown says it has been read at all. Not kept current from
-	// events yet, so it is as old as the last read: an arrangement changed
-	// from the phone app shows here when something asks again.
-	topology      sonos.Topology
-	topologyKnown bool
+	// household is how the speakers around here are grouped. Read once from
+	// each system when it is found, and kept current from then on by the
+	// events every speaker sends when its own grouping changes.
+	household sonos.Household
 
 	// askedTopology records the speakers already asked, by address, and
 	// askingTopology that one of them has not answered yet.
@@ -255,21 +253,11 @@ func (m appModel) syncPlaying() appModel {
 // controls is the rooms a speaker is playing through to, and nothing unless
 // it coordinates a group of more than itself.
 func (m appModel) controls(speaker speakerModel) []string {
-	if !m.topologyKnown {
-		return nil
-	}
+	driven := m.household.Drives(speaker.device.Speaker.ID())
 
-	id := speaker.device.Speaker.ID()
-	group, found := m.topology.GroupOf(id)
-	if !found || group.Coordinator != id {
-		return nil
-	}
-
-	rooms := make([]string, 0, len(group.Members))
-	for _, member := range group.Members {
-		if member.ID != id {
-			rooms = append(rooms, member.RoomName)
-		}
+	rooms := make([]string, 0, len(driven))
+	for _, member := range driven {
+		rooms = append(rooms, member.RoomName)
 	}
 	return rooms
 }
@@ -278,13 +266,8 @@ func (m appModel) controls(speaker speakerModel) []string {
 // speaker the topology does not mention: it may belong to another Sonos
 // system on the same network, and unknown is not the same as standing alone.
 func (m appModel) following(speaker speakerModel) bool {
-	if !m.topologyKnown {
-		return false
-	}
-
-	id := speaker.device.Speaker.ID()
-	coordinator, found := m.topology.CoordinatorOf(id)
-	return found && coordinator != id
+	_, follows := m.household.Follows(speaker.device.Speaker.ID())
+	return follows
 }
 
 // readUncovered asks a speaker that nothing has accounted for yet, and
@@ -306,7 +289,7 @@ func (m appModel) readUncovered() (appModel, tea.Cmd) {
 		if !ok || m.askedTopology[speaker.device.IP] {
 			continue
 		}
-		if _, found := m.topology.GroupOf(speaker.device.Speaker.ID()); found {
+		if _, found := m.household.GroupOf(speaker.device.Speaker.ID()); found {
 			continue
 		}
 
@@ -434,8 +417,7 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			slog.Warn("reading how the speakers are grouped", "err", msg.err)
 		} else {
-			m.topology.Groups = append(m.topology.Groups, msg.topology.Groups...)
-			m.topologyKnown = true
+			m.household = m.household.Apply(msg.topology)
 		}
 
 		// An answer may leave speakers it never mentioned -- a second Sonos
@@ -553,6 +535,14 @@ func (m appModel) applySpeakerMsg(msg speakerMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m appModel) applyEvent(event sonos.Event) (tea.Model, tea.Cmd) {
+	// The grouping belongs to the household rather than to the speaker that
+	// reported it, and every speaker in one reports the same change. Folded
+	// in before the tabs are reached: the arrangement is what the tabs are
+	// about to be drawn from.
+	if event.Kind == sonos.EventZoneGroupTopology {
+		m.household = m.household.Apply(event.Topology)
+	}
+
 	for i, tab := range m.tabs.Items {
 		speaker, ok := tab.Content.(speakerModel)
 		if !ok || !isSameSpeaker(speaker.device, event.Speaker) {
