@@ -50,6 +50,23 @@ type appModel struct {
 	// only ever grows: see growFrame.
 	frameRows int
 
+	// topology is how the household was grouped when it was last read, and
+	// topologyKnown says it has been read at all. Not kept current from
+	// events yet, so it is as old as the last read: an arrangement changed
+	// from the phone app shows here when something asks again.
+	topology      sonos.Topology
+	topologyKnown bool
+
+	// askedTopology records the speakers already asked, by address, and
+	// askingTopology that one of them has not answered yet.
+	//
+	// One at a time on purpose. Speakers arrive one after another and the
+	// first answer accounts for every other speaker in its household, so
+	// asking each as it appears would send a burst of reads to learn one
+	// thing. Waiting means the second is only asked if the first left it out.
+	askedTopology  map[string]bool
+	askingTopology bool
+
 	// sweepGen is the chain of frames driving the light round an opening
 	// modal's border, matched against arriving ticks so only one runs.
 	sweepGen int
@@ -127,6 +144,9 @@ func (m appModel) hasSpeaker(ip string) bool {
 // Init starts the tabs and, when seeded from the cache, verifies every cached
 // speaker concurrently behind the already-rendered tabs.
 func (m appModel) Init() tea.Cmd {
+	// Asked at once rather than waiting for discovery to finish: any speaker
+	// answers for the whole household, so a cached one can say how things
+	// are grouped while the rest are still being looked for.
 	cmds := []tea.Cmd{m.tabs.Init(), hintTimer()}
 	for i, speaker := range m.cached {
 		device, ok := m.deviceFor(speaker.IP)
@@ -222,8 +242,87 @@ func (m appModel) syncPlaying() appModel {
 			continue
 		}
 		m.tabs.Items[i].Playing = speaker.device.State().Playing()
+		m.tabs.Items[i].Following = m.following(speaker)
+
+		// The rooms this one drives are named under its own tab, so the
+		// dimming elsewhere in the row has somewhere to be explained. The
+		// tab row itself is untouched: every speaker keeps its place in it.
+		m.tabs.Items[i].Notes = m.controls(speaker)
 	}
 	return m
+}
+
+// controls is the rooms a speaker is playing through to, and nothing unless
+// it coordinates a group of more than itself.
+func (m appModel) controls(speaker speakerModel) []string {
+	if !m.topologyKnown {
+		return nil
+	}
+
+	id := speaker.device.Speaker.ID()
+	group, found := m.topology.GroupOf(id)
+	if !found || group.Coordinator != id {
+		return nil
+	}
+
+	rooms := make([]string, 0, len(group.Members))
+	for _, member := range group.Members {
+		if member.ID != id {
+			rooms = append(rooms, member.RoomName)
+		}
+	}
+	return rooms
+}
+
+// following reports a speaker another one is playing through. False for a
+// speaker the topology does not mention: it may belong to another Sonos
+// system on the same network, and unknown is not the same as standing alone.
+func (m appModel) following(speaker speakerModel) bool {
+	if !m.topologyKnown {
+		return false
+	}
+
+	id := speaker.device.Speaker.ID()
+	coordinator, found := m.topology.CoordinatorOf(id)
+	return found && coordinator != id
+}
+
+// readUncovered asks a speaker that nothing has accounted for yet, and
+// nothing at all once every speaker on screen belongs to a group we know
+// about. One read answers for a whole household, so the second speaker of
+// one is never asked; a speaker in ANOTHER household is, because no answer
+// so far has mentioned it.
+//
+// Each speaker is asked at most once, which is what ends this: a speaker
+// that answers with a topology leaving itself out would otherwise be asked
+// again every time an answer arrived.
+func (m appModel) readUncovered() (appModel, tea.Cmd) {
+	if m.askingTopology {
+		return m, nil // one is already on its way; its answer may cover this
+	}
+
+	for _, tab := range m.tabs.Items {
+		speaker, ok := tab.Content.(speakerModel)
+		if !ok || m.askedTopology[speaker.device.IP] {
+			continue
+		}
+		if _, found := m.topology.GroupOf(speaker.device.Speaker.ID()); found {
+			continue
+		}
+
+		if m.askedTopology == nil {
+			m.askedTopology = map[string]bool{}
+		}
+		m.askedTopology[speaker.device.IP] = true
+		m.askingTopology = true
+
+		device, ctx := speaker.device, m.ctx
+		return m, func() tea.Msg {
+			topology, err := device.Topology(ctx)
+			return topologyLoadedMsg{topology: topology, err: err}
+		}
+	}
+	return m, nil
 }
 
 func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -310,6 +409,15 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if wasEmpty {
 			cmds = append(cmds, msg.speaker.Init())
 		}
+
+		// Asked as it arrives rather than when the search gives up: a
+		// speaker can say how its household is grouped the moment it
+		// answers, and only one per household is ever asked.
+		var ask tea.Cmd
+		m, ask = m.readUncovered()
+		if ask != nil {
+			cmds = append(cmds, ask)
+		}
 		if msg.degraded != "" {
 			cmds = append(cmds, notify(panes.NoticeWarn, msg.degraded))
 		}
@@ -321,6 +429,20 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case discoveryDoneMsg:
 		m.discoveryDone = true
 		return m, nil
+	case topologyLoadedMsg:
+		m.askingTopology = false
+		if msg.err != nil {
+			slog.Warn("reading how the speakers are grouped", "err", msg.err)
+		} else {
+			m.topology.Groups = append(m.topology.Groups, msg.topology.Groups...)
+			m.topologyKnown = true
+		}
+
+		// An answer may leave speakers it never mentioned -- a second Sonos
+		// system on the same network has a topology of its own. Ask one of
+		// them, and go round again until nobody is left out.
+		next, ask := m.readUncovered()
+		return next, ask
 	case hintTickMsg:
 		return m.applyHintTick()
 	case queueLoadedMsg:
@@ -374,7 +496,12 @@ func (m appModel) applyVerified(msg speakerVerifiedMsg) (tea.Model, tea.Cmd) {
 		if msg.degraded != "" {
 			degraded = notify(panes.NoticeWarn, msg.degraded)
 		}
-		return m, tea.Batch(cmd, degraded, refreshQueue(m.ctx, msg.speaker), waitForEvent(msg.speaker))
+
+		// A cached speaker never arrives as ready, so this is where one gets
+		// its turn to say how its household is grouped.
+		m, ask := m.readUncovered()
+		return m, tea.Batch(cmd, degraded, ask,
+			refreshQueue(m.ctx, msg.speaker), waitForEvent(msg.speaker))
 	}
 	return m, nil
 }

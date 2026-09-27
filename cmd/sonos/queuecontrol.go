@@ -80,6 +80,13 @@ const (
 	queuePlayFromFailed = "could not play the track"
 )
 
+// topologyLoadedMsg carries how the household is grouped, or why it could
+// not be read. One read answers for every speaker.
+type topologyLoadedMsg struct {
+	topology sonos.Topology
+	err      error
+}
+
 // queueLoadedMsg carries a speaker's queue back to the modal that asked for it.
 type queueLoadedMsg struct {
 	device  *sonos.Device

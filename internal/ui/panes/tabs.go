@@ -22,6 +22,16 @@ type Tab struct {
 	Title   string
 	Content tea.Model
 	Playing bool // drives the status glyph; kept in sync by whoever owns the content
+
+	// Following marks a speaker another one is playing through, so it reads
+	// as belonging to that one rather than standing on its own. Kept in sync
+	// the same way Playing is.
+	Following bool
+
+	// Notes are drawn on their own rows beneath this tab, lined up under its
+	// title. The tab row itself is untouched: a note says something about
+	// the tab without taking its place or moving its neighbours.
+	Notes []string
 }
 
 // Position controls whether the header row renders above or below the
@@ -328,7 +338,8 @@ func (t Tabs) View() string {
 		return ""
 	}
 
-	row := t.headerRow()
+	rows := t.headerRows()
+	row := rows[0]
 
 	// Drop the border edge facing the tab row — a plain rule stands in for
 	// it instead, so the tabs and content read as one connected panel
@@ -357,7 +368,7 @@ func (t Tabs) View() string {
 	// A notice owns the rule while it lasts: the sweep is decorative, and two
 	// things animating the same line at once would fight.
 	if t.notice.strength() > 0 {
-		return t.joinRows(row, t.notice.render(run), content)
+		return t.joinRows(row, t.notice.render(run), content, rows[1:])
 	}
 
 	if progress, sweeping := t.dividerProgress(); sweeping {
@@ -367,21 +378,97 @@ func (t Tabs) View() string {
 		divider = flashsweep.Glint(run, progress, dividerRamp(t.dividerColor))
 	}
 
-	return t.joinRows(row, divider, content)
+	return t.joinRows(row, divider, content, rows[1:])
 }
 
-// joinRows stacks the three bands in whichever order Position calls for.
-func (t Tabs) joinRows(row, divider, content string) string {
+// joinRows stacks the bands in whichever order Position calls for. The notes
+// stay with the tab row wherever it sits, on the far side of it from the
+// content: they belong to the tabs, not to what one of them is showing.
+func (t Tabs) joinRows(row, divider, content string, notes []string) string {
+	bands := make([]string, 0, 3+len(notes))
 	if t.Position == Bottom {
-		return lipgloss.JoinVertical(lipgloss.Left, content, divider, row)
+		bands = append(bands, content, divider, row)
+		bands = append(bands, notes...)
+	} else {
+		bands = append(bands, notes...)
+		bands = append(bands, row, divider, content)
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, row, divider, content)
+	return lipgloss.JoinVertical(lipgloss.Left, bands...)
 }
 
 // headerRow renders the tab labels, windowed around Active with ‹/›
 // scroll indicators when they don't all fit within Width. Width <= 0 means
 // unconstrained: every tab renders, as before Width existed.
-func (t Tabs) headerRow() string {
+// headerRows is the tab row, and beneath it one row for each depth of note
+// any visible tab carries. Built together because a note is lined up under
+// its own tab, and only this knows which tabs are on screen and how wide
+// each of them ended up.
+func (t Tabs) headerRows() []string {
+	row, cells := t.headerRow()
+	return append([]string{row}, t.noteRows(cells)...)
+}
+
+// tabCell is where one visible tab ended up, for lining a note up under it.
+// An index below zero is not a tab at all but the room a scroll indicator
+// took, held onto so the cells after it stay where they belong.
+type tabCell struct {
+	index int
+	width int
+}
+
+func (c tabCell) carriesNotes() bool { return c.index >= 0 }
+
+// noteRows draws the notes, each under the tab that carries it. A tab with
+// nothing to say at that depth leaves a gap of its own width, so everything
+// after it stays where it belongs.
+func (t Tabs) noteRows(cells []tabCell) []string {
+	var deepest int
+	for _, cell := range cells {
+		if cell.carriesNotes() {
+			deepest = max(deepest, len(t.Items[cell.index].Notes))
+		}
+	}
+	if deepest == 0 {
+		return nil
+	}
+
+	rows := make([]string, 0, deepest)
+	for depth := range deepest {
+		var b strings.Builder
+		for _, cell := range cells {
+			var notes []string
+			if cell.carriesNotes() {
+				notes = t.Items[cell.index].Notes
+			}
+
+			text := ""
+			if depth < len(notes) {
+				// Two columns standing in for the status glyph and the space
+				// after it, on top of the padding the tab style already
+				// gives both: the name lines up under the name above it, not
+				// under the glyph and not a column short of either.
+				text = noteTabStyle.Render(glyphGap + notes[depth])
+			}
+			b.WriteString(padCell(text, cell.width))
+		}
+		rows = append(rows, b.String())
+	}
+	return rows
+}
+
+// glyphGap stands in for the status glyph and the space after it, so a note
+// starts where its tab's title does.
+const glyphGap = "  "
+
+// padCell widens a note to its tab's width, or leaves an empty one of it.
+func padCell(text string, width int) string {
+	if pad := width - lipgloss.Width(text); pad > 0 {
+		return text + strings.Repeat(" ", pad)
+	}
+	return text
+}
+
+func (t Tabs) headerRow() (string, []tabCell) {
 	labels := make([]string, len(t.Items))
 	widths := make([]int, len(t.Items))
 	for i, tab := range t.Items {
@@ -397,6 +484,13 @@ func (t Tabs) headerRow() string {
 			if progress, sweeping := t.sweepProgress(); sweeping {
 				label = flashsweep.Glint(label, progress, tabSweepFg)
 			}
+
+		// Before Playing, which a follower also is: it plays the queue of
+		// whatever is driving it, and reading as brightly as the speaker in
+		// charge would say the wrong thing. Focus still wins outright, so a
+		// follower the reader has selected is not dimmed out of view.
+		case tab.Following:
+			style = followingTabStyle
 		case tab.Playing:
 			style = playingTabStyle
 		}
@@ -407,7 +501,7 @@ func (t Tabs) headerRow() string {
 
 	full := lipgloss.JoinHorizontal(lipgloss.Top, labels...)
 	if t.Width <= 0 || lipgloss.Width(full) <= t.Width {
-		return full
+		return full, cellsFor(0, len(t.Items)-1, widths)
 	}
 
 	// Doesn't fit: reserve room for both indicators up front (simpler than
@@ -452,13 +546,27 @@ func (t Tabs) headerRow() string {
 	}
 
 	row := lipgloss.JoinHorizontal(lipgloss.Top, labels[lo:hi+1]...)
+	cells := cellsFor(lo, hi, widths)
 	if lo > 0 {
-		row = inactiveTabStyle.Render("‹") + row
+		indicator := inactiveTabStyle.Render("‹")
+		row = indicator + row
+		// A blank of the same width first, so the notes stay under their own
+		// tabs once the row has been pushed along by the indicator.
+		cells = append([]tabCell{{index: -1, width: lipgloss.Width(indicator)}}, cells...)
 	}
 	if hi < len(t.Items)-1 {
 		row += inactiveTabStyle.Render("›")
 	}
-	return row
+	return row, cells
+}
+
+// cellsFor is the visible tabs and the width each ended up taking.
+func cellsFor(lo, hi int, widths []int) []tabCell {
+	cells := make([]tabCell, 0, hi-lo+1)
+	for i := lo; i <= hi; i++ {
+		cells = append(cells, tabCell{index: i, width: widths[i]})
+	}
+	return cells
 }
 
 // Braille cells, read as a level meter to match the equalizer in the room
@@ -514,6 +622,19 @@ var (
 	playingTabStyle = lipgloss.NewStyle().
 			Padding(0, 1).
 			Foreground(theme.LightDark(lipgloss.Color("#1F2937"), lipgloss.Color("#E5E7EB")))
+
+	// followingTabStyle sits BELOW the idle colour rather than beside it: a
+	// speaker another one is driving is the least of the reader's business
+	// until they ask for it, and dimmer is how a row says so elsewhere here.
+	// noteTabStyle draws a note under its tab. Dimmer than any tab, because
+	// a note is about one rather than being one: nothing here is selectable.
+	noteTabStyle = lipgloss.NewStyle().
+			Padding(0, 1).
+			Foreground(theme.LightDark(lipgloss.Color("#9CA3AF"), lipgloss.Color("#6B7280")))
+
+	followingTabStyle = lipgloss.NewStyle().
+				Padding(0, 1).
+				Foreground(theme.LightDark(lipgloss.Color("#9CA3AF"), lipgloss.Color("#6B7280")))
 
 	separatorColor = theme.LightDark(lipgloss.Color("#D0D0D0"), lipgloss.Color("#4A4A4A"))
 

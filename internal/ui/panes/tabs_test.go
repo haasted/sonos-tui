@@ -1,6 +1,7 @@
 package panes_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/haasted/sonos-sandbox/internal/ui/panes"
@@ -75,4 +76,57 @@ func titles(tabs panes.Tabs) []string {
 		out[i] = tab.Title
 	}
 	return out
+}
+
+// Case: a speaker another one is driving, which must read as belonging to it
+// rather than standing on its own -- and must not be brightened back by
+// Playing, which a follower also is.
+func TestTabs_AFollowerIsDimmerThanAPlayingRoom(t *testing.T) {
+	tabs := panes.NewTabs([]panes.Tab{
+		{Title: "Ovenpå", Playing: true, Content: panes.StaticContent("a")},
+		{Title: "Køkken", Playing: true, Following: true, Content: panes.StaticContent("b")},
+		{Title: "Spisestue", Content: panes.StaticContent("c")},
+	})
+	tabs.Active = 0
+	tabs.Width = 60
+
+	row := strings.Split(tabs.View(), "\n")[0]
+	playing, following := styleAround(row, "Ovenpå"), styleAround(row, "Køkken")
+
+	if following == playing {
+		t.Fatalf("a follower is drawn like the room driving it: %q", following)
+	}
+	if following == styleAround(row, "Spisestue") {
+		t.Fatalf("a follower is drawn like an idle room: %q", following)
+	}
+}
+
+// Case: the follower the reader has selected. Focus wins outright, or
+// selecting one would dim it out of view just as they reached for it.
+func TestTabs_ASelectedFollowerStillReadsAsSelected(t *testing.T) {
+	tabs := panes.NewTabs([]panes.Tab{
+		{Title: "Ovenpå", Playing: true, Content: panes.StaticContent("a")},
+		{Title: "Køkken", Following: true, Content: panes.StaticContent("b")},
+	})
+	tabs.Width = 60
+
+	tabs.Active = 1
+	selected := styleAround(strings.Split(tabs.View(), "\n")[0], "Køkken")
+
+	tabs.Active = 0
+	unselected := styleAround(strings.Split(tabs.View(), "\n")[0], "Køkken")
+
+	if selected == unselected {
+		t.Fatal("selecting a follower changed nothing about how it is drawn")
+	}
+}
+
+// styleAround is the escape sequence a label is drawn with.
+func styleAround(row, label string) string {
+	for _, run := range strings.Split(row, "\x1b[") {
+		if strings.Contains(run, label) {
+			return strings.SplitN(run, "m", 2)[0]
+		}
+	}
+	return ""
 }
