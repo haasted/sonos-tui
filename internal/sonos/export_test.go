@@ -13,3 +13,7 @@ const EventChanBuffer = eventChanBuffer
 func (em *EventManager) CallbackBaseURL() string { return em.listener.baseURL }
 
 var ParseRadioShow = parseRadioShow
+
+// ParseZoneGroupState opens the topology parser to tests, so the captured
+// documents can be read without a speaker to serve them.
+func ParseZoneGroupState(raw string) (Topology, error) { return parseZoneGroupState(raw) }

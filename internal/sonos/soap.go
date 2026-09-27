@@ -132,6 +132,13 @@ type (
 		UpdateID       int    `xml:"UpdateID"`
 	}
 
+	// zoneGroupStateAction asks how the household is grouped. It takes no
+	// arguments of its own.
+	zoneGroupStateAction struct {
+		XMLName   xml.Name
+		Namespace string `xml:"xmlns:u,attr"`
+	}
+
 	// seekAction moves playback to a place within what is loaded. Unit and
 	// Target together say where -- TRACK_NR with a 1-based position jumps to a
 	// track in the current queue.

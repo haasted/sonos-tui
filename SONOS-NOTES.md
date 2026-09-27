@@ -560,3 +560,52 @@ AVTransport's `RemoveTrackRangeFromQueue` returns `NewUpdateID` on all of
 them, so removal needs no second service and no branch at all. `Queue:1` is
 only needed for a reorder that chains, since AVTransport's
 `ReorderTracksInQueue` returns nothing.
+
+## A group is named after the speaker that coordinates it
+
+`GetZoneGroupState` on any one speaker answers for the whole household: every
+group, its members, and which of them coordinates it. The document arrives
+escaped inside the SOAP body, the way DIDL does.
+
+```
+ZoneGroupState
+  ZoneGroups
+    ZoneGroup Coordinator="RINCON_…" ID="RINCON_…:3844401901"
+      ZoneGroupMember UUID Location ZoneName …26 more attributes
+  VanishedDevices
+```
+
+The group's `ID` is its coordinator's id and a number. Captured twice, before
+and after grouping two rooms:
+
+```
+apart    ZoneGroup RINCON_74CA…:3844401901   [Ovenpå]
+         ZoneGroup RINCON_804A…:2157789794   [Køkken]
+
+joined   ZoneGroup RINCON_74CA…:3844401901   [Ovenpå, Køkken]
+```
+
+Køkken joining left Ovenpå's group id untouched and took Køkken's own away.
+So the coordinator IS the group's identity and the number carries nothing: a
+model can key on the coordinator and never read the id.
+
+A member carries twenty-nine attributes. Three of them say where it is and
+what it is called; the rest are firmware versions, wifi channels, microphone
+and calibration state.
+
+### The topology covers one household, and the network may hold more
+
+Discovery found five speakers. The topology listed four, and `VanishedDevices`
+was empty. The fifth belongs to a SEPARATE Sonos system on the same network.
+
+So a discovered speaker missing from the topology is not necessarily off: it
+may answer to another household entirely, and asking it would return a
+different topology. Anything matching speakers to groups has to allow for
+finding neither.
+
+### Bonded sets are unrecorded here
+
+No `Invisible`, `ChannelMapSet` or `HTSatChanMapSet` appears in either
+capture, which agrees with the household having no stereo pair, surround set
+or sub. How a bonded zone is marked is therefore still unknown, and nothing
+in this repository should claim otherwise until one has been captured.
