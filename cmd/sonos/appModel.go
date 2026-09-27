@@ -37,6 +37,7 @@ type appModel struct {
 	quitting      bool
 	help          panes.Modal
 	queue         panes.Modal
+	grouping      panes.Modal
 
 	// queueGen guards the queue arrows' breath. A new generation on every open
 	// and every close, so a tick from a closed list drives nothing.
@@ -87,8 +88,13 @@ func newAppModel(ctx context.Context, events *sonos.EventManager, cached []sonos
 	queue := panes.NewModal(queueContent{})
 	queue.Mode = panes.ModalFixed
 
+	// Hovering, not fixed: it lists a handful of rooms and has nothing that
+	// changes under the reader, so it can fit itself to what it holds.
+	grouping := panes.NewModal(groupContent{})
+	grouping.Mode = panes.ModalHover
+
 	m := appModel{ctx: ctx, tabs: tabs, eventManager: events, fromCache: len(cached) > 0,
-		help: help, queue: queue}
+		help: help, queue: queue, grouping: grouping}
 	for _, speaker := range cached {
 		m = m.insertSpeaker(speaker.IP, speaker.RoomName(), newSpeakerModel(ctx, sonos.NewDevice(speaker)))
 	}
@@ -216,7 +222,7 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // closing a modal would leave a copy of it behind, once per cycle.
 func (m appModel) growFrame() appModel {
 	needed := playerHeightRows
-	for _, modal := range []panes.Modal{m.help, m.queue} {
+	for _, modal := range []panes.Modal{m.help, m.queue, m.grouping} {
 		if !modal.IsOpen() {
 			continue
 		}
@@ -316,6 +322,7 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.tabs.Width = msg.Width
 		m.help = m.help.SetSize(msg.Width, msg.Height)
 		m.queue = m.queue.SetSize(msg.Width, msg.Height)
+		m.grouping = m.grouping.SetSize(msg.Width, msg.Height)
 		m = m.resizeQueue()
 	case tea.KeyMsg:
 		m.hintDone = true // the user has found the keyboard; nothing left to hint
@@ -343,6 +350,16 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// The queue modal claims the keyboard the same way, and takes the
 		// arrow keys with it: up and down scroll the list, not the volume.
+		if m.grouping.IsOpen() {
+			if msg.String() == "g" {
+				m.grouping = m.grouping.Close()
+				return m, nil
+			}
+			grouping, cmd := m.grouping.Update(msg)
+			m.grouping = grouping
+			return m, cmd
+		}
+
 		if m.queue.IsOpen() {
 			if msg.String() == "?" {
 				return m.openHelp(queueHelp)
@@ -360,6 +377,8 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.String() {
+		case "g":
+			return m.openGrouping()
 		case "?":
 			return m.openHelp(playerHelp)
 		case "enter":
@@ -412,6 +431,8 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case discoveryDoneMsg:
 		m.discoveryDone = true
 		return m, nil
+	case groupChangeMsg:
+		return m.applyGroupChange(msg)
 	case topologyLoadedMsg:
 		m.askingTopology = false
 		if msg.err != nil {
@@ -626,7 +647,94 @@ func (m appModel) View() tea.View {
 	framed := padToHeight(content, max(m.frameRows, playerHeightRows))
 	// Help draws over the queue, not under it. The two can be open together
 	// now: "?" inside the queue explains the queue.
-	return tea.NewView(m.help.ViewOver(queue.ViewOver(framed)))
+	return tea.NewView(m.help.ViewOver(m.grouping.ViewOver(queue.ViewOver(framed))))
+}
+
+// applyGroupChange moves one speaker in or out of the group the room on
+// screen belongs to, the moment the reader asks.
+//
+// Joining points the speaker at the COORDINATOR rather than at the room on
+// screen, which are the same thing until that room is itself being driven:
+// a group has one owner, and a speaker pointed at a follower would be
+// following something that is not leading.
+func (m appModel) applyGroupChange(msg groupChangeMsg) (tea.Model, tea.Cmd) {
+	speaker, ok := m.activeSpeaker()
+	if !ok {
+		return m, nil
+	}
+	target, found := m.deviceWithID(msg.id)
+	if !found {
+		return m, notify(panes.NoticeWarn, msg.room+" is not here any more")
+	}
+
+	ctx := m.ctx
+	if !msg.join {
+		return m, func() tea.Msg {
+			if err := target.LeaveGroup(ctx); err != nil {
+				slog.Warn("taking a speaker out of a group", "speaker", msg.room, "err", err)
+				return panes.NoticeMsg{Level: panes.NoticeError, Text: "could not release " + msg.room}
+			}
+			return panes.NoticeMsg{Level: panes.NoticeInfo, Text: "released " + msg.room, Confirmation: true}
+		}
+	}
+
+	id := speaker.device.Speaker.ID()
+	coordinator := id
+	if owner, follows := m.household.Follows(id); follows {
+		coordinator = owner
+	}
+
+	return m, func() tea.Msg {
+		if err := target.JoinGroup(ctx, coordinator); err != nil {
+			slog.Warn("adding a speaker to a group", "speaker", msg.room, "err", err)
+			return panes.NoticeMsg{Level: panes.NoticeError, Text: "could not add " + msg.room}
+		}
+		return panes.NoticeMsg{Level: panes.NoticeInfo, Text: "added " + msg.room, Confirmation: true}
+	}
+}
+
+// deviceWithID finds a speaker by the id the topology calls it.
+func (m appModel) deviceWithID(id string) (*sonos.Device, bool) {
+	for _, tab := range m.tabs.Items {
+		speaker, ok := tab.Content.(speakerModel)
+		if ok && speaker.device.Speaker.ID() == id {
+			return speaker.device, true
+		}
+	}
+	return nil, false
+}
+
+// openGrouping lists the speakers the room on screen can be grouped with.
+// Built when it opens rather than read as it draws: what the reader sees is
+// what was true when they asked, not whatever has arrived since.
+func (m appModel) openGrouping() (tea.Model, tea.Cmd) {
+	speaker, ok := m.activeSpeaker()
+	if !ok {
+		return m, nil
+	}
+
+	// The name on the tab rather than the device's own: they agree in the
+	// ordinary case, and where they do not the reader has been reading the
+	// tab.
+	room := m.tabs.Items[m.tabs.Active].Title
+	id := speaker.device.Speaker.ID()
+
+	// The speakers already playing with this one start in the group: the
+	// list is the group as it would be, not a set of changes to it.
+	playingWith := map[string]bool{}
+	for _, member := range m.household.Drives(id) {
+		playingWith[member.ID] = true
+	}
+	if coordinator, follows := m.household.Follows(id); follows {
+		for _, member := range m.household.Drives(coordinator) {
+			playingWith[member.ID] = member.ID != id
+		}
+		playingWith[coordinator] = true
+	}
+
+	m.grouping.Content = groupingFor(room, m.household.Companions(id), playingWith)
+	m.grouping = m.grouping.Open()
+	return m, nil
 }
 
 // openHelp shows the popup with the table for wherever the reader is. The

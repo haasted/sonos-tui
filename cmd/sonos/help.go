@@ -54,6 +54,7 @@ var playerHelp = helpTable{
 			{"j", "previous track"},
 			{"l", "next track"},
 			{"enter", "show the queue"},
+			{"g", "group with"},
 		}},
 		{"Sound", []helpKey{
 			{"↑  ↓", "volume"},

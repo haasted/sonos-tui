@@ -80,6 +80,15 @@ const (
 	queuePlayFromFailed = "could not play the track"
 )
 
+// groupChangeMsg asks for one speaker to join the group the room on screen
+// belongs to, or to leave whatever group it is in. Sent as the reader picks
+// the row, not when the modal closes.
+type groupChangeMsg struct {
+	id   string
+	room string
+	join bool
+}
+
 // topologyLoadedMsg carries how the household is grouped, or why it could
 // not be read. One read answers for every speaker.
 type topologyLoadedMsg struct {
