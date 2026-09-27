@@ -58,6 +58,20 @@ func (s Speaker) Description() (desc DeviceDescription, ok bool) {
 // RoomName is the room the speaker is in, falling back to its address before
 // the description has arrived. Not DeviceDescription.DisplayName, which is the
 // model the speaker reports — "Era 100" against a room of "Kitchen".
+// ID is the speaker's bare RINCON identifier, which is what the zone group
+// topology refers to every speaker by.
+//
+// The USN wraps it: "uuid:RINCON_xxx::urn:schemas-upnp-org:device:ZonePlayer:1".
+// One place unwraps it, because an id sliced out at each call site is an id
+// that will eventually be sliced differently in one of them.
+func (s Speaker) ID() string {
+	id := strings.TrimPrefix(s.USN, "uuid:")
+	if at := strings.Index(id, "::"); at >= 0 {
+		id = id[:at]
+	}
+	return id
+}
+
 func (s Speaker) RoomName() string {
 	if desc, ok := s.Description(); ok && desc.RoomName != "" {
 		return desc.RoomName

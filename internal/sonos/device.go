@@ -326,6 +326,12 @@ func (d *Device) RemoveQueueTrack(ctx context.Context, position int) error {
 	})
 }
 
+// Topology reads how the whole household is grouped. Any speaker answers for
+// all of them, so a caller needs only one of these however many it holds.
+func (d *Device) Topology(ctx context.Context) (Topology, error) {
+	return d.client.GetZoneGroupState(ctx)
+}
+
 // RemoveQueueTracks takes several tracks out of this speaker's queue, named
 // by their 1-based positions. It answers with how many left, which is all of
 // them unless the speaker refused part way through.

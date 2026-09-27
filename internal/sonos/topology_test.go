@@ -166,3 +166,25 @@ func xmlEscape(w io.Writer, s string) {
 	_ = xml.EscapeText(&escaped, []byte(s))
 	_, _ = w.Write(escaped.Bytes())
 }
+
+// Case: the bare id, which is what the topology calls a speaker and what
+// discovery wraps in a USN.
+func TestSpeakerID_UnwrapsTheUSN(t *testing.T) {
+	for usn, want := range map[string]string{
+		"uuid:RINCON_804AF293EC4C01400::urn:schemas-upnp-org:device:ZonePlayer:1": "RINCON_804AF293EC4C01400",
+		"uuid:RINCON_804AF293EC4C01400":                                           "RINCON_804AF293EC4C01400",
+		"RINCON_804AF293EC4C01400":                                                "RINCON_804AF293EC4C01400",
+		"":                                                                        "",
+	} {
+		assert.Equal(t, want, sonos.Speaker{USN: usn}.ID(), "from %q", usn)
+	}
+}
+
+// Case: the id joining a discovered speaker to the topology, which is the
+// whole reason it is unwrapped.
+func TestSpeakerID_MatchesTheTopology(t *testing.T) {
+	speaker := sonos.Speaker{USN: "uuid:" + kitchen + "::urn:schemas-upnp-org:device:ZonePlayer:1"}
+
+	_, found := topologyFrom(t, "zonegroupstate_grouped.xml").GroupOf(speaker.ID())
+	assert.True(t, found, "a discovered speaker must find itself in the topology")
+}
