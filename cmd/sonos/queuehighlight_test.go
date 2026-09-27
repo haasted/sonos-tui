@@ -21,7 +21,7 @@ func TestQueuePlayNext_HighlightsTheTrackItMoved(t *testing.T) {
 	model, cmd := m.Update(keyMsgFor("n"))
 	m = model.(appModel)
 
-	sent, ok := playNextOne(t, cmd)
+	sent, ok := moveSentOne(t, cmd)
 	if !ok {
 		t.Fatal("nothing was asked for")
 	}
@@ -129,7 +129,7 @@ func TestQueuePlayNext_NoHighlightIfTheTrackIsGone(t *testing.T) {
 	m = model.(appModel)
 
 	_, cmd := m.Update(keyMsgFor("n"))
-	if _, ok := playNextSent(cmd); !ok {
+	if _, ok := movesSent(cmd); !ok {
 		t.Fatal("nothing was asked for, so this proves nothing")
 	}
 
@@ -157,7 +157,7 @@ func TestQueuePlayNext_RepaintsEvenWhenTheQueueFits(t *testing.T) {
 	model, cmd := m.Update(keyMsgFor("n"))
 	m = model.(appModel)
 
-	sent, ok := playNextOne(t, cmd)
+	sent, ok := moveSentOne(t, cmd)
 	if !ok {
 		t.Fatal("nothing was asked for")
 	}

@@ -70,7 +70,11 @@ const (
 	// in it is playing, so there is no current track to be "next" of.
 	queuePlayNextNoTrack = "nothing is playing from the queue"
 	queueAlreadyPlaying  = "already playing"
-	queueAlreadyNext     = "already next"
+
+	// queueAlreadyLast answers a track sent to the bottom that is already
+	// there, the way queueAlreadyNext answers one already next.
+	queueAlreadyLast = "already last"
+	queueAlreadyNext = "already next"
 
 	queuePlayedFrom     = "playing"
 	queuePlayFromFailed = "could not play the track"
@@ -95,10 +99,12 @@ type queueRemoveMsg struct{ positions []int }
 // one before it left -- see playNextMoves.
 type queueMove struct{ from, to int }
 
-// queuePlayNextMsg asks for tracks to move directly after the one playing,
-// in the order given. Sent and answered in one step, unlike a shifted move:
-// there is no window of presses to close first.
-type queuePlayNextMsg struct{ moves []queueMove }
+// queueMovesMsg asks for a run of moves, worked out already, in the order
+// given. Play next and send to bottom both send it: what differs is where
+// the tracks were aimed, which is settled before it is built. Sent and
+// answered in one step, unlike a shifted move: there is no window of
+// presses to close first.
+type queueMovesMsg struct{ moves []queueMove }
 
 // queuePlayFromMsg asks for one track to start playing now, wherever the
 // speaker's attention was before.
@@ -302,10 +308,10 @@ func removeFailedNotice(removed, asked int) string {
 	}
 }
 
-// applyQueuePlayNext sends the move queueContent.playNext decided on. Unlike a
+// applyQueueMoves sends the move queueContent.playNext decided on. Unlike a
 // shifted move there is no window to close first: the positions were computed
 // once, against the queue on screen, and are sent as they are.
-func (m appModel) applyQueuePlayNext(msg queuePlayNextMsg) (tea.Model, tea.Cmd) {
+func (m appModel) applyQueueMoves(msg queueMovesMsg) (tea.Model, tea.Cmd) {
 	speaker, ok := m.activeSpeaker()
 	if !ok {
 		return m, nil

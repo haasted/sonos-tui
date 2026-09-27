@@ -519,6 +519,11 @@ Browse or an event. This also confirms the `InsertBefore` convention that
 place past the destination, and a track sent from index 1 with `InsertBefore`
 3 lands at position 2.
 
+The convention holds at the END of the queue too, which is where it looked
+most likely to break: `InsertBefore` one past the last track is accepted and
+lands the track at the very bottom, not short of it. Verified 2026-09-27 by
+sending tracks down with N, singly and three at a time.
+
 ### Version 0 means "do not check"
 
 ```

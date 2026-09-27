@@ -88,6 +88,7 @@ var queueHelp = helpTable{
 			{"c", "to what is playing"},
 			{"x  delete", "remove a track"},
 			{"n", "play next"},
+			{"N", "send to the bottom"},
 			{"enter", "play from here"},
 			{"/", "filter the list"},
 			{"s  →", "select / deselect"},

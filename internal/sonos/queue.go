@@ -144,8 +144,10 @@ func (c *SonosClient) RemoveTrackRange(ctx context.Context, start, count, update
 // THE OFF-BY-ONE. InsertBefore is read against the queue with the track still
 // in it, so moving DOWN has to name one place further on than the destination:
 // lifting the track out afterwards shifts everything below it up by one. Moving
-// up needs no such correction. Verified against a speaker: a track sent from
-// index 1 with InsertBefore 3 lands at position 2 -- see SONOS-NOTES.md.
+// up needs no such correction. Verified against a speaker twice: a track sent
+// from index 1 with InsertBefore 3 lands at position 2, and one sent with
+// InsertBefore one PAST the last track lands at the very bottom rather than
+// short of it -- see SONOS-NOTES.md.
 func (c *SonosClient) MoveQueueTrack(ctx context.Context, from, to, updateID int) (int, error) {
 	if from < 1 || to < 1 {
 		return 0, fmt.Errorf("moving in the queue: %d to %d is not a move between tracks", from, to)

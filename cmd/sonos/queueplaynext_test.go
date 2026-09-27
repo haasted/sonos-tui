@@ -13,7 +13,7 @@ func TestQueuePlayNext_FromBelowMovesUpOnePlace(t *testing.T) {
 	q.playing = 10
 
 	_, cmd := q.Update(keyMsgFor("n"))
-	sent, ok := playNextOne(t, cmd)
+	sent, ok := moveSentOne(t, cmd)
 	if !ok {
 		t.Fatal("nothing was asked for")
 	}
@@ -30,7 +30,7 @@ func TestQueuePlayNext_FromAboveMovesDownOnePlace(t *testing.T) {
 	q.playing = 10
 
 	_, cmd := q.Update(keyMsgFor("n"))
-	sent, ok := playNextOne(t, cmd)
+	sent, ok := moveSentOne(t, cmd)
 	if !ok {
 		t.Fatal("nothing was asked for")
 	}
@@ -46,7 +46,7 @@ func TestQueuePlayNext_ThePlayingTrackAnswersRatherThanMoving(t *testing.T) {
 	q.playing = 10
 
 	moved, cmd := q.Update(keyMsgFor("n"))
-	if _, ok := playNextSent(cmd); ok {
+	if _, ok := movesSent(cmd); ok {
 		t.Fatal("the playing track was sent a move")
 	}
 	if !noticed(cmd, queueAlreadyPlaying) {
@@ -64,7 +64,7 @@ func TestQueuePlayNext_TheTrackAlreadyNextAnswersRatherThanMoving(t *testing.T) 
 	q.playing = 10
 
 	_, cmd := q.Update(keyMsgFor("n"))
-	if _, ok := playNextSent(cmd); ok {
+	if _, ok := movesSent(cmd); ok {
 		t.Fatal("a track already next was sent a move")
 	}
 	if !noticed(cmd, queueAlreadyNext) {
@@ -79,7 +79,7 @@ func TestQueuePlayNext_AStationAnswersRatherThanSilence(t *testing.T) {
 	q.playing = 0 // what playingPosition returns for a source other than the queue
 
 	_, cmd := q.Update(keyMsgFor("n"))
-	if _, ok := playNextSent(cmd); ok {
+	if _, ok := movesSent(cmd); ok {
 		t.Fatal("a station's queue was sent a move")
 	}
 	if !noticed(cmd, queuePlayNextNoTrack) {
@@ -115,7 +115,7 @@ func TestQueuePlayNext_CursorStaysAndShowsWhatWasBeneath(t *testing.T) {
 	model, cmd := m.Update(keyMsgFor("n"))
 	m = model.(appModel)
 
-	sent, ok := playNextOne(t, cmd)
+	sent, ok := moveSentOne(t, cmd)
 	if !ok {
 		t.Fatal("nothing was asked for")
 	}
@@ -152,7 +152,7 @@ func TestQueuePlayNext_TheBottomRowLandsOnTheTrackBefore(t *testing.T) {
 	model, cmd := m.Update(keyMsgFor("n"))
 	m = model.(appModel)
 
-	sent, ok := playNextOne(t, cmd)
+	sent, ok := moveSentOne(t, cmd)
 	if !ok {
 		t.Fatal("nothing was asked for")
 	}
@@ -199,12 +199,12 @@ func TestQueuePlayNext_APendingShiftIsDropped(t *testing.T) {
 	}
 }
 
-// playNextOne reports the single move a command asks for, for the cases that
+// moveSentOne reports the single move a command asks for, for the cases that
 // act on one track. It fails the test if the command asks for several.
-func playNextOne(t *testing.T, cmd tea.Cmd) (queueMove, bool) {
+func moveSentOne(t *testing.T, cmd tea.Cmd) (queueMove, bool) {
 	t.Helper()
 
-	sent, ok := playNextSent(cmd)
+	sent, ok := movesSent(cmd)
 	if !ok {
 		return queueMove{}, false
 	}
@@ -214,26 +214,26 @@ func playNextOne(t *testing.T, cmd tea.Cmd) (queueMove, bool) {
 	return sent.moves[0], true
 }
 
-// playNextSent reports the queuePlayNextMsg a command asks for, unpacking a
+// movesSent reports the queueMovesMsg a command asks for, unpacking a
 // batch the way noticed does for a notice.
-func playNextSent(cmd tea.Cmd) (queuePlayNextMsg, bool) {
+func movesSent(cmd tea.Cmd) (queueMovesMsg, bool) {
 	if cmd == nil {
-		return queuePlayNextMsg{}, false
+		return queueMovesMsg{}, false
 	}
 	switch msg := cmd().(type) {
-	case queuePlayNextMsg:
+	case queueMovesMsg:
 		return msg, true
 	case tea.BatchMsg:
 		for _, branch := range msg {
 			if branch == nil {
 				continue
 			}
-			if sent, ok := playNextSent(branch); ok {
+			if sent, ok := movesSent(branch); ok {
 				return sent, true
 			}
 		}
 	}
-	return queuePlayNextMsg{}, false
+	return queueMovesMsg{}, false
 }
 
 // deliverQueueWithPlaying is deliverQueue with a playing position, for cases

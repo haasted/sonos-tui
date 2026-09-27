@@ -327,8 +327,8 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.applyQueueLoaded(msg)
 	case queueRemoveMsg:
 		return m.applyQueueRemove(msg)
-	case queuePlayNextMsg:
-		return m.applyQueuePlayNext(msg)
+	case queueMovesMsg:
+		return m.applyQueueMoves(msg)
 	case queuePlayFromMsg:
 		return m.applyQueuePlayFrom(msg)
 	case queueRemoveCommitMsg:

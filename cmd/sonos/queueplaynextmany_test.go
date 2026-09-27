@@ -20,7 +20,7 @@ func TestPlayNextMany_LandsThemInPressOrder(t *testing.T) {
 	q = pickRow(q, 14)    // Track 15, picked third
 
 	_, cmd := q.Update(keyMsgFor("n"))
-	sent, ok := playNextSent(cmd)
+	sent, ok := movesSent(cmd)
 	if !ok {
 		t.Fatal("n asked for nothing")
 	}
@@ -45,7 +45,7 @@ func TestPlayNextMany_LeavesThePlayingTrackAlone(t *testing.T) {
 	q = pickRow(q, 11) // Track 12
 
 	_, cmd := q.Update(keyMsgFor("n"))
-	sent, _ := playNextSent(cmd)
+	sent, _ := movesSent(cmd)
 
 	after := applyMoves(queueURIs(q.items), sent.moves)
 	want := []string{uriOf(1), uriOf(8), uriOf(12)}
@@ -63,7 +63,7 @@ func TestPlayNextMany_SendsNothingForATrackAlreadyInPlace(t *testing.T) {
 	q = pickRow(q, 1) // Track 2, already next, and picked last
 
 	_, cmd := q.Update(keyMsgFor("n"))
-	sent, _ := playNextSent(cmd)
+	sent, _ := movesSent(cmd)
 
 	after := applyMoves(queueURIs(q.items), sent.moves)
 	want := []string{uriOf(1), uriOf(6), uriOf(2)}
@@ -85,7 +85,7 @@ func TestPlayNextMany_TheCursorSettlesOnATrackThatStayed(t *testing.T) {
 	q.cursor = 6      // the reader is sitting on one of the picked tracks
 
 	moved, cmd := q.Update(keyMsgFor("n"))
-	sent, _ := playNextSent(cmd)
+	sent, _ := movesSent(cmd)
 	content := moved.(queueContent)
 
 	// The queue comes back as the speaker would leave it.
@@ -110,7 +110,7 @@ func TestPlayNextMany_EveryMovedTrackFlashes(t *testing.T) {
 	q = pickRow(q, 9) // Track 10
 
 	moved, cmd := q.Update(keyMsgFor("n"))
-	sent, _ := playNextSent(cmd)
+	sent, _ := movesSent(cmd)
 	content := moved.(queueContent)
 	content.items = itemsFor(applyMoves(queueURIs(q.items), sent.moves))
 	content = content.highlightSettled()
@@ -131,7 +131,7 @@ func TestPlayNextMany_AnEmptySelectionActsOnTheCursor(t *testing.T) {
 	q.playing = 1
 
 	_, cmd := q.Update(keyMsgFor("n"))
-	sent, ok := playNextSent(cmd)
+	sent, ok := movesSent(cmd)
 	if !ok {
 		t.Fatal("n asked for nothing")
 	}

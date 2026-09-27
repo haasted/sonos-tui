@@ -210,6 +210,8 @@ func (q queueContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		q = q.jumpToPlaying()
 	case "x", "delete":
 		return q.remove()
+	case "N":
+		return q.sendToBottom()
 	case "n":
 		return q.playNext()
 	case "s", "right":
@@ -909,18 +911,24 @@ func (q queueContent) pickedInPressOrder() []int {
 // one playing: the last one lands there first and the ones before it push it
 // down, so they end up in the order asked for. A track already in the place
 // its turn would put it is left alone rather than sent to where it is.
-func (q queueContent) playNextMoves(positions []int) ([]queueMove, []string) {
+// queueModel is the whole queue as a run of positions, with the URI each one
+// carries. POSITIONS, not URIs: a position names one track even when the
+// queue holds the same track twice, where a URI names both and the first
+// copy would be moved for the second.
+func (q queueContent) queueModel() ([]int, map[int]string) {
 	all := q.everything()
 
-	// The model holds POSITIONS, not URIs. A position names one track even
-	// when the queue holds the same track twice, where a URI names both and
-	// the first copy would be moved for the second.
 	model := make([]int, 0, len(all))
 	uriAt := make(map[int]string, len(all))
 	for _, item := range all {
 		model = append(model, item.Position)
 		uriAt[item.Position] = item.URI
 	}
+	return model, uriAt
+}
+
+func (q queueContent) playNextMoves(positions []int) ([]queueMove, []string) {
+	model, uriAt := q.queueModel()
 
 	wanted := make([]int, 0, len(positions))
 	for _, position := range positions {
@@ -955,6 +963,72 @@ func (q queueContent) playNextMoves(positions []int) ([]queueMove, []string) {
 		model = slices.Insert(model, to, position)
 	}
 	return moves, carried
+}
+
+// sendToBottomMoves works out the moves that put tracks at the end of the
+// queue, in the order given.
+//
+// FORWARD through them, where playNextMoves runs backward: each track is
+// sent to the end, so the one sent first ends up above the one sent after
+// it and the run reads in the order the reader picked them. Aimed at the
+// end both times, as playNextMoves aims at the one place after the playing
+// track, so only the target differs.
+func (q queueContent) sendToBottomMoves(positions []int) ([]queueMove, []string) {
+	model, uriAt := q.queueModel()
+
+	var moves []queueMove
+	var carried []string
+	for _, position := range positions {
+		from := slices.Index(model, position)
+		last := len(model) - 1
+		if from < 0 || from == last {
+			continue // gone from the queue, or already the bottom track
+		}
+
+		moves = append(moves, queueMove{from: from + 1, to: last + 1})
+		carried = append(carried, uriAt[position])
+
+		model = slices.Delete(model, from, from+1)
+		model = slices.Insert(model, last, position)
+	}
+	return moves, carried
+}
+
+// sendToBottom asks for the picked tracks to move to the end of the queue,
+// or the one under the cursor when nothing is picked. The opposite of play
+// next, and it answers the same way: the cursor stays behind on a track that
+// did not move, and every track that did flashes as it lands.
+//
+// The playing track may go, unlike play next where it cannot be next of
+// itself. It keeps playing where it lands, and the queue carries on from
+// where it was, which is odd but is what the reader asked for.
+func (q queueContent) sendToBottom() (queueContent, tea.Cmd) {
+	if q.awaitingQueue() {
+		return q, nil // a change already sent has not been answered
+	}
+
+	positions := q.pickedInPressOrder()
+	if len(positions) == 0 {
+		if q.cursor >= len(q.items) {
+			return q, nil // an empty queue, or one still being read
+		}
+		positions = []int{q.items[q.cursor].Position}
+	}
+
+	moves, carried := q.sendToBottomMoves(positions)
+	if len(moves) == 0 {
+		return q.clearSelection(), notify(panes.NoticeInfo, queueAlreadyLast)
+	}
+
+	var dropped tea.Cmd
+	if _, _, pending := q.pendingMove(); pending {
+		q = q.clearMove()
+		dropped = notify(panes.NoticeWarn, queueMoveAbandoned)
+	}
+	q = q.clearSelection()
+
+	ask := func() tea.Msg { return queueMovesMsg{moves: moves} }
+	return q.awaitHighlight(carried...), tea.Batch(ask, dropped)
 }
 
 // playNext asks for the picked tracks to move directly after the one
@@ -1013,7 +1087,7 @@ func (q queueContent) playNext() (queueContent, tea.Cmd) {
 	}
 	q = q.clearSelection()
 
-	ask := func() tea.Msg { return queuePlayNextMsg{moves: moves} }
+	ask := func() tea.Msg { return queueMovesMsg{moves: moves} }
 	return q.awaitHighlight(carried...), tea.Batch(ask, dropped)
 }
 
