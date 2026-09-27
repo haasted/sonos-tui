@@ -81,17 +81,12 @@ kind, because "is a stream" and "has a usable clock" are separate questions.
 
 | Type | Where | What it is |
 |---|---|---|
-| `RawEvent` | `sonos/eventlistener.go` | A NOTIFY body exactly as it arrived, before parsing |
 | `AVTransportEvent` | `sonos/events.go` | A parsed AVTransport `LastChange` |
 | `RenderingControlEvent` | `sonos/renderingevents.go` | A parsed RenderingControl `LastChange` — volume and mute |
 | `Event` | `sonos/device.go` | What a `Device` publishes to its consumer |
 
-The pipeline runs **`RawEvent` → parsed event → `Event`**, and the split is
-deliberate at both ends.
-
-`RawEvent` exists so a capture hook can see bodies this package cannot
-understand — the unparseable ones are the valuable ones, being the schema not
-handled yet — and so an unrouted NOTIFY is recorded rather than dropped.
+The pipeline runs **NOTIFY body → parsed event → `Event`**, and the split at
+its far end is deliberate.
 
 `Event` exists because consumers should not care which service a change came
 from, only what changed. Its `Kind` field is the exception: a RenderingControl
@@ -208,7 +203,6 @@ Vendored from movy-go (MIT), used by the `experiments/uitest` effect demos.
 | `appModel` | The root Bubbletea model: tabs, help modal, event manager, frame height |
 | `speakerModel` | One speaker's tab: its `Device`, its widget, its volume debounce |
 | `helpContent` / `helpKey` | The help popup's content and one row of its key table |
-| `captureDir` | A flag accepting both `-capture` and `-capture=<dir>` |
 
 `appModel` owns a `panes.Tabs` whose every `Tab.Content` is a `speakerModel`,
 and each `speakerModel` owns a `*sonos.Device` and a `nowplaying.Model`. That

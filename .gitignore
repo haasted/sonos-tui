@@ -17,3 +17,7 @@ ADRs/html/
 
 # Binaries
 /sonos
+
+# Scratch output from the notifycapture harness
+notify-captures/
+

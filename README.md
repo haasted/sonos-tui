@@ -45,11 +45,9 @@ Flags, for when something needs looking at:
 
 ```bash
 go run ./cmd/sonos -logs=false          # discard logs instead of printing them on exit
-go run ./cmd/sonos -capture             # write every raw event to ./captured-data
-go run ./cmd/sonos -capture=/tmp/radio  # ...or somewhere of its own
 ```
 
-`make run-capture` and `make run-nocache` wrap the two you reach for most — the
+`make run-nocache` wraps the one you reach for most — the
 latter deletes the speaker cache first, to exercise a cold start.
 
 ## Speaker API coverage

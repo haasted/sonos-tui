@@ -14,6 +14,11 @@ production code never imports from here.
   reports when its queue changes, and prints which of the service's state
   variables the speaker says it events. Needs real speakers; see
   `make queue-events`.
+- `notifycapture/` — subscribes itself to one event service and writes every
+  raw NOTIFY body to a file. Its own subscription rather than EventManager's:
+  the point is a body nothing can parse yet, and EventManager only hands out
+  events it already understands. Needs real speakers; see
+  `make notify-capture`.
 - `coverart/` — evaluates `github.com/blacktop/go-termimg` and
   `github.com/BourgeoisBear/rasterm` for rendering album art in the terminal.
   Runs against fixture images in `data/`, no live speaker calls.

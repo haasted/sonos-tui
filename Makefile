@@ -1,4 +1,4 @@
-.PHONY: build fmt vet test test-verbose test-race test-live run run-logs run-capture run-nocache queue-events uitest worktrees tidy adr-html help
+.PHONY: build fmt vet test test-verbose test-race test-live run run-logs run-nocache queue-events notify-capture uitest worktrees tidy adr-html help
 
 .DEFAULT_GOAL := help
 
@@ -51,11 +51,11 @@ uitest: ## Show a UI demo: make uitest <name>. Without a name, the demos are lis
 queue-events: ## Watch ContentDirectory events while a queue is edited
 	cd experiments && go run ./queueevents
 
+notify-capture: ## Record the raw NOTIFY bodies of one event service
+	cd experiments && go run ./notifycapture $(NOTIFY_ARGS)
+
 run-logs: ## Run the CLI and print the logs once it exits
 	go run ./cmd/sonos -logs
-
-run-capture: ## Capture speaker data while running
-	go run ./cmd/sonos -capture=./captured-data
 
 run-nocache: ## Delete speaker cache prior to starting
 	rm -f ~/Library/Caches/sonos-sandbox/speakers.json
