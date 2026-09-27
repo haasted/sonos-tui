@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"sync/atomic"
 	"time"
 
@@ -129,6 +130,37 @@ func queueMoveTick(gen int) tea.Cmd {
 	})
 }
 
+// modalSweepTickMsg is one frame of the light running round a modal's
+// border. Its own chain rather than the queue's: the help popup sweeps too
+// and has no list to breathe.
+type modalSweepTickMsg struct{ gen int }
+
+// modalSweepDueMsg says it is time for another light. The wait between them
+// is random, so the effect is something the reader catches rather than
+// something they can predict from having opened a box.
+type modalSweepDueMsg struct{ gen int }
+
+// modalSweepRest is how long a modal waits between lights: never less than
+// the first, never more than the two together. Random inside that, so no two
+// waits look alike and none of them look scheduled.
+const (
+	modalSweepRest   = 6 * time.Second
+	modalSweepSpread = 14 * time.Second
+)
+
+func modalSweepDue(gen int) tea.Cmd {
+	wait := modalSweepRest + time.Duration(rand.Int64N(int64(modalSweepSpread)))
+	return tea.Tick(wait, func(time.Time) tea.Msg {
+		return modalSweepDueMsg{gen: gen}
+	})
+}
+
+func modalSweepTick(gen int) tea.Cmd {
+	return tea.Tick(queuePulseInterval, func(time.Time) tea.Msg {
+		return modalSweepTickMsg{gen: gen}
+	})
+}
+
 // queueTickMsg is one frame of the arrows' breath. The generation dies with the
 // modal, so a chain cannot outlive the list that began it.
 type queueTickMsg struct{ gen int }
@@ -173,10 +205,11 @@ func (m appModel) openQueue() (tea.Model, tea.Cmd) {
 	// Nothing to fetch in the ordinary case: the queue was read at startup and
 	// has been kept current by events since. A read here is the fallback for a
 	// speaker whose first read has not landed yet.
+	m, sweeping := m.restartSweepChain()
 	if state.QueueKnown {
-		return m, nil
+		return m, sweeping
 	}
-	return m, refreshQueue(m.ctx, speaker.device)
+	return m, tea.Batch(sweeping, refreshQueue(m.ctx, speaker.device))
 }
 
 // refreshQueue reads a speaker's queue into its Device and reports that it
@@ -432,7 +465,8 @@ func (m appModel) applyQueueLoaded(msg queueLoadedMsg) (tea.Model, tea.Cmd) {
 	content = content.clearRemoving()
 
 	content.room = msg.room
-	content.items = msg.items
+	content.items, content.all = msg.items, nil
+	content = content.narrow() // a filter on screen still means what it says
 	content.playing = msg.playing
 	content.err = msg.err
 	content.loading = false
@@ -489,6 +523,43 @@ func (m appModel) applyQueueTick(msg queueTickMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, queueTick(msg.gen)
+}
+
+// applyModalSweepDue sends the next light round, and does nothing at all if
+// every modal has closed in the meantime.
+func (m appModel) applyModalSweepDue(msg modalSweepDueMsg) (tea.Model, tea.Cmd) {
+	if msg.gen != m.sweepGen {
+		return m, nil
+	}
+	if !m.help.IsOpen() && !m.queue.IsOpen() {
+		return m, nil
+	}
+
+	m.help, m.queue = m.help.StartSweep(), m.queue.StartSweep()
+	return m, modalSweepTick(msg.gen)
+}
+
+// applyModalSweepTick keeps the light moving, and lets the chain die
+// the moment the last modal has finished with it.
+func (m appModel) applyModalSweepTick(msg modalSweepTickMsg) (tea.Model, tea.Cmd) {
+	if msg.gen != m.sweepGen {
+		return m, nil
+	}
+	if !m.queue.Sweeping() && !m.help.Sweeping() {
+		return m, modalSweepDue(msg.gen) // rest, then go round again
+	}
+	return m, modalSweepTick(msg.gen)
+}
+
+// restartSweepChain begins a fresh wait for the next light and abandons any
+// running one, so exactly one is alive however fast modals are opened.
+//
+// A wait rather than a light: a box that flashed the moment it appeared
+// would teach the reader to expect it, and the point is to be caught sight
+// of rather than watched for.
+func (m appModel) restartSweepChain() (appModel, tea.Cmd) {
+	m.sweepGen = nextQueueGen()
+	return m, modalSweepDue(m.sweepGen)
 }
 
 // restartQueueChain begins a fresh repaint chain and abandons any running one.

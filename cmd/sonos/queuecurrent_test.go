@@ -101,7 +101,9 @@ func TestQueueCurrent_OpensFromMemoryWithoutFetching(t *testing.T) {
 	model, cmd := m.Update(keyMsgFor("enter"))
 	m = model.(appModel)
 
-	if cmd != nil {
+	// Opening always asks for the frames that run the light round the
+	// border, so the test is that no READ went out, not that nothing did.
+	if fetches(cmd) {
 		t.Fatal("a queue already in memory must not be fetched again")
 	}
 	content, ok := m.queue.Content.(queueContent)
@@ -265,4 +267,23 @@ func TestQueueCurrent_AVerifiedSpeakerIsReadToo(t *testing.T) {
 
 	assert.Eventually(t, func() bool { return len(device.State().Queue) == 6 },
 		2*time.Second, 10*time.Millisecond, "a verified speaker's queue was never read")
+}
+
+// fetches reports whether a command asks the speaker for its queue, as
+// against merely asking for another frame.
+func fetches(cmd tea.Cmd) bool {
+	if cmd == nil {
+		return false
+	}
+	switch msg := cmd().(type) {
+	case queueLoadedMsg:
+		return true
+	case tea.BatchMsg:
+		for _, branch := range msg {
+			if fetches(branch) {
+				return true
+			}
+		}
+	}
+	return false
 }

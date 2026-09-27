@@ -91,3 +91,57 @@ func TestQueueFixed_TheProgramOpensTheQueueFixed(t *testing.T) {
 		t.Fatal("the help popup is fixed too; only the queue should be")
 	}
 }
+
+// Case: opening the queue, which must not send the light round. A box that
+// flashed every time it appeared would teach the reader to expect it.
+func TestQueueFixed_OpeningDoesNotSweep(t *testing.T) {
+	m, _, _ := withQueueServer(t, 20)
+
+	model, cmd := m.Update(keyMsgFor("enter"))
+	m = model.(appModel)
+
+	if m.queue.Sweeping() {
+		t.Fatal("opening the queue sent the light round at once")
+	}
+	if cmd == nil {
+		t.Fatal("opening asked for nothing, so no light will ever come")
+	}
+}
+
+// Case: the wait that follows. When it is up the light goes, and the chain
+// keeps itself alive so another follows that one.
+func TestQueueFixed_TheLightComesAfterAWait(t *testing.T) {
+	m, _, _ := withQueueServer(t, 20)
+	model, _ := m.Update(keyMsgFor("enter"))
+	m = model.(appModel)
+
+	model, cmd := m.Update(modalSweepDueMsg{gen: m.sweepGen})
+	m = model.(appModel)
+
+	if !m.queue.Sweeping() {
+		t.Fatal("the wait was up and no light went round")
+	}
+	if cmd == nil {
+		t.Fatal("the light started without a chain of frames to move it")
+	}
+}
+
+// Case: a wait left over from a modal that has closed. It must start
+// nothing: the light belongs to a box being there.
+func TestQueueFixed_AWaitOutlivingTheModalStartsNothing(t *testing.T) {
+	m, _, _ := withQueueServer(t, 20)
+	model, _ := m.Update(keyMsgFor("enter"))
+	m = model.(appModel)
+	gen := m.sweepGen
+
+	model, _ = m.Update(keyMsgFor("esc"))
+	m = model.(appModel)
+
+	model, cmd := m.Update(modalSweepDueMsg{gen: gen})
+	if model.(appModel).queue.Sweeping() {
+		t.Fatal("a closed modal was swept")
+	}
+	if cmd != nil {
+		t.Fatal("a closed modal kept the chain alive")
+	}
+}

@@ -103,16 +103,28 @@ func TestModalSweep_StartsSomewhereDifferent(t *testing.T) {
 	assert.Len(t, directions, 2, "200 openings never went both ways round")
 }
 
-// Case: reopening, which must roll again rather than replay the last trip.
-func TestModalSweep_ReopeningStartsTheLightAgain(t *testing.T) {
+// Case: opening, which must NOT start a trip. A light on every open is one
+// the reader comes to expect, where the point is to be caught sight of.
+func TestModalSweep_OpeningDoesNotStartTheLight(t *testing.T) {
+	m := panes.NewModal(panes.StaticContent("body")).SetSize(60, 20).Open()
+
+	assert.False(t, m.Sweeping(), "opening sent the light round on its own")
+}
+
+// Case: asking for another, which must roll again rather than replay the
+// last trip.
+func TestModalSweep_AskingAgainStartsTheLight(t *testing.T) {
 	m := panes.SetModalSweptAt(openSweeping(60, 20), 2*panes.ModalSweepDuration)
 	require.False(t, m.Sweeping())
 
-	assert.True(t, m.Close().Open().Sweeping(), "reopening left the border resting")
+	assert.True(t, m.StartSweep().Sweeping(), "asking again left the border resting")
 }
 
+// openSweeping is a modal with a light already running. Opening one does not
+// start a trip -- when a light runs is the caller's business -- so the cases
+// about the light itself ask for one.
 func openSweeping(width, height int) panes.Modal {
-	return panes.NewModal(panes.StaticContent("body")).SetSize(width, height).Open()
+	return panes.NewModal(panes.StaticContent("body")).SetSize(width, height).Open().StartSweep()
 }
 
 // hasLitCell reports a line holding a colour other than the border's resting

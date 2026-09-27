@@ -484,24 +484,12 @@ func matchesFilter(item sonos.QueueItem, filter string) bool {
 // otherwise goes to the top: a cursor left on a row number would land on a
 // different track every keystroke.
 func (q queueContent) applyFilter() queueContent {
-	all := q.everything()
-
 	var on string
 	if q.cursor < len(q.items) {
 		on = q.items[q.cursor].URI
 	}
 
-	if q.filter == "" {
-		q.items, q.all = all, nil
-	} else {
-		shown := make([]sonos.QueueItem, 0, len(all))
-		for _, item := range all {
-			if matchesFilter(item, q.filter) {
-				shown = append(shown, item)
-			}
-		}
-		q.items, q.all = shown, all
-	}
+	q = q.narrow()
 
 	q.cursor = 0
 	for i, item := range q.items {
@@ -513,18 +501,43 @@ func (q queueContent) applyFilter() queueContent {
 	return q.follow()
 }
 
+// narrow is applyFilter without the cursor keeping, for a queue arriving from
+// the speaker: the cursor there is settled afterwards by whatever the read
+// was answering, and a row remembered from the list before it means nothing.
+//
+// A queue must go through here on the way in. Assigning items straight from
+// the speaker would widen the list behind a filter that is still on screen.
+func (q queueContent) narrow() queueContent {
+	all := q.everything()
+	if q.filter == "" {
+		q.items, q.all = all, nil
+		return q
+	}
+
+	shown := make([]sonos.QueueItem, 0, len(all))
+	for _, item := range all {
+		if matchesFilter(item, q.filter) {
+			shown = append(shown, item)
+		}
+	}
+	q.items, q.all = shown, all
+	return q
+}
+
 // ClaimsEsc keeps esc from closing the modal while there is a filter to
 // clear. The reader's first esc undoes the narrowing; a second closes the
 // queue, as it always did.
 func (q queueContent) ClaimsEsc() bool { return q.filtering || q.filter != "" }
 
-// filterKey is one key while the filter box is open. enter leaves the box but
-// keeps the narrowing, so the keys that act on tracks reach the rows it left.
+// filterKey is one key while the filter box is open. enter and down both
+// leave the box and keep the narrowing, so the keys that act on tracks reach
+// the rows it found: down because the reader's next move after typing is
+// into the list, and reaching for it should be enough.
 func (q queueContent) filterKey(key string) queueContent {
 	switch key {
 	case "esc":
 		return q.closeFilter()
-	case "enter":
+	case "enter", "down":
 		q.filtering = false
 		return q
 	case "backspace":
@@ -536,10 +549,13 @@ func (q queueContent) filterKey(key string) queueContent {
 	return q
 }
 
-// openFilter starts taking the reader's keys as a filter.
+// openFilter starts taking the reader's keys as a filter, from nothing. A box
+// that opened holding the last search would narrow the list before the reader
+// had asked for anything, and the term they were shown would be one they had
+// forgotten typing.
 func (q queueContent) openFilter() queueContent {
-	q.filtering = true
-	return q
+	q.filtering, q.filter = true, ""
+	return q.applyFilter()
 }
 
 // closeFilter stops filtering and shows the whole queue again. What the
@@ -1117,12 +1133,11 @@ func (q queueContent) View() tea.View {
 	title, artist := q.columns()
 
 	var b strings.Builder
-	label, count := q.headingParts()
-	heading := queueRoomStyle().Render(label)
-	if count != "" {
-		heading += queueCountStyle().Render(count)
+	var heading strings.Builder
+	for _, part := range q.headingParts() {
+		heading.WriteString(part.style.Render(part.text))
 	}
-	b.WriteString(heading + "\n")
+	b.WriteString(heading.String() + "\n")
 	b.WriteString(queueRuleStyle().Render(strings.Repeat("─", q.ruleWidth())) + "\n")
 
 	if note := q.note(); note != "" {
@@ -1186,60 +1201,93 @@ func (q queueContent) ruleWidth() int { return q.width }
 // The count is here because the rows alone cannot carry it: a reader who has
 // scrolled away from what they picked, or who inverted the selection, has
 // nothing else to read it from.
+// headingPart is one run of the heading, drawn in its own style.
+type headingPart struct {
+	text  string
+	style lipgloss.Style
+}
+
 func (q queueContent) heading() string {
-	label, count := q.headingParts()
-	return label + count
+	var b strings.Builder
+	for _, part := range q.headingParts() {
+		b.WriteString(part.text)
+	}
+	return b.String()
 }
 
 // headingParts is the heading split where its colour changes: the room and
 // the size of the queue, then the selection count that follows them. The
 // count is empty when there is none to show, or no room to show it in.
-func (q queueContent) headingParts() (label, count string) {
-	label = q.queueLabel()
+func (q queueContent) headingParts() []headingPart {
+	parts := []headingPart{{q.room, queueRoomStyle()}}
+
+	// The key that opens the box, kept on screen while it is open so a reader
+	// who has not typed yet can see that they may. Drawn quieter than what
+	// they type into it: it is the prompt, not the search.
+	if q.filtering {
+		parts = append(parts,
+			headingPart{" · ", queueRoomStyle()},
+			headingPart{"/", queueFilterPromptStyle()},
+			headingPart{q.filter, queueRoomStyle()})
+	}
+
+	// How much of the queue is showing, or how big it is. Never both: a
+	// narrowed list's own length is not a thing the reader asked about.
+	if q.filter != "" {
+		parts = append(parts, headingPart{" · " + q.matchLabel(), queueRoomStyle()})
+	} else {
+		parts = append(parts, headingPart{q.sizeSuffix(), queueRoomStyle()})
+	}
 
 	if picked := q.selectionCount(); picked > selectionCountFloor {
-		count = fmt.Sprintf(" · %d selected", picked)
+		parts = append(parts, headingPart{fmt.Sprintf(" · %d selected", picked), queueCountStyle()})
 	}
-	if count == "" {
-		return clip(label, q.width), ""
+	return q.fitHeading(parts)
+}
+
+// fitHeading drops what a narrow box cannot hold, last part first. The room
+// and how much of the queue is showing answer where the reader is, which they
+// need before the rest, so the rest is what goes rather than anything being
+// cut in half.
+func (q queueContent) fitHeading(parts []headingPart) []headingPart {
+	width := func(parts []headingPart) int {
+		var total int
+		for _, part := range parts {
+			total += lipgloss.Width(part.text)
+		}
+		return total
 	}
 
-	// A narrow box cannot hold both. The range says where in the queue the
-	// reader is, which they need before they need the count, so the count is
-	// what goes rather than either being cut in half.
-	if q.width > 0 && lipgloss.Width(label)+lipgloss.Width(count) > q.width {
-		return clip(label, q.width), ""
+	for q.width > 0 && len(parts) > 1 && width(parts) > q.width {
+		parts = parts[:len(parts)-1]
 	}
-	return label, count
+	if q.width > 0 && width(parts) > q.width {
+		parts[0].text = clip(parts[0].text, q.width)
+	}
+	return parts
 }
 
 // queueLabel is the room and the size of its queue, which is the whole
 // heading until something is picked.
-func (q queueContent) queueLabel() string {
-	return q.sizeLabel() + q.filterLabel()
+
+// matchLabel is how much of the queue is showing.
+func (q queueContent) matchLabel() string {
+	return fmt.Sprintf("%d of %d", len(q.items), len(q.everything()))
 }
 
-// filterLabel shows what the reader typed, so the count beside it is not read
-// as the whole queue. Shown while the box is open, so they can see what they
-// are typing, and after it closes, so they remember the list is narrowed.
-func (q queueContent) filterLabel() string {
-	if !q.filtering && q.filter == "" {
-		return ""
-	}
-	return " · /" + q.filter
-}
-
-func (q queueContent) sizeLabel() string {
+// sizeSuffix says how big the queue is, and nothing at all while it is being
+// read or is empty -- the note below the rule says that better.
+func (q queueContent) sizeSuffix() string {
 	switch {
 	case q.loading, len(q.items) == 0:
-		return q.room
+		return ""
 	case q.overflows():
 		first, last := q.window()
-		return q.room + " · " + q.rangeLabel(first, last)
+		return " · " + q.rangeLabel(first, last)
 	case len(q.items) == 1:
-		return q.room + " · 1 track"
+		return " · 1 track"
 	default:
-		return fmt.Sprintf("%s · %d tracks", q.room, len(q.items))
+		return fmt.Sprintf(" · %d tracks", len(q.items))
 	}
 }
 
@@ -1302,8 +1350,11 @@ func (q queueContent) arrow(first, last, row int) string {
 // row draws one queue item: the title and the artist, a marker on the one
 // that is playing, and a brief flash on one that just landed from a move.
 func (q queueContent) row(item sonos.QueueItem, index int, picked bool, title, artist int, arrow string) string {
+	// No cursor while the filter box has the keyboard. It would point at a
+	// row the reader's keys are not reaching, and move under them as the
+	// list narrows on every letter.
 	mark := " "
-	if index == q.cursor {
+	if index == q.cursor && !q.filtering {
 		mark = queueCursorGlyph
 	}
 

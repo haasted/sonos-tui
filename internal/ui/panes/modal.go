@@ -111,9 +111,12 @@ func NewModal(content tea.Model) Modal {
 
 func (m Modal) IsOpen() bool { return m.open }
 
+// Open shows the modal. It does NOT send the light round: when a light runs
+// is the caller's business, and one that fired on every open would be a
+// thing the reader learns to expect rather than notice.
 func (m Modal) Open() Modal {
 	m.open = true
-	m.sweep, m.sweptAt = startSweep()
+	m.sweep, m.sweptAt = sweepCorner{}, time.Time{}
 	return m
 }
 

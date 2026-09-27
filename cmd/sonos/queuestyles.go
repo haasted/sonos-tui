@@ -159,3 +159,15 @@ func queueCountStyle() lipgloss.Style {
 func themedGoingColor() color.Color {
 	return theme.LightDark(lipgloss.Color("#9CA3AF"), lipgloss.Color("#6B7280"))
 }
+
+// queueFilterPromptStyle draws the key that opened the filter box, which
+// stays on screen while it is open so a reader who has not typed yet can see
+// that they may.
+//
+// Quieter than the room name and not bold, like the selection count: it is
+// the prompt rather than anything the reader put there. Told apart from what
+// they type, which keeps the room name's own colour.
+func queueFilterPromptStyle() lipgloss.Style {
+	return lipgloss.NewStyle().
+		Foreground(theme.LightDark(lipgloss.Color("#4A4A4A"), lipgloss.Color("#9B9B9B")))
+}

@@ -49,6 +49,10 @@ type appModel struct {
 	// frameRows is the tallest the inline frame has ever needed to be. It
 	// only ever grows: see growFrame.
 	frameRows int
+
+	// sweepGen is the chain of frames driving the light round an opening
+	// modal's border, matched against arriving ticks so only one runs.
+	sweepGen int
 }
 
 // newAppModel builds the model, seeding tabs straight from the cache so the
@@ -259,7 +263,7 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// arrow keys with it: up and down scroll the list, not the volume.
 		if m.queue.IsOpen() {
 			if msg.String() == "?" {
-				return m.openHelp(queueHelp), nil
+				return m.openHelp(queueHelp)
 			}
 			queue, cmd := m.queue.Update(msg)
 			m.queue = queue
@@ -275,7 +279,7 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg.String() {
 		case "?":
-			return m.openHelp(playerHelp), nil
+			return m.openHelp(playerHelp)
 		case "enter":
 			return m.openQueue()
 		}
@@ -333,6 +337,10 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.applyQueueMoveCommit(msg)
 	case queueTickMsg:
 		return m.applyQueueTick(msg)
+	case modalSweepDueMsg:
+		return m.applyModalSweepDue(msg)
+	case modalSweepTickMsg:
+		return m.applyModalSweepTick(msg)
 	case panes.NoticeMsg:
 		// A degraded speaker surfaces in the same seconds the hint would, and a
 		// hint replacing it would bury the one message that mattered. Falls
@@ -506,10 +514,10 @@ func (m appModel) View() tea.View {
 
 // openHelp shows the popup with the table for wherever the reader is. The
 // modal is reused rather than duplicated, so only one of them is ever open.
-func (m appModel) openHelp(table helpTable) appModel {
+func (m appModel) openHelp(table helpTable) (appModel, tea.Cmd) {
 	m.help.Content = helpContent{table: table}
 	m.help = m.help.Open()
-	return m
+	return m.restartSweepChain()
 }
 
 // padToHeight grows content to exactly rows lines. It never truncates: losing

@@ -27,10 +27,27 @@ func TestQueueFilter_NarrowsOnTitleAndArtist(t *testing.T) {
 // Case: the heading, which must say the list is narrowed. Its count is of
 // the rows on screen, and would otherwise read as the whole queue.
 func TestQueueFilter_TheHeadingSaysSo(t *testing.T) {
-	q := typeInto(mixedQueue(), "nick")
+	typing := typeInto(mixedQueue(), "nick")
 
-	if head := q.heading(); !strings.Contains(head, "/nick") {
-		t.Fatalf("the heading reads %q and does not say the list is filtered", head)
+	head := typing.heading()
+	if !strings.Contains(head, "nick") {
+		t.Fatalf("the reader cannot read back what they are typing: %q", head)
+	}
+	if !strings.Contains(head, "/nick") {
+		t.Fatalf("the heading does not show the box the reader is typing into: %q", head)
+	}
+	if !strings.Contains(head, "2 of 4") {
+		t.Fatalf("the heading does not say how much of the queue is showing: %q", head)
+	}
+
+	// Once the box has gone the term goes with it -- it was what the reader
+	// typed, not what the list is -- but the count must still say it is a part.
+	closed := moveQueue(typing, "enter").heading()
+	if strings.Contains(closed, "nick") {
+		t.Fatalf("the search term outlived the box it was typed into: %q", closed)
+	}
+	if !strings.Contains(closed, "2 of 4") {
+		t.Fatalf("the heading reads %q, which will be taken for the whole queue", closed)
 	}
 }
 
@@ -151,4 +168,149 @@ func typeInto(q queueContent, text string) queueContent {
 		q = moveQueue(q, string(r))
 	}
 	return q
+}
+
+// Case: down, which must leave the box exactly as enter does. Reaching for
+// the list is the reader saying they are done typing.
+func TestQueueFilter_DownLeavesTheBoxLikeEnter(t *testing.T) {
+	byDown := moveQueue(typeInto(mixedQueue(), "nick"), "down")
+	byEnter := moveQueue(typeInto(mixedQueue(), "nick"), "enter")
+
+	if byDown.filtering {
+		t.Fatal("down left the filter box open")
+	}
+	if byDown.filter != byEnter.filter || len(byDown.items) != len(byEnter.items) {
+		t.Fatalf("down gave %q with %d rows, enter gave %q with %d",
+			byDown.filter, len(byDown.items), byEnter.filter, len(byEnter.items))
+	}
+	if byDown.cursor != byEnter.cursor {
+		t.Fatalf("down left the cursor on row %d, enter on row %d", byDown.cursor, byEnter.cursor)
+	}
+}
+
+// Case: the cursor while the box has the keyboard. It must not be drawn --
+// it points at a row the reader's keys are not reaching, and it would move
+// under them with every letter as the list narrows.
+func TestQueueFilter_NoCursorUntilTheListHasTheKeys(t *testing.T) {
+	typing := typeInto(mixedQueue(), "nick")
+	if strings.Contains(plain(typing.View().Content), queueCursorGlyph) {
+		t.Fatal("the cursor is drawn while the reader is still typing")
+	}
+
+	inList := moveQueue(typing, "down")
+	if !strings.Contains(plain(inList.View().Content), queueCursorGlyph) {
+		t.Fatal("the cursor did not come back once the list had the keys")
+	}
+}
+
+// Case: a queue arriving from the speaker while a filter is on screen. It
+// must be narrowed on the way in: widening the list while the heading still
+// says /nick shows the reader a filter that is not doing anything.
+func TestQueueFilter_AQueueArrivingIsNarrowedToo(t *testing.T) {
+	m, _, _ := withQueueServer(t, 20)
+	model, _ := m.Update(keyMsgFor("enter"))
+	m = model.(appModel)
+	speaker, _ := m.activeSpeaker()
+
+	for _, key := range []string{"/", "1"} { // Track 1, Track 10 … Track 19
+		model, _ = m.Update(keyMsgFor(key))
+		m = model.(appModel)
+	}
+	narrowed := len(queueOf(t, m).items)
+	if narrowed == 20 {
+		t.Fatal("the filter narrowed nothing, so this proves nothing")
+	}
+
+	model, _ = m.Update(queueLoadedMsg{
+		device: speaker.device, room: speaker.device.RoomName(),
+		items: queueItems(20), playing: 1,
+	})
+	content := queueOf(t, model.(appModel))
+
+	if len(content.items) != narrowed {
+		t.Fatalf("the queue came back and widened the list to %d rows, want %d kept",
+			len(content.items), narrowed)
+	}
+	if !strings.Contains(content.heading(), "of 20") {
+		t.Fatalf("the heading no longer says the list is a part: %q", content.heading())
+	}
+}
+
+// Case: opening the filter again after one has been used. It must start
+// empty: a box holding the last search narrows the list before the reader
+// has asked for anything.
+func TestQueueFilter_OpensEmptyEachTime(t *testing.T) {
+	q := moveQueue(typeInto(mixedQueue(), "nick"), "enter")
+	if q.filter != "nick" {
+		t.Fatal("the first filter did not take, so this proves nothing")
+	}
+
+	again := moveQueue(q, "/")
+
+	if again.filter != "" {
+		t.Fatalf("the box opened holding %q", again.filter)
+	}
+	if len(again.items) != 4 {
+		t.Fatalf("opening the box left %d rows, want the whole queue back", len(again.items))
+	}
+	if strings.Contains(again.heading(), "nick") {
+		t.Fatalf("the heading still names the old search: %q", again.heading())
+	}
+	if strings.Contains(again.heading(), " of ") {
+		t.Fatalf("the heading says the list is a part when nothing is narrowing it: %q",
+			again.heading())
+	}
+}
+
+// Case: the box open with nothing typed yet. The key that opened it stays on
+// screen, or a reader who has not started has nothing telling them they may.
+func TestQueueFilter_ThePromptShowsBeforeAnythingIsTyped(t *testing.T) {
+	opened := moveQueue(mixedQueue(), "/")
+
+	if !strings.Contains(opened.heading(), "/") {
+		t.Fatalf("an open box says nothing to the reader: %q", opened.heading())
+	}
+	if strings.Contains(opened.heading(), " of ") {
+		t.Fatalf("an empty box narrows nothing, so the heading must not say it does: %q",
+			opened.heading())
+	}
+}
+
+// Case: the prompt against what is typed into it. They must be drawn apart,
+// or the key the reader pressed reads as part of their search.
+func TestQueueFilter_ThePromptIsNotDrawnLikeTheSearch(t *testing.T) {
+	line := strings.Split(typeInto(mixedQueue(), "nick").View().Content, "\n")[0]
+
+	if styleOf(line, "/") == styleOf(line, "nick") {
+		t.Fatal("the prompt is drawn in the same style as the term typed after it")
+	}
+}
+
+// Case: the prompt going with the box. Once it has closed there is nothing
+// to type into, so a key suggesting otherwise would be a lie.
+func TestQueueFilter_ThePromptGoesWithTheBox(t *testing.T) {
+	closed := moveQueue(typeInto(mixedQueue(), "nick"), "enter")
+
+	if strings.Contains(closed.heading(), "/") {
+		t.Fatalf("the prompt outlived the box: %q", closed.heading())
+	}
+}
+
+// Case: a letter while the filter box has the keyboard. It belongs to what
+// the reader is typing, and no command may take it first -- "Waiting for
+// You" is a track in this very queue. Nothing binds w above the modal today;
+// this is here for whatever is bound next.
+func TestQueueFilter_ALetterTypesWhileTheBoxIsOpen(t *testing.T) {
+	m, _, _ := withQueueServer(t, 20)
+	model, _ := m.Update(keyMsgFor("enter"))
+	m = model.(appModel)
+
+	for _, key := range []string{"/", "w"} {
+		model, _ = m.Update(keyMsgFor(key))
+		m = model.(appModel)
+	}
+
+	if got := queueOf(t, m).filter; got != "w" {
+		t.Fatalf("the filter reads %q; a command took the letter instead", got)
+	}
 }
