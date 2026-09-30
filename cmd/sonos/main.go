@@ -33,9 +33,12 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if db, err := openStore(ctx); err == nil {
-		defer db.Close()
+	db, err := openStore(ctx)
+	if err != nil {
+		slog.Error("opening the database", "err", err)
+		return
 	}
+	defer db.Close()
 
 	events, err := sonos.NewEventManager()
 	if err != nil {
@@ -43,7 +46,7 @@ func main() {
 		return
 	}
 
-	cached, selected := loadCachedSpeakers()
+	cached, selected := loadCachedSpeakers(ctx, db.Cache())
 
 	model := newAppModel(ctx, events, cached, selected)
 	program := tea.NewProgram(model, tea.WithContext(ctx))
@@ -51,7 +54,7 @@ func main() {
 	go discoverSpeakers(ctx, program)
 
 	final, runErr := program.Run()
-	saveCache(final)
+	saveCache(ctx, db.Cache(), final)
 	cancel() // stop discovery and anything else still tied to the root
 
 	// Deliberately rooted at Background, not ctx: ctx is cancelled just above
@@ -69,21 +72,19 @@ func main() {
 }
 
 // openStore opens the application database, creating it on a first run.
-// Nothing reads from it yet, so a failure is reported and stepped over rather
-// than stopping the program; that changes when the speaker cache moves in.
+// The program stops if this fails: the store holds the speaker cache today
+// and will hold playlists, so running without it is running degraded.
 func openStore(ctx context.Context) (*store.Store, error) {
 	path := *dbFlag
 	if path == "" {
 		var err error
 		if path, err = store.DefaultPath(); err != nil {
-			slog.Warn("locating the database", "err", err)
 			return nil, err
 		}
 	}
 
 	db, err := store.Open(ctx, path)
 	if err != nil {
-		slog.Warn("opening the database", "path", path, "err", err)
 		return nil, err
 	}
 
@@ -98,15 +99,10 @@ func openStore(ctx context.Context) (*store.Store, error) {
 // loadCachedSpeakers returns last run's speakers, or nothing when there is no
 // cache or it was recorded on a different network. Every failure is silent:
 // the cache is a shortcut, and discovery still runs regardless.
-func loadCachedSpeakers() ([]sonos.Speaker, string) {
-	path, pathErr := sonos.CachePath()
-	if pathErr != nil {
-		path = "<unknown>"
-	}
-
-	cache, ok := sonos.LoadCache()
+func loadCachedSpeakers(ctx context.Context, cache *store.Cache) ([]sonos.Speaker, string) {
+	cached, ok := sonos.LoadCache(ctx, cache)
 	if !ok {
-		slog.Info("no usable speaker cache — discovering from scratch", "path", path)
+		slog.Info("no usable speaker cache — discovering from scratch")
 		return nil, ""
 	}
 
@@ -115,24 +111,22 @@ func loadCachedSpeakers() ([]sonos.Speaker, string) {
 		slog.Debug("cannot read local subnet — ignoring cache", "err", err)
 		return nil, ""
 	}
-	if !cache.UsableOn(subnet) {
+	if !cached.UsableOn(subnet) {
 		slog.Info("cache was recorded on another network — ignoring it",
-			"path", path, "cached", cache.Subnet, "current", subnet)
+			"cached", cached.Subnet, "current", subnet)
 		return nil, ""
 	}
 
-	speakers := cache.SpeakerList()
 	slog.Info("seeding tabs from cache",
-		"path", path,
-		"speakers", len(speakers),
-		"subnet", cache.Subnet,
-		"age", time.Since(cache.SavedAt).Truncate(time.Second))
-	return speakers, cache.Selected
+		"speakers", len(cached.Speakers),
+		"subnet", cached.Subnet,
+		"age", time.Since(cached.SavedAt).Truncate(time.Second))
+	return cached.Speakers, cached.Selected
 }
 
 // saveCache records the speakers still on screen, and which one was selected,
 // for the next run to start from.
-func saveCache(final tea.Model) {
+func saveCache(ctx context.Context, cache *store.Cache, final tea.Model) {
 	app, ok := final.(appModel)
 	if !ok {
 		return
@@ -141,13 +135,11 @@ func saveCache(final tea.Model) {
 	if len(speakers) == 0 {
 		return
 	}
-	if err := sonos.SaveCache(speakers, selected); err != nil {
+	if err := sonos.SaveCache(ctx, cache, speakers, selected); err != nil {
 		slog.Warn("writing speaker cache", "err", err)
 		return
 	}
-	if path, err := sonos.CachePath(); err == nil {
-		slog.Info("wrote speaker cache", "path", path, "speakers", len(speakers), "selected", selected)
-	}
+	slog.Info("wrote speaker cache", "speakers", len(speakers), "selected", selected)
 }
 
 // verifyCachedSpeaker proves a cached speaker is still there, refreshes it and

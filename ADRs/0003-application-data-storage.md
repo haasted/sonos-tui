@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — the storage layer is implemented in `internal/store`. Nothing is wired into `cmd/sonos` yet: the speaker cache still runs on JSON until it is migrated, which is deliberately a separate step (see the cross-reference below).
+Accepted — implemented in `internal/store` and wired into `cmd/sonos`, which opens the database at startup and fails to start without it. The speaker cache has moved off JSON and into it, superseding ADR-0001's default.
 
 ## Context
 
@@ -42,11 +42,14 @@ This is not the same shape as the argument that carried the day above, and the d
 ## Open questions remaining
 
 - **Schema design for the features**: the cache half is settled — migration 1 creates `speaker_cache` and `speaker_cache_session`, mirroring what `speakers.json` held, because the isolation mechanism above needed real tables to scope to. `playlists`, `playlist_tracks` and `remembered_tracks` are still deliberately deferred until the features needing them are actually being built, so the schema reflects real requirements rather than a guess.
-- **Migration timing for the speaker cache specifically**: the cache (implementing ADR-0001) proceeds now on JSON rather than waiting for this ADR, since the two were decided independently and blocking the cache on the full storage layer wasn't judged worth the delay. A follow-up task tracks migrating it to this shared store once this ADR is implemented (see cross-reference below).
 - **Playlist management and remembered-track features themselves**: not designed here at all — this ADR exists only to settle the storage foundation those features and the cache will eventually share. Feature design is out of scope until those tasks are actively worked.
 
 ## Consequences
 
 New dependency: `modernc.org/sqlite`, this project's first storage dependency beyond the standard library and the first time a database driver has been evaluated here. It arrives with a transitive tail (`modernc.org/libc`, `modernc.org/memory`, `modernc.org/mathutil` and a few more) — the price of a C library transpiled to Go, and the price of keeping `CGO_ENABLED=0`. The `database/sql` decision keeps that tail the only thing added: no ORM, no query builder, no migration library, no code generator.
 
-The storage layer lives in `internal/store`, below `internal/sonos` in the layering: it knows nothing about Sonos or about terminals, and callers hand it values and get values back. The speaker cache's JSON implementation is expected to be temporary, superseded by a migration to this store once it exists — that's accepted up front, not a surprise to be discovered later. Playlist and track-history features are blocked on this ADR being implemented, not on any specific schema being pre-designed.
+The storage layer lives in `internal/store`, below `internal/sonos` in the layering: it knows nothing about Sonos or about terminals, and callers hand it values and get values back. `internal/sonos` maps between the two, which means it now imports `internal/store` — and, since the `experiments` module imports `internal/sonos`, SQLite is compiled into the experiments too. A build-time weight only, and the price of keeping the mapping next to `Speaker` rather than in the application layer.
+
+**Opening the database is fatal if it fails.** Considered and rejected: carrying on without it. The store holds the speaker cache today and will hold playlists, so a program that runs without it runs degraded in ways that get harder to see as more moves in. Losing the cache alone would have been survivable; that is no longer the whole of what is at stake.
+
+Nothing migrates the old `speakers.json`. The cache was disposable by design, discovery rebuilds it in about five seconds, and an importer would be dead code the moment it had run once. Any leftover file in the cache directory is simply ignored.

@@ -133,13 +133,17 @@ attributed without inspecting its contents.
 
 | Type | Where | What it is |
 |---|---|---|
-| `Cache` | `sonos/cache.go` | The speaker list from a previous run, plus the context to judge it |
-| `CachedSpeaker` | `sonos/cache.go` | One speaker as last seen, enough to rebuild a `Speaker` |
+| `SpeakerCache` | `sonos/speakercache.go` | The speaker list from a previous run, plus the context to judge it |
 
-`Cache` carries a `Subnet` and a `Selected` USN alongside the speakers. The
+`SpeakerCache` carries a `Subnet` and a `Selected` USN alongside the speakers. The
 subnet is a *speed* optimisation and never a correctness mechanism: it cheaply
 rules out a cache recorded on a different network, but only a real call to a
 speaker proves an entry is still good.
+
+It holds `[]Speaker` outright, because it is the *mapped* form: `LoadCache`
+reads a `store.Snapshot` and turns each row into a `Speaker`, and `SaveCache`
+goes the other way. That mapping is the only place the two vocabularies meet,
+and it is why `internal/sonos` imports `internal/store`.
 
 ### The SQLite store — `internal/store`
 
@@ -147,6 +151,8 @@ speaker proves an entry is still good.
 |---|---|---|
 | `Store` | `store/store.go` | The open database, migrated to the schema this build knows |
 | `Cache` | `store/cache.go` | The only handle on the cached speakers |
+| `Snapshot` | `store/cache.go` | A whole cache: the speakers, and the context that judges them |
+| `CachedSpeaker` | `store/cache.go` | One cached speaker, as eight plain strings |
 
 One SQLite file under `os.UserConfigDir()`, holding the speaker cache and,
 later, playlists and remembered tracks — see ADR-0003. It sits *below*
@@ -163,9 +169,15 @@ the file header and never reads itself. `migrations` is append-only, and each
 step commits with its version bump in one transaction, so an interrupted
 migration leaves the file at a version it really has.
 
-Note the name collision, which is deliberate rather than an oversight:
-`sonos.Cache` is the JSON file's contents and `store.Cache` is the handle that
-replaces it. `sonos.Cache` goes away when the cache moves.
+`CachedSpeaker` is eight plain strings rather than anything richer, which is
+the layering holding: this package cannot name a `DeviceDescription` without
+knowing what a speaker is. `Save` replaces every row in one transaction, since
+the speakers on screen at exit are the whole truth and a reader must never see
+half of them.
+
+`store.Cache` is the handle and `sonos.SpeakerCache` is what one read through
+it becomes. Neither is the other's replacement; they sit on opposite sides of
+the mapping, which is why neither is called plain `Cache`.
 
 ## 6. UI components — terminal, no Sonos
 

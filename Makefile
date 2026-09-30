@@ -58,7 +58,7 @@ run-logs: ## Run the CLI and print the logs once it exits
 	go run ./cmd/sonos -logs
 
 run-nocache: ## Delete speaker cache prior to starting
-	rm -f ~/Library/Caches/sonos-sandbox/speakers.json
+	rm -f ~/Library/Application\ Support/sonos-sandbox/sonos.db*
 	go run ./cmd/sonos
 
 tidy: ## Tidy go.mod/go.sum

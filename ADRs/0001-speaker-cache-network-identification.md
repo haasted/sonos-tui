@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — implemented in `internal/sonos/cache.go` and wired into `cmd/sonos`.
+Accepted — implemented in `internal/sonos/speakercache.go` and wired into `cmd/sonos`.
 
 ## Context
 
@@ -125,9 +125,10 @@ short-timeout `http.Client` rather than waiting on the work that threads
 `context.Context` through the whole SOAP client. That refactor should not block
 this feature, and the two calls here are the only ones needing a bound.
 
-**Storage is JSON**, deliberately, not SQLite — see ADR-0003, which decided the
-broader storage question separately. Migrating this cache onto
-that store once it exists.
+**Storage was JSON**, deliberately, not SQLite — see ADR-0003, which decided the
+broader storage question separately. That migration has since happened: the
+cache now lives in two tables of the shared SQLite store, and nothing reads or
+writes `speakers.json` any more.
 
 **The subnet fingerprint costs ~24µs**, measured. `GetLocalIP` was refactored to
 share a single `net.InterfaceAddrs` call with the new `LocalSubnet`, so the
