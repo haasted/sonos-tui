@@ -13,6 +13,7 @@ import (
 
 	"github.com/haasted/sonos-sandbox/internal/log"
 	"github.com/haasted/sonos-sandbox/internal/sonos"
+	"github.com/haasted/sonos-sandbox/internal/store"
 )
 
 const (
@@ -21,6 +22,7 @@ const (
 )
 
 var logsFlag = flag.Bool("logs", false, "capture and print log output once the program exits; set to false to discard all logs")
+var dbFlag = flag.String("db", "", "path to the application database; empty means the default location")
 
 func main() {
 	flag.Parse()
@@ -30,6 +32,10 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	if db, err := openStore(ctx); err == nil {
+		defer db.Close()
+	}
 
 	events, err := sonos.NewEventManager()
 	if err != nil {
@@ -60,6 +66,33 @@ func main() {
 		fmt.Fprintln(os.Stderr, "bubbletea error:", runErr)
 		os.Exit(1)
 	}
+}
+
+// openStore opens the application database, creating it on a first run.
+// Nothing reads from it yet, so a failure is reported and stepped over rather
+// than stopping the program; that changes when the speaker cache moves in.
+func openStore(ctx context.Context) (*store.Store, error) {
+	path := *dbFlag
+	if path == "" {
+		var err error
+		if path, err = store.DefaultPath(); err != nil {
+			slog.Warn("locating the database", "err", err)
+			return nil, err
+		}
+	}
+
+	db, err := store.Open(ctx, path)
+	if err != nil {
+		slog.Warn("opening the database", "path", path, "err", err)
+		return nil, err
+	}
+
+	version, err := db.Version(ctx)
+	if err != nil {
+		slog.Warn("reading the schema version", "path", path, "err", err)
+	}
+	slog.Info("database ready", "path", path, "schema", version)
+	return db, nil
 }
 
 // loadCachedSpeakers returns last run's speakers, or nothing when there is no

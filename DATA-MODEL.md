@@ -141,6 +141,32 @@ subnet is a *speed* optimisation and never a correctness mechanism: it cheaply
 rules out a cache recorded on a different network, but only a real call to a
 speaker proves an entry is still good.
 
+### The SQLite store — `internal/store`
+
+| Type | Where | What it is |
+|---|---|---|
+| `Store` | `store/store.go` | The open database, migrated to the schema this build knows |
+| `Cache` | `store/cache.go` | The only handle on the cached speakers |
+
+One SQLite file under `os.UserConfigDir()`, holding the speaker cache and,
+later, playlists and remembered tracks — see ADR-0003. It sits *below*
+`internal/sonos` in the layering and knows nothing about Sonos or terminals.
+
+**`store.Cache` exists to be narrow.** ADR-0003 put disposable cache data and
+irreplaceable user data in one file, and the mitigation it owed is this type:
+it carries no method that accepts SQL, so code holding one can clear the cache
+and reach nothing else. Widening that means editing the type, not calling it
+wrongly.
+
+The schema version lives in `PRAGMA user_version` — four bytes SQLite keeps in
+the file header and never reads itself. `migrations` is append-only, and each
+step commits with its version bump in one transaction, so an interrupted
+migration leaves the file at a version it really has.
+
+Note the name collision, which is deliberate rather than an oversight:
+`sonos.Cache` is the JSON file's contents and `store.Cache` is the handle that
+replaces it. `sonos.Cache` goes away when the cache moves.
+
 ## 6. UI components — terminal, no Sonos
 
 | Type | Where | What it is |
