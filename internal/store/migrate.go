@@ -10,7 +10,6 @@ import (
 // a file has had. Append only: editing one that has shipped leaves every
 // existing file at a schema the code no longer describes. The SQL sits
 // flush left so `sqlite3 sonos.db .schema` reads properly.
-
 var migrations = []string{
 	// 1. The speaker cache: the speakers last seen, and the context that
 	// judges whether they still apply.

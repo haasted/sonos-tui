@@ -79,11 +79,7 @@ func (s *Store) Close() error {
 // Version is the schema version the file is at, which is the number of
 // migrations that have been applied to it.
 func (s *Store) Version(ctx context.Context) (int, error) {
-	var version int
-	if err := s.db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
-		return 0, fmt.Errorf("reading schema version: %w", err)
-	}
-	return version, nil
+	return readVersion(ctx, s.db)
 }
 
 // Cache is the handle the speaker cache works through. It is the only way to
