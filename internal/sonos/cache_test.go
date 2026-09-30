@@ -14,6 +14,11 @@ import (
 // Case: a normal save then load, which must survive the round trip with the
 // descriptions intact so tabs can show room names without a fetch.
 func TestCacheRoundTrip(t *testing.T) {
+	var (
+		require = require.New(t)
+		assert  = assert.New(t)
+	)
+
 	useTempCacheDir(t)
 
 	saved := []sonos.Speaker{
@@ -22,20 +27,20 @@ func TestCacheRoundTrip(t *testing.T) {
 		sonos.NewSpeaker("192.168.1.11", "http://192.168.1.11:1400/xml/d.xml", "uuid:B",
 			sonos.DeviceDescription{RoomName: "Bedroom", UDN: "uuid:B"}),
 	}
-	require.NoError(t, sonos.SaveCache(saved, "uuid:B"))
+	require.NoError(sonos.SaveCache(saved, "uuid:B"))
 
 	cache, ok := sonos.LoadCache()
-	require.True(t, ok)
+	require.True(ok)
 
-	assert.Equal(t, "uuid:B", cache.Selected, "the selected tab must survive, to be re-selected next run")
-	require.Len(t, cache.Speakers, 2)
+	assert.Equal("uuid:B", cache.Selected, "the selected tab must survive, to be re-selected next run")
+	require.Len(cache.Speakers, 2)
 
 	rebuilt := cache.SpeakerList()
-	require.Len(t, rebuilt, 2)
+	require.Len(rebuilt, 2)
 	desc, ok := rebuilt[0].Description()
-	require.True(t, ok, "a rebuilt speaker should already carry its description")
-	assert.Equal(t, "Kitchen", desc.RoomName)
-	assert.Equal(t, "Kitchen", rebuilt[0].RoomName())
+	require.True(ok, "a rebuilt speaker should already carry its description")
+	assert.Equal("Kitchen", desc.RoomName)
+	assert.Equal("Kitchen", rebuilt[0].RoomName())
 }
 
 // Case: no cache file at all, the first-ever run.
