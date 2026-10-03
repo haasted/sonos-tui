@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 )
@@ -130,10 +132,7 @@ func (em *EventManager) renewLoop(ctx context.Context, sub *subscription, callba
 
 func (em *EventManager) Close(ctx context.Context) error {
 	em.mu.Lock()
-	subs := make([]*subscription, 0, len(em.subs))
-	for _, sub := range em.subs {
-		subs = append(subs, sub)
-	}
+	subs := slices.Collect(maps.Values(em.subs))
 	em.subs = map[string]*subscription{}
 	em.mu.Unlock()
 
