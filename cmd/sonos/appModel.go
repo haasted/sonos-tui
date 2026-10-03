@@ -245,7 +245,12 @@ func (m appModel) syncPlaying() appModel {
 		if !ok {
 			continue
 		}
-		m.tabs.Items[i].Playing = speaker.device.State().Playing()
+		// Resolved before anything reads it: every line below, and every
+		// command this tab issues, asks the speaker that owns the playback.
+		speaker.leader = m.leaderFor(speaker)
+		m.tabs.Items[i].Content = speaker
+
+		m.tabs.Items[i].Playing = speaker.shown().Playing()
 		m.tabs.Items[i].Following = m.following(speaker)
 
 		// The rooms this one drives are named under its own tab, so the
@@ -254,6 +259,24 @@ func (m appModel) syncPlaying() appModel {
 		m.tabs.Items[i].Notes = m.controls(speaker)
 	}
 	return m
+}
+
+// leaderFor is the speaker driving this one, or nil when it drives itself.
+// Nil too when the coordinator is not a speaker we hold -- it may belong to
+// another Sonos system -- because a command still has to go somewhere, and
+// the speaker in view is where it went before any of this existed.
+func (m appModel) leaderFor(speaker speakerModel) *sonos.Device {
+	id := speaker.device.Speaker.ID()
+
+	coordinator, ok := m.household.CoordinatorOf(id)
+	if !ok || coordinator == id {
+		return nil
+	}
+	device, found := m.deviceWithID(coordinator)
+	if !found {
+		return nil
+	}
+	return device
 }
 
 // controls is the rooms a speaker is playing through to, and nothing unless
@@ -562,38 +585,58 @@ func (m appModel) applyEvent(event sonos.Event) (tea.Model, tea.Cmd) {
 	// about to be drawn from.
 	if event.Kind == sonos.EventZoneGroupTopology {
 		m.household = m.household.Apply(event.Topology)
+
+		// Re-derived now rather than after this message, because the loop
+		// below asks each tab who drives it and the answer has just changed.
+		m = m.syncPlaying()
 	}
+
+	// A coordinator's event reaches more tabs than its own: every speaker it
+	// drives is playing that track too, and says so in its own pane.
+	var cmds []tea.Cmd
+	reported := false
 
 	for i, tab := range m.tabs.Items {
 		speaker, ok := tab.Content.(speakerModel)
-		if !ok || !isSameSpeaker(speaker.device, event.Speaker) {
+		if !ok {
+			continue
+		}
+
+		own := isSameSpeaker(speaker.device, event.Speaker)
+		mirrors := speaker.leader != nil && isSameSpeaker(speaker.leader, event.Speaker)
+		if !own && !mirrors {
 			continue
 		}
 
 		// An event the panel has nothing to say about still has to re-arm the
 		// wait below, so it reaches here and simply does not touch the tab.
-		var cmd tea.Cmd
-		if panel := eventMsg(event, speaker.device.State()); panel != nil {
+		// shown() rather than the reporter's state: a follower draws what the
+		// group is playing, with its own volume.
+		if panel := eventMsg(event, speaker.shown()); panel != nil {
 			updated, panelCmd := speaker.Update(panel)
 			m.tabs.Items[i].Content = updated
-			cmd = panelCmd
+			if i == m.tabs.Active {
+				cmds = append(cmds, panelCmd)
+			}
 		}
 
-		if i != m.tabs.Active {
-			cmd = nil
+		if !own {
+			continue
 		}
+		reported = true
 
 		// Read the queue of whichever speaker changed, on screen or not: the
 		// point is that every queue is current before anyone asks for it.
-		var reread tea.Cmd
 		if _, queue := event.Directory.QueueUpdate(); queue {
-			reread = refreshQueue(m.ctx, speaker.device)
+			cmds = append(cmds, refreshQueue(m.ctx, speaker.device))
 		}
-		return m, tea.Batch(cmd, reread, waitForEvent(speaker.device))
+		cmds = append(cmds, waitForEvent(speaker.device))
 	}
 
-	slog.Warn("event for a speaker with no tab — dropping", "speaker", event.Speaker)
-	return m, nil
+	if !reported {
+		slog.Warn("event for a speaker with no tab — dropping", "speaker", event.Speaker)
+	}
+	return m, tea.Batch(cmds...)
 }
 
 // eventMsg turns one speaker event into a message for the panel. Each kind is

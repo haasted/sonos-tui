@@ -206,7 +206,7 @@ func (m appModel) openQueue() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	state := speaker.device.State()
+	state := speaker.shown()
 	m.queue = m.queue.Open()
 	content := queueContent{
 		room:     speaker.device.RoomName(),
@@ -231,7 +231,7 @@ func (m appModel) openQueue() (tea.Model, tea.Cmd) {
 	if state.QueueKnown {
 		return m, sweeping
 	}
-	return m, tea.Batch(sweeping, refreshQueue(m.ctx, speaker.device))
+	return m, tea.Batch(sweeping, refreshQueue(m.ctx, speaker.transport()))
 }
 
 // refreshQueue reads a speaker's queue into its Device and reports that it
@@ -286,7 +286,7 @@ func (m appModel) applyQueueRemove(msg queueRemoveMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	device := speaker.device
+	device := speaker.transport()
 	ctx := m.ctx
 	asked := len(msg.positions)
 	return m, func() tea.Msg {
@@ -333,7 +333,7 @@ func (m appModel) applyQueueMoves(msg queueMovesMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	device := speaker.device
+	device := speaker.transport()
 	ctx := m.ctx
 	moves := make([]sonos.QueueMove, 0, len(msg.moves))
 	for _, move := range msg.moves {
@@ -384,7 +384,7 @@ func (m appModel) applyQueuePlayFrom(msg queuePlayFromMsg) (tea.Model, tea.Cmd) 
 		return m, nil
 	}
 
-	device := speaker.device
+	device := speaker.transport()
 	ctx := m.ctx
 	return m, func() tea.Msg {
 		if err := device.PlayTrack(ctx, msg.position); err != nil {
@@ -421,7 +421,7 @@ func (m appModel) applyQueueMoveCommit(msg queueMoveCommitMsg) (tea.Model, tea.C
 		return m, nil
 	}
 
-	device := speaker.device
+	device := speaker.transport()
 	ctx := m.ctx
 	return m, func() tea.Msg {
 		if err := device.MoveQueueTrack(ctx, from, to); err != nil {
@@ -453,7 +453,7 @@ func (m appModel) applyQueueLoaded(msg queueLoadedMsg) (tea.Model, tea.Cmd) {
 	if !ok || !m.queue.IsOpen() {
 		return m, nil
 	}
-	if speaker, found := m.activeSpeaker(); !found || speaker.device != msg.device {
+	if speaker, found := m.activeSpeaker(); !found || speaker.transport() != msg.device {
 		return m, nil
 	}
 

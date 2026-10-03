@@ -72,6 +72,7 @@ func volumeCommitTick(gen int) tea.Cmd {
 type speakerModel struct {
 	ctx    context.Context  // root context; every command this tab issues carries it
 	device *sonos.Device    // the speaker this tab controls
+	leader *sonos.Device    // the speaker driving this one, or nil when it drives itself
 	widget nowplaying.Model // renders the current track
 
 	pendingVolume    int  // volume delta accumulated in the open window
@@ -260,6 +261,29 @@ func (m speakerModel) failed(err error) tea.Msg {
 	}
 }
 
+// transport is the speaker that owns this one's playback: the coordinator of
+// its group, or itself when it follows nobody. Everything about what is
+// playing -- the queue included -- belongs to that speaker, because a
+// follower has no queue and no transport of its own.
+func (m speakerModel) transport() *sonos.Device {
+	if m.leader != nil {
+		return m.leader
+	}
+	return m.device
+}
+
+// shown is the state this pane draws: what the group is playing, with this
+// speaker's own volume, which stays per-speaker however the group is made up.
+func (m speakerModel) shown() sonos.DeviceState {
+	state := m.transport().State()
+	if m.leader == nil {
+		return state
+	}
+	own := m.device.State()
+	state.Volume, state.Muted = own.Volume, own.Muted
+	return state
+}
+
 // queueVolume accumulates delta into the open window, opening one if none is.
 // Only the upward direction is capped, so down stays a fast escape.
 func (m speakerModel) queueVolume(delta int) (tea.Model, tea.Cmd) {
@@ -278,7 +302,7 @@ func (m speakerModel) queueVolume(delta int) (tea.Model, tea.Cmd) {
 // togglePlayback pauses a playing speaker and starts a stopped one.
 func (m speakerModel) togglePlayback() tea.Cmd {
 	return func() tea.Msg {
-		if m.device.State().Playing() {
+		if m.shown().Playing() {
 			return m.runDeviceAction(actionPause, (*sonos.Device).Pause)
 		}
 		return m.runDeviceAction(actionPlay, (*sonos.Device).Play)
@@ -298,16 +322,18 @@ func (m speakerModel) adjustVolume(delta int) tea.Cmd {
 	}
 }
 
-// toggleMute flips mute, reporting volume only for the same reason as adjustVolume.
+// toggleMute flips mute for the whole group, reporting volume only for the
+// same reason as adjustVolume. Muting is an instruction about the music
+// rather than about one room, so it does not stop at the speaker in view.
 func (m speakerModel) toggleMute() tea.Cmd {
 	return func() tea.Msg {
-		if err := m.device.ToggleMute(m.ctx); err != nil {
+		muted, err := m.transport().ToggleGroupMute(m.ctx)
+		if err != nil {
 			slog.Warn("mute command failed", "speaker", m.device.Speaker, "err", err)
 			return m.failed(err)
 		}
-		state := m.device.State()
-		volume := m.to(nowplaying.VolumeMsg{Volume: state.Volume, Muted: state.Muted})
-		return withConfirmation(volume, muteConfirmation(state.Muted))
+		volume := m.to(nowplaying.VolumeMsg{Volume: m.device.State().Volume, Muted: muted})
+		return withConfirmation(volume, muteConfirmation(muted))
 	}
 }
 
@@ -332,8 +358,8 @@ func (m speakerModel) deviceCommand(name string, action func(*sonos.Device, cont
 // runDeviceAction runs action, mapping failure to an error message and success
 // to a refreshed track.
 func (m speakerModel) runDeviceAction(name string, action func(*sonos.Device, context.Context) error) tea.Msg {
-	if err := action(m.device, m.ctx); err != nil {
-		state := m.device.State()
+	if err := action(m.transport(), m.ctx); err != nil {
+		state := m.transport().State()
 
 		// The source and the position are what make a refusal readable later.
 		// Without them every UPnP 701 in the log looks the same.
@@ -344,7 +370,7 @@ func (m speakerModel) runDeviceAction(name string, action func(*sonos.Device, co
 		return m.refused(name, err, state)
 	}
 
-	track := m.to(nowplaying.TrackMsg{Track: trackFromState(m.device.State())})
+	track := m.to(nowplaying.TrackMsg{Track: trackFromState(m.shown())})
 	return withConfirmation(track, confirmations[name])
 }
 
