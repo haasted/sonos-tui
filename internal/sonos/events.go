@@ -51,6 +51,8 @@ func (s SourceInfo) Kind() SourceKind {
 		return SourceStation
 	case "x-rincon-stream":
 		return SourceLineIn
+	case "x-rincon":
+		return SourceGroupMember
 	case "":
 		return SourceUnknown
 	case "x-rincon-queue", "x-sonos-http", "x-sonosprog-http", "x-file-cifs":
@@ -68,6 +70,7 @@ const (
 	SourceBroadcast            // live radio, genuinely unbounded
 	SourceStation              // an algorithmic station, which may play discrete tracks
 	SourceLineIn
+	SourceGroupMember // whatever the group's coordinator is playing
 )
 
 var _ slog.LogValuer = AVTransportEvent{}

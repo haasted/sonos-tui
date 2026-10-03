@@ -265,3 +265,48 @@ func (c *SonosClient) SetMute(ctx context.Context, muted bool) error {
 	})
 	return err
 }
+
+// --- GroupRenderingControl (the group as one speaker) ------------------------
+//
+// Volume stays per-speaker, deliberately: each room is as loud as its own
+// listener wants. Mute does not, because a muted room is one that has been
+// told to be quiet, and that is an instruction about the music, not the room.
+
+const groupRenderingService = "urn:schemas-upnp-org:service:GroupRenderingControl:1"
+const groupRenderingPath = "/MediaRenderer/GroupRenderingControl/Control"
+
+func (c *SonosClient) groupRendering(ctx context.Context, action string, payload any) ([]byte, error) {
+	return c.Do(ctx, groupRenderingPath, groupRenderingService, action, payload)
+}
+
+// GetGroupMute reports whether the group is muted. A speaker on its own is a
+// group of one, so this answers for it too.
+func (c *SonosClient) GetGroupMute(ctx context.Context) (bool, error) {
+	data, err := c.groupRendering(ctx, "GetGroupMute",
+		instancePayload(groupRenderingService, "GetGroupMute"))
+	if err != nil {
+		return false, err
+	}
+
+	var resp struct {
+		Mute int `xml:"Body>GetGroupMuteResponse>CurrentMute"`
+	}
+	if err := xml.Unmarshal(data, &resp); err != nil {
+		return false, fmt.Errorf("parsing GetGroupMute response: %w", err)
+	}
+	return resp.Mute == 1, nil
+}
+
+// SetGroupMute mutes or unmutes every speaker in the group at once.
+func (c *SonosClient) SetGroupMute(ctx context.Context, muted bool) error {
+	val := 0
+	if muted {
+		val = 1
+	}
+	_, err := c.groupRendering(ctx, "SetGroupMute", setGroupMuteAction{
+		XMLName:   xml.Name{Local: "u:SetGroupMute"},
+		Namespace: groupRenderingService,
+		Desired:   val,
+	})
+	return err
+}

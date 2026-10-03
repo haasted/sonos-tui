@@ -104,6 +104,7 @@ func TestSource_RadioShowKeepsOnlyTheDescription(t *testing.T) {
 func TestSource_UnrecognisedSchemesAreNotTreatedAsTracks(t *testing.T) {
 	for uri, want := range map[string]sonos.SourceKind{
 		"x-rincon-stream:RINCON_123":  sonos.SourceLineIn,
+		"x-rincon:RINCON_123":         sonos.SourceGroupMember,
 		"x-sonosapi-stream:something": sonos.SourceStation,
 		"x-file-cifs://nas/song.flac": sonos.SourceTrack,
 		"something-new:whatever":      sonos.SourceUnknown,

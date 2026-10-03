@@ -563,6 +563,34 @@ func (d *Device) ToggleMute(ctx context.Context) error {
 	return d.SetMuted(ctx, !muted)
 }
 
+// SetGroupMuted mutes or unmutes every speaker in this one's group. Sonos
+// sets each member's own mute as it goes, so the members' events correct
+// their states without this having to reach them.
+func (d *Device) SetGroupMuted(ctx context.Context, muted bool) error {
+	if err := d.client.SetGroupMute(ctx, muted); err != nil {
+		return fmt.Errorf("set group mute: %w", err)
+	}
+	d.mu.Lock()
+	d.state.Muted = muted
+	d.mu.Unlock()
+	return nil
+}
+
+// ToggleGroupMute flips the group's mute and reports where it landed. The
+// current value is read from the speaker rather than from this Device: the
+// group's mute is not this one's, and a caller acting on a stale copy would
+// toggle it the wrong way.
+func (d *Device) ToggleGroupMute(ctx context.Context) (bool, error) {
+	muted, err := d.client.GetGroupMute(ctx)
+	if err != nil {
+		return false, fmt.Errorf("toggle group mute: %w", err)
+	}
+	if err := d.SetGroupMuted(ctx, !muted); err != nil {
+		return false, err
+	}
+	return !muted, nil
+}
+
 // Play starts or resumes playback.
 func (d *Device) Play(ctx context.Context) error {
 	if err := d.client.Play(ctx); err != nil {

@@ -95,6 +95,15 @@ type (
 		Adjustment int    `xml:"Adjustment"`
 	}
 
+	// setGroupMuteAction has no Channel: a group is muted as a whole, where
+	// RenderingControl mutes one channel of one speaker.
+	setGroupMuteAction struct {
+		XMLName    xml.Name
+		Namespace  string `xml:"xmlns:u,attr"`
+		InstanceID int    `xml:"InstanceID"`
+		Desired    int    `xml:"DesiredMute"`
+	}
+
 	setMuteAction struct {
 		XMLName    xml.Name
 		Namespace  string `xml:"xmlns:u,attr"`
