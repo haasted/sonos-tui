@@ -36,6 +36,11 @@ const (
 	// household, short enough to keep the harness usable.
 	discoverFor = 5 * time.Second
 
+	// describeFor bounds the wait for the room names. Discover streams a
+	// speaker the moment SSDP sees it and fetches its description after, so
+	// until that lands a speaker calls itself by its IP address.
+	describeFor = 3 * time.Second
+
 	// subscribeSeconds is how long a speaker keeps sending. Not renewed: a
 	// capture session is minutes, and a renewal loop is machinery this does
 	// not need.
@@ -199,6 +204,43 @@ func addressReachableBy(speaker sonos.Speaker, port int) (string, error) {
 	return fmt.Sprintf("%s:%d", host, port), nil
 }
 
+// awaitDescriptions waits until every speaker knows its own name, or until
+// describeFor runs out. Without it a room filter is matched against the IP
+// address a speaker answers to before its description has been fetched.
+func awaitDescriptions(ctx context.Context, speakers []sonos.Speaker) {
+	deadline := time.Now().Add(describeFor)
+
+	for time.Now().Before(deadline) {
+		named := true
+		for _, speaker := range speakers {
+			if _, ok := speaker.Description(); !ok {
+				named = false
+				break
+			}
+		}
+		if named {
+			return
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+}
+
+// roomsOf names the speakers found, so a filter that matched nothing can say
+// what it could have matched.
+func roomsOf(speakers []sonos.Speaker) []string {
+	rooms := make([]string, 0, len(speakers))
+	for _, speaker := range speakers {
+		rooms = append(rooms, speaker.RoomName())
+	}
+	sort.Strings(rooms)
+	return rooms
+}
+
 func findSpeakers(ctx context.Context) ([]sonos.Speaker, error) {
 	deadline, cancel := context.WithTimeout(ctx, discoverFor)
 	defer cancel()
@@ -208,13 +250,23 @@ func findSpeakers(ctx context.Context) ([]sonos.Speaker, error) {
 		return nil, err
 	}
 
-	var speakers []sonos.Speaker
+	var discovered []sonos.Speaker
 	for speaker := range found {
+		discovered = append(discovered, speaker)
+	}
+	awaitDescriptions(ctx, discovered)
+
+	var speakers []sonos.Speaker
+	for _, speaker := range discovered {
 		if *roomFlag == "" || strings.EqualFold(speaker.RoomName(), *roomFlag) {
 			speakers = append(speakers, speaker)
 		}
 	}
 	if len(speakers) == 0 {
+		if *roomFlag != "" {
+			return nil, fmt.Errorf("no speaker called %q, out of %d found: %s",
+				*roomFlag, len(discovered), strings.Join(roomsOf(discovered), ", "))
+		}
 		return nil, fmt.Errorf("no speaker found")
 	}
 
