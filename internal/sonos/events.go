@@ -25,6 +25,19 @@ type AVTransportEvent struct {
 	Current TrackMetadata
 	Next    TrackMetadata // zero value if nothing queued after Current
 
+	// LastChange omits every variable that did not change, and an absent
+	// one is not the same as a zero reading: CurrentTrack 0 is what a
+	// speaker says when nothing is playing from the queue. These say what
+	// the event carried, so a handler can leave the rest of the state alone.
+	//
+	// Measured over 17 notifications from one speaker: the track variables
+	// always arrive, and AVTransportURI usually does not.
+	HasTransportState bool
+	HasSource         bool
+	HasTrack          bool
+	HasTracks         bool
+	HasCurrent        bool
+
 	QueueSource string // title of the playlist/container playback started from, if any
 
 	// Source is what is loaded on the speaker, as opposed to the track
@@ -126,6 +139,14 @@ type val struct {
 	Val string `xml:"val,attr"`
 }
 
+// text is the value of an element the event may have left out entirely.
+func (v *val) text() string {
+	if v == nil {
+		return ""
+	}
+	return v.Val
+}
+
 // ParseAVTransportEvent parses a GENA NOTIFY body from AVTransport's event
 // service.
 //
@@ -168,19 +189,19 @@ func ParseAVTransportEvent(body []byte) (AVTransportEvent, error) {
 	// Event's *children*, not "Event" again.
 	var doc struct {
 		Instance struct {
-			TransportState               val `xml:"TransportState"`
-			CurrentPlayMode              val `xml:"CurrentPlayMode"`
-			RelativeTimePosition         val `xml:"RelativeTimePosition"`
-			NumberOfTracks               val `xml:"NumberOfTracks"`
-			CurrentTrack                 val `xml:"CurrentTrack"`
-			CurrentTrackURI              val `xml:"CurrentTrackURI"`
-			CurrentTrackDuration         val `xml:"CurrentTrackDuration"`
-			CurrentTrackMetaData         val `xml:"CurrentTrackMetaData"`
-			NextTrackURI                 val `xml:"NextTrackURI"`
-			NextTrackMetaData            val `xml:"NextTrackMetaData"`
-			EnqueuedTransportURIMetaData val `xml:"EnqueuedTransportURIMetaData"`
-			AVTransportURI               val `xml:"AVTransportURI"`
-			AVTransportURIMetaData       val `xml:"AVTransportURIMetaData"`
+			TransportState               *val `xml:"TransportState"`
+			CurrentPlayMode              val  `xml:"CurrentPlayMode"`
+			RelativeTimePosition         val  `xml:"RelativeTimePosition"`
+			NumberOfTracks               *val `xml:"NumberOfTracks"`
+			CurrentTrack                 *val `xml:"CurrentTrack"`
+			CurrentTrackURI              *val `xml:"CurrentTrackURI"`
+			CurrentTrackDuration         *val `xml:"CurrentTrackDuration"`
+			CurrentTrackMetaData         *val `xml:"CurrentTrackMetaData"`
+			NextTrackURI                 val  `xml:"NextTrackURI"`
+			NextTrackMetaData            val  `xml:"NextTrackMetaData"`
+			EnqueuedTransportURIMetaData val  `xml:"EnqueuedTransportURIMetaData"`
+			AVTransportURI               *val `xml:"AVTransportURI"`
+			AVTransportURIMetaData       *val `xml:"AVTransportURIMetaData"`
 		} `xml:"InstanceID"`
 	}
 	if err := xml.Unmarshal([]byte(lastChange), &doc); err != nil {
@@ -190,31 +211,51 @@ func ParseAVTransportEvent(body []byte) (AVTransportEvent, error) {
 	}
 	instance := doc.Instance
 
-	current := parseDIDLTrack(instance.CurrentTrackMetaData.Val)
-	current.URI = instance.CurrentTrackURI.Val
-	current.Duration = instance.CurrentTrackDuration.Val
-
 	next := parseDIDLTrack(instance.NextTrackMetaData.Val)
 	next.URI = instance.NextTrackURI.Val
 
 	queueSource := parseDIDLTrack(instance.EnqueuedTransportURIMetaData.Val).Title
 
-	source := SourceInfo{
-		URI:  instance.AVTransportURI.Val,
-		Name: parseDIDLTrack(instance.AVTransportURIMetaData.Val).Title,
+	event := AVTransportEvent{
+		PlayMode:    instance.CurrentPlayMode.Val,
+		RelTime:     instance.RelativeTimePosition.Val, // rarely sent — LastChange usually omits it (see AVTransportEvent doc)
+		Next:        next,
+		QueueSource: queueSource,
 	}
 
-	return AVTransportEvent{
-		TransportState: instance.TransportState.Val,
-		PlayMode:       instance.CurrentPlayMode.Val,
-		RelTime:        instance.RelativeTimePosition.Val, // rarely sent — LastChange usually omits it (see AVTransportEvent doc)
-		Track:          atoiOrZero(instance.CurrentTrack.Val),
-		NumberOfTracks: atoiOrZero(instance.NumberOfTracks.Val),
-		Current:        current,
-		Next:           next,
-		QueueSource:    queueSource,
-		Source:         source,
-	}, nil
+	if instance.TransportState != nil {
+		event.TransportState, event.HasTransportState = instance.TransportState.Val, true
+	}
+
+	// The source is the URI and the name of what is loaded, and either one
+	// arriving means the event is talking about it.
+	if instance.AVTransportURI != nil || instance.AVTransportURIMetaData != nil {
+		event.Source = SourceInfo{
+			URI:  instance.AVTransportURI.text(),
+			Name: parseDIDLTrack(instance.AVTransportURIMetaData.text()).Title,
+		}
+		event.HasSource = true
+	}
+
+	if instance.CurrentTrack != nil {
+		event.Track, event.HasTrack = atoiOrZero(instance.CurrentTrack.Val), true
+	}
+	if instance.NumberOfTracks != nil {
+		event.NumberOfTracks, event.HasTracks = atoiOrZero(instance.NumberOfTracks.Val), true
+	}
+
+	// Any one of the three counts as the event talking about the current
+	// track. Every capture in testdata carries all three together, so the
+	// looser test costs nothing, and it keeps what did arrive rather than
+	// throwing a partial away.
+	if instance.CurrentTrackURI != nil || instance.CurrentTrackMetaData != nil ||
+		instance.CurrentTrackDuration != nil {
+		current := parseDIDLTrack(instance.CurrentTrackMetaData.text())
+		current.URI = instance.CurrentTrackURI.text()
+		current.Duration = instance.CurrentTrackDuration.text()
+		event.Current, event.HasCurrent = current, true
+	}
+	return event, nil
 }
 
 // parseDIDLTrack parses a DIDL-Lite <item> blob — used for both track

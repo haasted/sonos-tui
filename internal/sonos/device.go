@@ -147,17 +147,24 @@ func (d *Device) HandleAVTransportEvent(ctx context.Context, body []byte) error 
 	}
 
 	d.mu.Lock()
-	if parsed.TransportState != "" {
+	// Every field is guarded on having been reported rather than on being
+	// non-empty. LastChange omits what did not change, and emptiness is a
+	// reading in its own right -- these two are not the same question.
+	if parsed.HasTransportState {
 		d.state.Transport.State = parsed.TransportState
 	}
-	if parsed.Source.URI != "" {
-		// LastChange omits unchanged variables, so an event that says nothing
-		// about the source must not erase what we already know.
+	if parsed.HasSource {
 		d.state.Source = parsed.Source
 	}
-	d.state.Current = parsed.Current
-	d.state.Track = parsed.Track
-	d.state.Tracks = parsed.NumberOfTracks
+	if parsed.HasCurrent {
+		d.state.Current = parsed.Current
+	}
+	if parsed.HasTrack {
+		d.state.Track = parsed.Track
+	}
+	if parsed.HasTracks {
+		d.state.Tracks = parsed.NumberOfTracks
+	}
 	d.state.RelTime = relTime
 	snapshot := d.state
 	d.mu.Unlock()
