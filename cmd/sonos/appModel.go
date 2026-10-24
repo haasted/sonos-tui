@@ -39,6 +39,8 @@ type appModel struct {
 	queue         panes.Modal
 	grouping      panes.Modal
 
+	sized bool // a size has arrived; until then fits refuses nothing
+
 	// queueGen guards the queue arrows' breath. A new generation on every open
 	// and every close, so a tick from a closed list drives nothing.
 	queueGen int
@@ -342,8 +344,7 @@ func (m appModel) readUncovered() (appModel, tea.Cmd) {
 func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
+		m.width, m.height, m.sized = msg.Width, msg.Height, true
 		m.tabs.Width = msg.Width
 		m.help = m.help.SetSize(msg.Width, msg.Height)
 		m.queue = m.queue.SetSize(msg.Width, msg.Height)
@@ -359,6 +360,12 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c":
 			m.quitting = true
 			return m, tea.Sequence(tea.ClearScreen, tea.Quit)
+		}
+
+		// Nothing else while the UI is hidden: a key would act on a screen
+		// the reader cannot see.
+		if !m.fits() {
+			return m, nil
 		}
 
 		// An open modal owns the keyboard: without this the arrow keys would
@@ -673,6 +680,9 @@ func isSameSpeaker(device *sonos.Device, speaker sonos.Speaker) bool {
 func (m appModel) View() tea.View {
 	if m.quitting {
 		return tea.NewView("")
+	}
+	if !m.fits() {
+		return tea.NewView(m.tooSmallView())
 	}
 
 	var content string

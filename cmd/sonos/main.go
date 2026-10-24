@@ -27,6 +27,11 @@ var dbFlag = flag.String("db", "", "path to the application database; empty mean
 func main() {
 	flag.Parse()
 
+	if why, ok := preflight(); !ok {
+		fmt.Fprintln(os.Stderr, why)
+		os.Exit(1)
+	}
+
 	dumpLogs := log.CaptureLogs(*logsFlag, slog.LevelDebug)
 	defer dumpLogs()
 
@@ -69,6 +74,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "bubbletea error:", runErr)
 		os.Exit(1)
 	}
+
 }
 
 // openStore opens the application database, creating it on a first run.
