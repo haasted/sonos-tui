@@ -99,7 +99,7 @@ func TestQueueBottom_DropsTheSelectionAndFlashesWhatMoved(t *testing.T) {
 	content.items = itemsFor(applyMoves(queueURIs(q.everything()), sent.moves))
 	content = content.highlightSettled()
 	for _, track := range []int{2, 3} {
-		if content.highlightGlow(uriOf(track)) <= 0 {
+		if content.highlightGlow(selectedTrack{uri: uriOf(track)}) <= 0 {
 			t.Fatalf("Track %d moved but is not flashing", track)
 		}
 	}

@@ -319,7 +319,7 @@ func TestQueueMove_TheQueueAMoveProducedIsNotAChangeUnderTheReader(t *testing.T)
 func TestQueueMove_PressesWaitForTheQueueToCatchUp(t *testing.T) {
 	q := navQueue(40, 10)
 	moved, _ := q.Update(keyMsgFor("J"))
-	q = moved.(queueContent).clearMove().settleMove("x-sonos-http:track-11.mp3")
+	q = moved.(queueContent).clearMove().settleMove(landing{at: 12, uri: "x-sonos-http:track-11.mp3"})
 
 	before := titles(q)
 	after, cmd := q.Update(keyMsgFor("J"))
@@ -337,7 +337,7 @@ func TestQueueMove_PressesWaitForTheQueueToCatchUp(t *testing.T) {
 // Case: a queue that never comes back. The event that would end the wait can
 // be dropped, and a reader must not be left unable to move anything.
 func TestQueueMove_WaitingForAQueueExpires(t *testing.T) {
-	q := navQueue(40, 10).settleMove("x-sonos-http:track-11.mp3")
+	q := navQueue(40, 10).settleMove(landing{at: 12, uri: "x-sonos-http:track-11.mp3"})
 	if !q.awaitingQueue() {
 		t.Fatal("a move just sent should be waiting")
 	}

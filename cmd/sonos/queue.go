@@ -70,6 +70,24 @@ type selectedTrack struct {
 	nth int // 0-based, among the items sharing this URI
 }
 
+// landing is where a moved track should be in the queue the speaker sends
+// back, and the URI that should be found there. A copy count cannot say it:
+// it changes when a track moves past another copy of itself.
+type landing struct {
+	at  int // 1-based position once the moves are done
+	uri string
+}
+
+// landingsIn reads where each carried track sits in model, the queue as it
+// will be once the moves are done.
+func landingsIn(model, carried []int, uriAt map[int]string) []landing {
+	landings := make([]landing, 0, len(carried))
+	for _, position := range carried {
+		landings = append(landings, landing{at: slices.Index(model, position) + 1, uri: uriAt[position]})
+	}
+	return landings
+}
+
 // queueContent lists a speaker's queue inside a modal. It holds what it was
 // given and where the reader has scrolled to; it fetches nothing itself.
 type queueContent struct {
@@ -139,28 +157,17 @@ type queueContent struct {
 	// stale position is accepted and reaches the wrong track.
 	awaitingAt time.Time
 
-	// settling are the tracks to look for in the queue that comes back: the
-	// speaker is what says where they really went. URIs rather than
-	// positions, because the position is precisely what changed. More than
-	// one when a whole selection was played next, and none for a removal,
-	// which has no track left to find.
-	//
-	// settlingFollow says whether landing should also move the cursor onto
-	// the track (a shift committed with J/K, which the reader is watching
-	// move) or only flash it (play next, which deliberately leaves the
-	// cursor where it was -- see playNext).
-	settling       []string
+	// settling are where the tracks of a move should land, looked for in the
+	// queue that comes back. settlingFollow moves the cursor onto the one a
+	// J/K shift sent; play next and send to bottom only flash theirs.
+	settling       []landing
 	settlingFollow bool
 
-	// highlightURIs are the tracks flashing briefly after a move landed, so
-	// the reader sees where they went even when the cursor does not follow
-	// them there. Nil when nothing is highlighted.
-	//
-	// A map, so a row asks in one lookup rather than searching a list every
-	// time it is drawn. Replaced wholesale rather than written to, for the
-	// reason selected carries: every copy of this content shares it.
-	highlightURIs map[string]bool
-	highlightAt   time.Time
+	// highlighted are the tracks flashing after a move landed, by copy so a
+	// duplicate stays dark. Replaced wholesale, never written to: every copy
+	// of this content shares the map.
+	highlighted map[selectedTrack]bool
+	highlightAt time.Time
 }
 
 var _ tea.Model = queueContent{}
@@ -306,16 +313,16 @@ func (q queueContent) clearMove() queueContent {
 // settleMove records that a committed move has gone to the speaker and names
 // the track to look for in the queue that comes back, moving the cursor onto
 // it once found.
-func (q queueContent) settleMove(uri string) queueContent {
-	q.settling, q.settlingFollow = []string{uri}, true
+func (q queueContent) settleMove(to landing) queueContent {
+	q.settling, q.settlingFollow = []landing{to}, true
 	return q.awaitQueue()
 }
 
 // awaitHighlight is settleMove without moving the cursor: the queue that
 // comes back is still recognised as this command's own answer, but only the
 // flash follows the track, the way playNext wants it.
-func (q queueContent) awaitHighlight(uris ...string) queueContent {
-	q.settling, q.settlingFollow = uris, false
+func (q queueContent) awaitHighlight(landings ...landing) queueContent {
+	q.settling, q.settlingFollow = landings, false
 	return q.awaitQueue()
 }
 
@@ -348,15 +355,15 @@ func (q queueContent) clearAwaiting() queueContent {
 // the speaker has said where it went. The reader was watching that track, not
 // that row.
 func (q queueContent) followSettled() queueContent {
-	q, uris := q.clearSettling()
-	if len(uris) == 0 {
+	q, landings := q.clearSettling()
+	positions := q.landedAt(landings)
+	if len(positions) == 0 {
 		return q
 	}
 
-	// Only ever one: J and K commit a single track, and the cursor cannot
-	// follow more than one anyway.
+	// Only ever one: J and K commit a single track.
 	for i, item := range q.items {
-		if item.URI == uris[0] {
+		if item.Position == positions[0] {
 			q.cursor = i
 			return q.follow()
 		}
@@ -364,22 +371,48 @@ func (q queueContent) followSettled() queueContent {
 	return q
 }
 
+// landedAt finds the position each landing came to rest at: where it was sent,
+// if that holds the URI it carried, and otherwise the first copy of that URI,
+// since the queue was changed elsewhere in the meantime.
+func (q queueContent) landedAt(landings []landing) []int {
+	all := q.everything()
+
+	var positions []int
+	for _, l := range landings {
+		if i := l.at - 1; i >= 0 && i < len(all) && all[i].URI == l.uri {
+			positions = append(positions, all[i].Position)
+			continue
+		}
+		if i := slices.IndexFunc(all, func(item sonos.QueueItem) bool { return item.URI == l.uri }); i >= 0 {
+			positions = append(positions, all[i].Position)
+		}
+	}
+	return positions
+}
+
 // highlightSettled flashes the tracks a played-next move sent away, now that
 // the speaker has said where they landed, and leaves the cursor on a track
 // that did not move -- see playNext for why it does not follow them.
 func (q queueContent) highlightSettled() queueContent {
-	q, uris := q.clearSettling()
-	if len(uris) == 0 {
+	q, landings := q.clearSettling()
+	positions := q.landedAt(landings)
+	if len(positions) == 0 {
 		return q
 	}
 
-	moved := make(map[string]bool, len(uris))
-	for _, uri := range uris {
-		moved[uri] = true
+	moved := make(map[int]bool, len(positions))
+	for _, position := range positions {
+		moved[position] = true
 	}
+	tracks := make(map[selectedTrack]bool, len(positions))
+	q.eachTrack(func(position int, track selectedTrack) {
+		if moved[position] {
+			tracks[track] = true
+		}
+	})
 
 	q = q.restOn(moved)
-	return q.highlight(moved)
+	return q.highlight(tracks)
 }
 
 // restOn puts the cursor on the nearest track that did NOT move, looking
@@ -388,19 +421,19 @@ func (q queueContent) highlightSettled() queueContent {
 // The tracks the reader sent away are now somewhere else, and a cursor left
 // sitting on one would have followed them there without being asked. Looking
 // down first keeps it near the rows they were working through.
-func (q queueContent) restOn(moved map[string]bool) queueContent {
-	if q.cursor >= len(q.items) || !moved[q.items[q.cursor].URI] {
+func (q queueContent) restOn(moved map[int]bool) queueContent {
+	if q.cursor >= len(q.items) || !moved[q.items[q.cursor].Position] {
 		return q.follow()
 	}
 
 	for i := q.cursor + 1; i < len(q.items); i++ {
-		if !moved[q.items[i].URI] {
+		if !moved[q.items[i].Position] {
 			q.cursor = i
 			return q.follow()
 		}
 	}
 	for i := q.cursor - 1; i >= 0; i-- {
-		if !moved[q.items[i].URI] {
+		if !moved[q.items[i].Position] {
 			q.cursor = i
 			return q.follow()
 		}
@@ -410,22 +443,22 @@ func (q queueContent) restOn(moved map[string]bool) queueContent {
 
 // clearSettling closes the wait, returning the updated content alongside the
 // track it was waiting for, or empty if none was.
-func (q queueContent) clearSettling() (queueContent, []string) {
-	uris := q.settling
+func (q queueContent) clearSettling() (queueContent, []landing) {
+	landings := q.settling
 	q.settling, q.settlingFollow = nil, false
 	q = q.clearAwaiting()
-	return q, uris
+	return q, landings
 }
 
 // highlight marks the tracks that just landed, to flash briefly the next
 // time the queue holding them is drawn. The map is taken as given and never
 // written to afterwards -- see the field.
-func (q queueContent) highlight(uris map[string]bool) queueContent {
-	q.highlightURIs, q.highlightAt = uris, time.Now()
+func (q queueContent) highlight(tracks map[selectedTrack]bool) queueContent {
+	q.highlighted, q.highlightAt = tracks, time.Now()
 	return q
 }
 
-// highlightGlow is how lit uri's flash is, from 1 just after landing to 0
+// highlightGlow is how lit track's flash is, from 1 just after landing to 0
 // once highlightDuration has passed, and for any other track.
 // highlightHold is the share of highlightDuration the flash stays at full
 // glow before it starts to fade. A pulse that starts fading on its very
@@ -433,8 +466,8 @@ func (q queueContent) highlight(uris map[string]bool) queueContent {
 // reader glancing right after the queue lands still catches it fully lit.
 const highlightHold = 0.35
 
-func (q queueContent) highlightGlow(uri string) float32 {
-	if !q.highlightURIs[uri] {
+func (q queueContent) highlightGlow(track selectedTrack) float32 {
+	if !q.highlighted[track] {
 		return 0
 	}
 
@@ -452,7 +485,7 @@ func (q queueContent) highlightGlow(uri string) float32 {
 // highlighting reports whether a flash is still fading, so the repaint chain
 // knows to keep ticking for it even where nothing else asks for a repaint.
 func (q queueContent) highlighting() bool {
-	return len(q.highlightURIs) > 0 && time.Since(q.highlightAt) < highlightDuration
+	return len(q.highlighted) > 0 && time.Since(q.highlightAt) < highlightDuration
 }
 
 // withSelection returns the content carrying a changed selection, built by
@@ -927,7 +960,7 @@ func (q queueContent) queueModel() ([]int, map[int]string) {
 	return model, uriAt
 }
 
-func (q queueContent) playNextMoves(positions []int) ([]queueMove, []string) {
+func (q queueContent) playNextMoves(positions []int) ([]queueMove, []landing) {
 	model, uriAt := q.queueModel()
 
 	wanted := make([]int, 0, len(positions))
@@ -939,7 +972,7 @@ func (q queueContent) playNextMoves(positions []int) ([]queueMove, []string) {
 	}
 
 	var moves []queueMove
-	var carried []string
+	var carried []int
 	for i := len(wanted) - 1; i >= 0; i-- {
 		position := wanted[i]
 
@@ -957,12 +990,12 @@ func (q queueContent) playNextMoves(positions []int) ([]queueMove, []string) {
 		}
 
 		moves = append(moves, queueMove{from: from + 1, to: to + 1})
-		carried = append(carried, uriAt[position])
+		carried = append(carried, position)
 
 		model = slices.Delete(model, from, from+1)
 		model = slices.Insert(model, to, position)
 	}
-	return moves, carried
+	return moves, landingsIn(model, carried, uriAt)
 }
 
 // sendToBottomMoves works out the moves that put tracks at the end of the
@@ -973,11 +1006,11 @@ func (q queueContent) playNextMoves(positions []int) ([]queueMove, []string) {
 // it and the run reads in the order the reader picked them. Aimed at the
 // end both times, as playNextMoves aims at the one place after the playing
 // track, so only the target differs.
-func (q queueContent) sendToBottomMoves(positions []int) ([]queueMove, []string) {
+func (q queueContent) sendToBottomMoves(positions []int) ([]queueMove, []landing) {
 	model, uriAt := q.queueModel()
 
 	var moves []queueMove
-	var carried []string
+	var carried []int
 	for _, position := range positions {
 		from := slices.Index(model, position)
 		last := len(model) - 1
@@ -986,12 +1019,12 @@ func (q queueContent) sendToBottomMoves(positions []int) ([]queueMove, []string)
 		}
 
 		moves = append(moves, queueMove{from: from + 1, to: last + 1})
-		carried = append(carried, uriAt[position])
+		carried = append(carried, position)
 
 		model = slices.Delete(model, from, from+1)
 		model = slices.Insert(model, last, position)
 	}
-	return moves, carried
+	return moves, landingsIn(model, carried, uriAt)
 }
 
 // sendToBottom asks for the picked tracks to move to the end of the queue,
@@ -1442,8 +1475,10 @@ func (q queueContent) row(item sonos.QueueItem, index int, picked bool, title, a
 		base = themedPlayingColor()
 		style = queuePlayingStyle()
 	}
-	if glow := q.highlightGlow(item.URI); glow > 0 {
-		style = style.Foreground(highlightColour(base, glow))
+	if q.highlighting() {
+		if glow := q.highlightGlow(q.trackOf(item)); glow > 0 {
+			style = style.Foreground(highlightColour(base, glow))
+		}
 	}
 
 	// The selection sits behind whatever the foreground is saying, so a

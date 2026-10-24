@@ -39,7 +39,7 @@ func TestQueuePlayNext_HighlightsTheTrackItMoved(t *testing.T) {
 	if content.cursor != 1 {
 		t.Fatalf("the cursor moved to row %d; play next must leave it where it was", content.cursor)
 	}
-	if glow := content.highlightGlow(moved.URI); glow <= 0 {
+	if glow := content.highlightGlow(selectedTrack{uri: moved.URI}); glow <= 0 {
 		t.Fatalf("the moved track is not highlighted, glow=%v", glow)
 	}
 }
@@ -77,12 +77,12 @@ func TestQueueMove_DoesNotHighlightTheTrackItMoved(t *testing.T) {
 // anything else acting on it.
 func TestQueueHighlight_FadesToZeroAfterItsDuration(t *testing.T) {
 	const uri = "x-sonos-http:track-1.mp3"
-	q := navQueue(5, 0).highlight(map[string]bool{uri: true})
+	q := navQueue(5, 0).highlight(map[selectedTrack]bool{{uri: uri}: true})
 
 	if !q.highlighting() {
 		t.Fatal("a highlight just set should be active")
 	}
-	if glow := q.highlightGlow(uri); glow <= 0 {
+	if glow := q.highlightGlow(selectedTrack{uri: uri}); glow <= 0 {
 		t.Fatalf("a highlight just set should glow, got %v", glow)
 	}
 
@@ -91,7 +91,7 @@ func TestQueueHighlight_FadesToZeroAfterItsDuration(t *testing.T) {
 	if q.highlighting() {
 		t.Fatal("a highlight past its duration should be done")
 	}
-	if glow := q.highlightGlow(uri); glow != 0 {
+	if glow := q.highlightGlow(selectedTrack{uri: uri}); glow != 0 {
 		t.Fatalf("a highlight past its duration should not glow, got %v", glow)
 	}
 }
@@ -100,17 +100,17 @@ func TestQueueHighlight_FadesToZeroAfterItsDuration(t *testing.T) {
 // than already mid-fade -- a flash with no hold is only ever seen fading.
 func TestQueueHighlight_HoldsAtFullGlowBeforeFading(t *testing.T) {
 	const uri = "x-sonos-http:track-1.mp3"
-	q := navQueue(5, 0).highlight(map[string]bool{uri: true})
+	q := navQueue(5, 0).highlight(map[selectedTrack]bool{{uri: uri}: true})
 
 	withinHold := time.Duration(float64(highlightDuration) * highlightHold / 2)
 	q.highlightAt = time.Now().Add(-withinHold)
-	if glow := q.highlightGlow(uri); glow != 1 {
+	if glow := q.highlightGlow(selectedTrack{uri: uri}); glow != 1 {
 		t.Fatalf("still within the hold, glow is %v, want 1", glow)
 	}
 
 	pastHold := time.Duration(float64(highlightDuration) * (1 + highlightHold) / 2)
 	q.highlightAt = time.Now().Add(-pastHold)
-	if glow := q.highlightGlow(uri); glow <= 0 || glow >= 1 {
+	if glow := q.highlightGlow(selectedTrack{uri: uri}); glow <= 0 || glow >= 1 {
 		t.Fatalf("past the hold, glow should be easing between 0 and 1, got %v", glow)
 	}
 }

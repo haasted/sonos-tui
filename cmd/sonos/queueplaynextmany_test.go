@@ -116,11 +116,11 @@ func TestPlayNextMany_EveryMovedTrackFlashes(t *testing.T) {
 	content = content.highlightSettled()
 
 	for _, track := range []int{7, 10} {
-		if content.highlightGlow(uriOf(track)) <= 0 {
+		if content.highlightGlow(selectedTrack{uri: uriOf(track)}) <= 0 {
 			t.Fatalf("Track %d moved but is not flashing", track)
 		}
 	}
-	if content.highlightGlow(uriOf(3)) > 0 {
+	if content.highlightGlow(selectedTrack{uri: uriOf(3)}) > 0 {
 		t.Fatal("a track that did not move is flashing")
 	}
 }
