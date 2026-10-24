@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -18,20 +19,35 @@ import (
 // this reads the bindings out of the source instead —
 // adding one without documenting it fails here rather than silently rotting.
 func TestHelp_DocumentsEveryKeyTheAppHandles(t *testing.T) {
-	documented := helpKeySet(playerHelp, queueHelp)
+	documented := map[string]map[string]bool{}
+	for file, layer := range helpLayers {
+		documented[file] = helpKeySet(layer.table)
+	}
 
-	for _, key := range boundKeys(t) {
-		if why, omitted := helpOmissions[key]; omitted {
-			t.Logf("%q deliberately undocumented: %s", key, why)
+	for _, bound := range boundKeys(t) {
+		if why, omitted := helpOmissions[bound.key]; omitted {
+			t.Logf("%q deliberately undocumented: %s", bound.key, why)
+			continue
+		}
+		if why, bare := helpLayersWithoutAPopup[bound.file]; bare {
+			t.Logf("%s binds %q and no popup covers it: %s", bound.file, bound.key, why)
 			continue
 		}
 
-		want := key
-		if alias, ok := helpAliases[key]; ok {
+		layer, named := helpLayers[bound.file]
+		if !named {
+			t.Errorf("%s binds %q, and no popup is named as its owner — add it to helpLayers "+
+				"or to helpLayersWithoutAPopup with a reason", bound.file, bound.key)
+			continue
+		}
+
+		want := bound.key
+		if alias, ok := helpAliases[bound.key]; ok {
 			want = alias
 		}
-		if !documented[want] {
-			t.Errorf("key %q is handled but not in the help popup (looked for %q)", key, want)
+		if !documented[bound.file][want] {
+			t.Errorf("%s binds %q, which the %s popup does not document (looked for %q)",
+				bound.file, bound.key, layer.name, want)
 		}
 	}
 }
@@ -41,7 +57,7 @@ func TestHelp_DocumentsEveryKeyTheAppHandles(t *testing.T) {
 func TestHelp_PromisesNothingTheAppIgnores(t *testing.T) {
 	bound := map[string]bool{}
 	for _, key := range boundKeys(t) {
-		bound[key] = true
+		bound[key.key] = true
 	}
 
 	for _, key := range []string{"?", "q", "p", "j", "l", "m", "enter"} {
@@ -97,6 +113,25 @@ func helpKeySet(tables ...helpTable) map[string]bool {
 	return documented
 }
 
+// helpLayers names the popup that must document a binding, by the file it
+// lives in. The key alone cannot say: k and j mean different things in the
+// player and the queue.
+var helpLayers = map[string]struct {
+	name  string // what to call the popup when a key is missing from it
+	table helpTable
+}{
+	"speaker.go":  {"player", playerHelp},
+	"appModel.go": {"player", playerHelp},
+	"tabs.go":     {"player", playerHelp},
+	"queue.go":    {"queue", queueHelp},
+}
+
+// helpLayersWithoutAPopup are files whose bindings no popup documents yet,
+// with the reason, so the gap is logged rather than hidden.
+var helpLayersWithoutAPopup = map[string]string{
+	"grouping.go": "the grouping modal has no table of its own, and takes ? before the player's handler sees it",
+}
+
 // helpAliases maps a binding to the text that documents it, where the two
 // differ: uppercase variants are covered by their lowercase form, the arrow
 // keys are drawn as glyphs, and the queue's keys are abbreviated to fit the
@@ -116,15 +151,25 @@ var helpOmissions = map[string]string{
 	"?":      "Not showing the button that opened the list of keyboard shortcuts",
 }
 
+// boundKey is one key literal and the file that switches on it. The file is
+// the only thing in the source that says which popup ought to document it.
+type boundKey struct {
+	key  string
+	file string
+}
+
 // boundKeys reads every key literal the app switches on, from all three layers
 // that own bindings. Parsing the source rather than maintaining a second list
 // is the point: a second list would drift exactly as the help text would.
-func boundKeys(t *testing.T) []string {
+func boundKeys(t *testing.T) []boundKey {
 	t.Helper()
 
-	var keys []string
+	var keys []boundKey
 	for _, dir := range []string{".", "../../internal/ui/panes"} {
-		packages, err := parser.ParseDir(token.NewFileSet(), dir, nil, 0)
+		// The file set outlives the parse: it is what turns a node position
+		// back into the file name that says which layer owns the binding.
+		fset := token.NewFileSet()
+		packages, err := parser.ParseDir(fset, dir, nil, 0)
 		if err != nil {
 			t.Fatalf("parsing %s: %v", dir, err)
 		}
@@ -134,8 +179,11 @@ func boundKeys(t *testing.T) []string {
 				if !ok || !switchesOnAKey(stmt) {
 					return true
 				}
+				file := filepath.Base(fset.Position(stmt.Pos()).Filename)
 				for _, clause := range stmt.Body.List {
-					keys = append(keys, stringLiterals(clause.(*ast.CaseClause).List)...)
+					for _, key := range stringLiterals(clause.(*ast.CaseClause).List) {
+						keys = append(keys, boundKey{key: key, file: file})
+					}
 				}
 				return true
 			})
