@@ -283,7 +283,7 @@ func (m Modal) box() string {
 		body = strings.Join(lines[:inner], "\n")
 	}
 	if m.NoticeShowing() {
-		return m.noticed(body, width, inner)
+		return m.noticed(body, width, height)
 	}
 
 	// Width counts the border, Height does not — an asymmetry in lipgloss
@@ -296,16 +296,15 @@ func (m Modal) box() string {
 	// own answer. Light is nil whenever nothing is bumping, so the sweep has
 	// the border back as soon as the pulse cools.
 	if m.sweeping() && m.Light == nil {
-		// inner-2, not inner: lipgloss counts the border in a bordered
-		// style's Height, so the resting box renders inner lines in total.
-		// A swept box that drew inner rows INSIDE its own border would be two
-		// rows taller, and the modal would shrink as the light finished.
-		rows := max(inner-2, 0)
-		content := modalInnerStyle.Width(width - 2).Height(rows).Render(body)
-		return m.sweptBorder(content, width, rows)
+		// inner rows inside a border of its own: height in total, the same as
+		// the resting box below, so the modal keeps its size as the light ends.
+		content := modalInnerStyle.Width(width - 2).Height(inner).Render(body)
+		return m.sweptBorder(content, width, inner)
 	}
 
-	box := modalStyle.Width(width).Height(inner).Render(body)
+	// height, not inner: lipgloss counts a border in a bordered style's
+	// Height, so asking for inner drew short content two rows shorter.
+	box := modalStyle.Width(width).Height(height).Render(body)
 	if m.Light == nil {
 		return box
 	}

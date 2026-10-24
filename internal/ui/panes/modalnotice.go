@@ -25,8 +25,8 @@ func (m Modal) NoticeInterval() time.Duration { return m.notice.interval() }
 // noticed draws the box with the notice in its bottom border. The notice owns
 // that edge while it lasts, as one owns the divider: the opening light is not
 // drawn, and a bump still answers on the top edge.
-func (m Modal) noticed(body string, width, inner int) string {
-	lines := strings.Split(modalStyle.Width(width).Height(inner).Render(body), "\n")
+func (m Modal) noticed(body string, width, height int) string {
+	lines := strings.Split(modalStyle.Width(width).Height(height).Render(body), "\n")
 	drawn := lipgloss.Width(lines[0])
 	if m.Light != nil {
 		lines[0] = m.edge(ModalTop, drawn)
