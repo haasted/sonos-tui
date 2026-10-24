@@ -34,7 +34,8 @@ const (
 const (
 	noticeHold     = 4 * time.Second         // fully lit before it starts to go
 	noticeBrief    = 1200 * time.Millisecond // a confirmation's hold, which is read at a glance
-	noticeFade     = 900 * time.Millisecond  // eased fade back to the plain rule
+	noticeFade     = 900 * time.Millisecond  // eased fade of the text to nothing
+	noticeReturn   = 250 * time.Millisecond  // the rule it hid fading back in afterwards
 	noticeInterval = 40 * time.Millisecond   // repaint rate while fading
 	noticeFramed   = 16 * time.Millisecond   // repaint rate while a notice is opening or collapsing
 	noticeLead     = 4                       // shortest run of rule left either side of the label
@@ -162,6 +163,32 @@ func (n notice) strength() float64 {
 	return t * t * (3 - 2*t) // smoothstep, matching the volume and mute fades
 }
 
+// returning reports how far the rule hidden by a plain notice has faded back
+// in, once its text has gone.
+func (n notice) returning() (float64, bool) {
+	if n.entrance != NoticeAppear || n.shownAt.IsZero() {
+		return 0, false
+	}
+	since := time.Since(n.shownAt) - n.hold() - noticeFade
+	if since < 0 || since >= noticeReturn {
+		return 0, false
+	}
+	t := float64(since) / float64(noticeReturn)
+	return t * t * (3 - 2*t), true
+}
+
+// done reports that nothing of the notice is left on the rule.
+func (n notice) done() bool {
+	if n.shownAt.IsZero() {
+		return true
+	}
+	end := n.openDuration() + n.hold() + noticeFade
+	if n.entrance == NoticeAppear {
+		end += noticeReturn
+	}
+	return time.Since(n.shownAt) >= end
+}
+
 // label is the notice as it wants to be drawn, before any truncation. The
 // spaces are the gap between the text and the rule it parts.
 func (n notice) label() string {
@@ -201,10 +228,10 @@ func (n notice) reveal(strength float64) flashsweep.Reveal {
 // label opens from the middle of the divider, where a left-set one would
 // appear to burst from an arbitrary point a third of the way across.
 func (n notice) render(run string) string {
-	strength := n.strength()
-	if strength <= 0 {
+	if n.done() {
 		return separatorStyle.Render(run)
 	}
+	strength := n.strength()
 
 	width := lipgloss.Width(run)
 	label := truncate(n.label(), width-noticeLead)
@@ -224,6 +251,10 @@ func (n notice) render(run string) string {
 // otherwise mid-opening, held open, or mid-collapse.
 func (n notice) body(label string, strength float64) string {
 	if n.entrance == NoticeAppear {
+		if back, ok := n.returning(); ok {
+			rule := strings.Repeat(string(noticeRule), lipgloss.Width(label))
+			return lipgloss.NewStyle().Foreground(blendToward(backdrop(), separatorColor, back)).Render(rule)
+		}
 		return noticeStyle(n.level, strength).Render(label)
 	}
 
@@ -273,7 +304,16 @@ func truncate(s string, width int) string {
 // the notice dissolves into the rule rather than blinking out of it.
 func noticeStyle(level NoticeLevel, strength float64) lipgloss.Style {
 	return lipgloss.NewStyle().Bold(strength > 0.5).
-		Foreground(blendToward(separatorColor, noticeColor(level), strength))
+		Foreground(blendToward(backdrop(), noticeColor(level), strength))
+}
+
+// backdrop is the terminal's background, which a plain notice fades into and
+// the rule fades back out of. A guess from the theme when it was not reported.
+func backdrop() color.Color {
+	if bg := theme.Background(); bg != nil {
+		return bg
+	}
+	return theme.LightDark(lipgloss.Color("#FFFFFF"), lipgloss.Color("#000000"))
 }
 
 // noticeFlash is the hot end of an entrance. It brightens on a dark ground and

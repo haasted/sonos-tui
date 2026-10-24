@@ -72,3 +72,14 @@ func ModalSweepCorner(m Modal) (int, bool) { return m.sweep.at, m.sweep.clockwis
 
 // ModalBox renders just the box, without compositing it over anything.
 func ModalBox(m Modal) string { return m.box() }
+
+const (
+	NoticeFade   = noticeFade
+	NoticeReturn = noticeReturn
+)
+
+// SetNoticeElapsed rewinds the current notice so it reads as `elapsed` old.
+func SetNoticeElapsed(t Tabs, elapsed time.Duration) Tabs {
+	t.notice.shownAt = time.Now().Add(-elapsed)
+	return t
+}

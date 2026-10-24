@@ -263,7 +263,7 @@ func (t Tabs) Update(msg tea.Msg) (Tabs, tea.Cmd) {
 		if msg.gen != t.noticeGen {
 			return t, nil
 		}
-		if t.notice.strength() <= 0 {
+		if t.notice.done() {
 			t.notice = notice{}
 			return t, nil
 		}
@@ -367,7 +367,7 @@ func (t Tabs) View() string {
 
 	// A notice owns the rule while it lasts: the sweep is decorative, and two
 	// things animating the same line at once would fight.
-	if t.notice.strength() > 0 {
+	if !t.notice.done() {
 		return t.joinRows(row, t.notice.render(run), content, rows[1:])
 	}
 
