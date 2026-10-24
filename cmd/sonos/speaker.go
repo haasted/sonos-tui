@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"sync/atomic"
 	"time"
@@ -217,7 +216,7 @@ func (m speakerModel) to(msg tea.Msg) tea.Msg {
 // refused reports a failed command, saying what is true rather than what broke
 // when the speaker is answering correctly.
 func (m speakerModel) refused(name string, err error, state sonos.DeviceState) tea.Msg {
-	because, ok := plainRefusal(name, err, state)
+	because, ok := refusalText(name, err, state)
 	if !ok {
 		return m.failed(err)
 	}
@@ -228,36 +227,13 @@ func (m speakerModel) refused(name string, err error, state sonos.DeviceState) t
 	return panes.NoticeMsg{Level: panes.NoticeInfo, Text: because}
 }
 
-// plainRefusal turns a speaker's refusal into a sentence a person would write.
-// It reports false for any failure it cannot explain, which then keeps the
-// speaker's own words: a guess is worse than a technical truth.
-func plainRefusal(name string, err error, state sonos.DeviceState) (string, bool) {
-	var upnp *sonos.UPnPError
-	if !errors.As(err, &upnp) || upnp.Code != sonos.UPnPTransitionNotAvailable {
-		return "", false
-	}
-
-	forwardOnly := state.Source.Kind() == sonos.SourceStation ||
-		state.Source.Kind() == sonos.SourceBroadcast
-
-	switch {
-	case name == actionPrevious && forwardOnly:
-		return "a station plays forward only", true
-	case name == actionPrevious && state.Track <= 1:
-		return "first track in the queue", true
-	case name == actionNext && state.Tracks > 0 && state.Track >= state.Tracks:
-		return "last track in the queue", true
-	}
-	return "", false
-}
-
 // failed reports a command failure as an app-wide notice. Deliberately NOT
 // addressed to this speaker's tab: the user may be looking at another room,
 // and a failure they never see is the whole problem notices exist to fix.
 func (m speakerModel) failed(err error) tea.Msg {
 	return panes.NoticeMsg{
 		Level: panes.NoticeError,
-		Text:  m.device.RoomName() + ": " + err.Error(),
+		Text:  m.device.RoomName() + ": " + faultText(err),
 	}
 }
 

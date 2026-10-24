@@ -715,7 +715,7 @@ func (m appModel) applyGroupChange(msg groupChangeMsg) (tea.Model, tea.Cmd) {
 		return m, func() tea.Msg {
 			if err := target.LeaveGroup(ctx); err != nil {
 				slog.Warn("taking a speaker out of a group", "speaker", msg.room, "err", err)
-				return panes.NoticeMsg{Level: panes.NoticeError, Text: "could not release " + msg.room}
+				return panes.NoticeMsg{Level: panes.NoticeError, Text: "could not release " + msg.room + ": " + faultText(err)}
 			}
 			return panes.NoticeMsg{Level: panes.NoticeInfo, Text: "released " + msg.room, Confirmation: true}
 		}
@@ -730,7 +730,7 @@ func (m appModel) applyGroupChange(msg groupChangeMsg) (tea.Model, tea.Cmd) {
 	return m, func() tea.Msg {
 		if err := target.JoinGroup(ctx, coordinator); err != nil {
 			slog.Warn("adding a speaker to a group", "speaker", msg.room, "err", err)
-			return panes.NoticeMsg{Level: panes.NoticeError, Text: "could not add " + msg.room}
+			return panes.NoticeMsg{Level: panes.NoticeError, Text: "could not add " + msg.room + ": " + faultText(err)}
 		}
 		return panes.NoticeMsg{Level: panes.NoticeInfo, Text: "added " + msg.room, Confirmation: true}
 	}

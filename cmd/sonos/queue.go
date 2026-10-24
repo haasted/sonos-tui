@@ -1376,7 +1376,7 @@ func (q queueContent) note() string {
 	case q.loading:
 		return "Reading the queue…"
 	case q.err != nil:
-		return "Could not read the queue: " + q.err.Error()
+		return "Could not read the queue: " + faultText(q.err)
 	case len(q.items) == 0:
 		return "The queue is empty."
 	default:

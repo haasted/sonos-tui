@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -19,7 +20,7 @@ func TestRefusal_AStationHasNoPreviousTrack(t *testing.T) {
 		Tracks: 1,
 	}
 
-	got, ok := plainRefusal(actionPrevious, transitionError(), state)
+	got, ok := refusalText(actionPrevious, transitionError(), state)
 	if !ok {
 		t.Fatal("a station refusing previous was not recognised")
 	}
@@ -39,10 +40,10 @@ func TestRefusal_TheEndsOfAQueue(t *testing.T) {
 		}
 	}
 
-	if _, ok := plainRefusal(actionPrevious, transitionError(), queue(1, 20)); !ok {
+	if _, ok := refusalText(actionPrevious, transitionError(), queue(1, 20)); !ok {
 		t.Error("previous at the first track was not recognised")
 	}
-	if _, ok := plainRefusal(actionNext, transitionError(), queue(20, 20)); !ok {
+	if _, ok := refusalText(actionNext, transitionError(), queue(20, 20)); !ok {
 		t.Error("next at the last track was not recognised")
 	}
 }
@@ -56,7 +57,7 @@ func TestRefusal_KeepsTheSpeakersWordsWhenItCannotExplain(t *testing.T) {
 		Tracks: 20,
 	}
 
-	if got, ok := plainRefusal(actionPrevious, transitionError(), middle); ok {
+	if got, ok := refusalText(actionPrevious, transitionError(), middle); ok {
 		t.Fatalf("a refusal in mid-queue was explained away as %q", got)
 	}
 }
@@ -70,7 +71,7 @@ func TestRefusal_OnlyTranslatesTheRefusalCode(t *testing.T) {
 		errors.New("dial tcp 192.168.1.10:1400: connect: no route to host"),
 		fmt.Errorf("previous track: %w", &sonos.UPnPError{Code: 402, Description: "invalid args"}),
 	} {
-		if got, ok := plainRefusal(actionPrevious, err, station); ok {
+		if got, ok := refusalText(actionPrevious, err, station); ok {
 			t.Errorf("%v was translated to %q", err, got)
 		}
 	}
@@ -112,8 +113,9 @@ func TestRefusal_MessagesFitTheRule(t *testing.T) {
 		{actionPrevious, sonos.DeviceState{Source: sonos.SourceInfo{URI: "x-sonosapi-radio:x"}}},
 		{actionPrevious, sonos.DeviceState{Source: sonos.SourceInfo{URI: "x-rincon-queue:q"}, Track: 1, Tracks: 9}},
 		{actionNext, sonos.DeviceState{Source: sonos.SourceInfo{URI: "x-rincon-queue:q"}, Track: 9, Tracks: 9}},
+		{actionNext, sonos.DeviceState{Source: sonos.SourceInfo{URI: "x-sonosapi-hls:station"}}},
 	} {
-		got, ok := plainRefusal(c.name, transitionError(), c.state)
+		got, ok := refusalText(c.name, transitionError(), c.state)
 		if !ok {
 			t.Fatalf("%s was not recognised", c.name)
 		}
@@ -139,4 +141,68 @@ func containsUPnP(s string) bool {
 		}
 	}
 	return false
+}
+
+// Case: forwards on live radio. A station refuses to go back and still
+// allows next, so this is narrower than the backwards case rather than its
+// mirror -- only a broadcast has nothing ahead of it.
+func TestRefusal_LiveRadioHasNoNextTrack(t *testing.T) {
+	broadcast := sonos.DeviceState{Source: sonos.SourceInfo{URI: "x-sonosapi-hls:station"}}
+
+	got, ok := refusalText(actionNext, transitionError(), broadcast)
+	if !ok {
+		t.Fatal("live radio refusing next was not recognised")
+	}
+	if containsUPnP(got) {
+		t.Fatalf("the message still speaks UPnP: %q", got)
+	}
+
+	// An algorithmic station does allow next, so a refusal there is not this.
+	station := sonos.DeviceState{Source: sonos.SourceInfo{URI: "x-sonosapi-radio:ST%3aetc"}}
+	if got, ok := refusalText(actionNext, transitionError(), station); ok {
+		t.Fatalf("next on an algorithmic station was explained away as %q", got)
+	}
+}
+
+// Case: a speaker that never answered. The wrapped dial error names a port
+// and an address and tells a reader nothing, but it is still a fault, so it
+// goes through the other door and keeps its room name.
+func TestFault_AnUnreachableSpeakerSaysSoPlainly(t *testing.T) {
+	err := fmt.Errorf("refreshing state: %w", &url.Error{
+		Op:  "Get",
+		URL: "http://192.168.1.10:1400/xml/device_description.xml",
+		Err: errors.New("dial tcp 192.168.1.10:1400: connect: no route to host"),
+	})
+
+	got := faultText(err)
+
+	if strings.Contains(got, "dial tcp") || strings.Contains(got, "1400") {
+		t.Fatalf("the dial error survived into the message: %q", got)
+	}
+	if got == "" {
+		t.Fatal("an unreachable speaker produced no message at all")
+	}
+}
+
+// Case: a failure nothing can name. It must arrive exactly as it was, so a
+// fault nobody predicted is still diagnosable from the screen.
+func TestFault_KeepsTheWordsOfAFailureItCannotName(t *testing.T) {
+	err := fmt.Errorf("writing the queue: %w", &sonos.UPnPError{Code: 402, Description: "invalid args"})
+
+	if got := faultText(err); got != err.Error() {
+		t.Fatalf("an unrecognised failure was rewritten as %q, want %q", got, err.Error())
+	}
+}
+
+// Case: the codes that mean WE sent something wrong. Dressing those up as a
+// polite refusal hides our own bug from the only person who can fix it.
+func TestRefusal_DoesNotExcuseOurOwnMistakes(t *testing.T) {
+	station := sonos.DeviceState{Source: sonos.SourceInfo{URI: "x-sonosapi-radio:x"}}
+
+	for _, code := range []int{401, 402, 600} {
+		err := fmt.Errorf("previous track: %w", &sonos.UPnPError{Code: code})
+		if got, ok := refusalText(actionPrevious, err, station); ok {
+			t.Errorf("code %d was excused as %q", code, got)
+		}
+	}
 }
