@@ -100,6 +100,8 @@ type Modal struct {
 	sweep   sweepCorner
 	sweptAt time.Time
 
+	notice notice // set into the bottom border; the zero value shows nothing
+
 	open   bool
 	width  int // terminal width, not the box's
 	height int
@@ -117,6 +119,7 @@ func (m Modal) IsOpen() bool { return m.open }
 func (m Modal) Open() Modal {
 	m.open = true
 	m.sweep, m.sweptAt = sweepCorner{}, time.Time{}
+	m.notice = notice{}
 	return m
 }
 
@@ -278,6 +281,9 @@ func (m Modal) box() string {
 	inner := height - 2 // the border's own two rows
 	if lines := strings.Split(body, "\n"); len(lines) > inner {
 		body = strings.Join(lines[:inner], "\n")
+	}
+	if m.NoticeShowing() {
+		return m.noticed(body, width, inner)
 	}
 
 	// Width counts the border, Height does not — an asymmetry in lipgloss

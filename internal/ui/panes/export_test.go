@@ -83,3 +83,14 @@ func SetNoticeElapsed(t Tabs, elapsed time.Duration) Tabs {
 	t.notice.shownAt = time.Now().Add(-elapsed)
 	return t
 }
+
+// NoticeOpenFor is how long a notice built from this message takes to open.
+func NoticeOpenFor(msg NoticeMsg) time.Duration {
+	return notice{text: msg.Text, entrance: msg.Entrance}.openDuration()
+}
+
+// SetModalNoticeElapsed rewinds the modal's notice so it reads as `elapsed` old.
+func SetModalNoticeElapsed(m Modal, elapsed time.Duration) Modal {
+	m.notice.shownAt = time.Now().Add(-elapsed)
+	return m
+}

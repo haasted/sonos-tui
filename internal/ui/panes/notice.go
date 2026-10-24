@@ -122,7 +122,16 @@ type notice struct {
 	level        NoticeLevel
 	entrance     NoticeEntrance
 	confirmation bool
-	shownAt      time.Time // zero when nothing is showing
+	shownAt      time.Time   // zero when nothing is showing
+	rule         color.Color // the line it parts; nil for the tab bar's divider
+}
+
+// ruleColor is the colour of the line the notice parts and closes back into.
+func (n notice) ruleColor() color.Color {
+	if n.rule != nil {
+		return n.rule
+	}
+	return separatorColor
 }
 
 // hold is how long this notice stays fully lit. A confirmation goes quickly:
@@ -211,10 +220,10 @@ func (n notice) reveal(strength float64) flashsweep.Reveal {
 	return flashsweep.Reveal{
 		Style:     n.entrance.style(),
 		Fill:      noticeRule,
-		FillColor: flashsweep.FromColor(separatorColor),
+		FillColor: flashsweep.FromColor(n.ruleColor()),
 		Ramp: flashsweep.Ramp{
-			Base:  flashsweep.FromColor(blendToward(separatorColor, noticeColor(n.level), strength)),
-			Flash: flashsweep.FromColor(blendToward(separatorColor, noticeFlash, strength)),
+			Base:  flashsweep.FromColor(blendToward(n.ruleColor(), noticeColor(n.level), strength)),
+			Flash: flashsweep.FromColor(blendToward(n.ruleColor(), noticeFlash, strength)),
 		},
 	}
 }
@@ -228,8 +237,9 @@ func (n notice) reveal(strength float64) flashsweep.Reveal {
 // label opens from the middle of the divider, where a left-set one would
 // appear to burst from an arbitrary point a third of the way across.
 func (n notice) render(run string) string {
+	rule := lipgloss.NewStyle().Foreground(n.ruleColor())
 	if n.done() {
-		return separatorStyle.Render(run)
+		return rule.Render(run)
 	}
 	strength := n.strength()
 
@@ -242,9 +252,9 @@ func (n notice) render(run string) string {
 	lead := max((width-lipgloss.Width(label))/2, noticeLead)
 	trailing := max(width-lead-lipgloss.Width(label), 0)
 
-	return separatorStyle.Render(strings.Repeat(string(noticeRule), lead)) +
+	return rule.Render(strings.Repeat(string(noticeRule), lead)) +
 		n.body(label, strength) +
-		separatorStyle.Render(strings.Repeat(string(noticeRule), trailing))
+		rule.Render(strings.Repeat(string(noticeRule), trailing))
 }
 
 // body draws the label itself: plainly for a notice that just appears, and
@@ -253,7 +263,7 @@ func (n notice) body(label string, strength float64) string {
 	if n.entrance == NoticeAppear {
 		if back, ok := n.returning(); ok {
 			rule := strings.Repeat(string(noticeRule), lipgloss.Width(label))
-			return lipgloss.NewStyle().Foreground(blendToward(backdrop(), separatorColor, back)).Render(rule)
+			return lipgloss.NewStyle().Foreground(blendToward(backdrop(), n.ruleColor(), back)).Render(rule)
 		}
 		return noticeStyle(n.level, strength).Render(label)
 	}
