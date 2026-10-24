@@ -74,3 +74,13 @@ func lastLine(s string) string {
 	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
 	return lines[len(lines)-1]
 }
+
+// Case: a terminal reporting almost no height. The box has no room inside its
+// border, and must draw what it can rather than panic.
+func TestModal_DrawsInATerminalWithNoRoom(t *testing.T) {
+	for _, rows := range []int{0, 1, 2} {
+		m := panes.NewModal(panes.StaticContent("body")).SetSize(70, rows).Open()
+
+		assert.NotPanics(t, func() { _ = panes.ModalBox(m) }, "%d rows", rows)
+	}
+}

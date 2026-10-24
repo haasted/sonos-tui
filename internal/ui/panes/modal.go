@@ -278,7 +278,7 @@ func (m Modal) box() string {
 		body = m.Content.View().Content
 	}
 
-	inner := height - 2 // the border's own two rows
+	inner := max(height-2, 0) // the border's own two rows, never fewer than none
 	if lines := strings.Split(body, "\n"); len(lines) > inner {
 		body = strings.Join(lines[:inner], "\n")
 	}
