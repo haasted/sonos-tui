@@ -228,10 +228,11 @@ func (m appModel) openQueue() (tea.Model, tea.Cmd) {
 	// has been kept current by events since. A read here is the fallback for a
 	// speaker whose first read has not landed yet.
 	m, sweeping := m.restartSweepChain()
+	m, hint := m.restartQueueHint()
 	if state.QueueKnown {
-		return m, sweeping
+		return m, tea.Batch(sweeping, hint)
 	}
-	return m, tea.Batch(sweeping, refreshQueue(m.ctx, speaker.transport()))
+	return m, tea.Batch(sweeping, hint, refreshQueue(m.ctx, speaker.transport()))
 }
 
 // refreshQueue reads a speaker's queue into its Device and reports that it

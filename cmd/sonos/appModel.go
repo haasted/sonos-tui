@@ -69,6 +69,8 @@ type appModel struct {
 	// sweepGen is the chain of frames driving the light round an opening
 	// modal's border, matched against arriving ticks so only one runs.
 	sweepGen int
+
+	queueHintGen int // the queue hint's chain: its wait, then its frames
 }
 
 // newAppModel builds the model, seeding tabs straight from the cache so the
@@ -384,6 +386,7 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if m.queue.IsOpen() {
+			m = m.retireQueueHint()
 			if msg.String() == "?" {
 				return m.openHelp(queueHelp)
 			}
@@ -391,6 +394,7 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.queue = queue
 			if !m.queue.IsOpen() {
 				m.queueGen = nextQueueGen() // the breath dies with the list
+				m.queueHintGen = nextQueueGen()
 				return m, cmd
 			}
 			if content, ok := m.queue.Content.(queueContent); ok && content.bumping() {
@@ -489,6 +493,10 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.applyModalSweepDue(msg)
 	case modalSweepTickMsg:
 		return m.applyModalSweepTick(msg)
+	case queueHintDueMsg:
+		return m.applyQueueHintDue(msg)
+	case queueHintTickMsg:
+		return m.applyQueueHintTick(msg)
 	case panes.NoticeMsg:
 		// A degraded speaker surfaces in the same seconds the hint would, and a
 		// hint replacing it would bury the one message that mattered. Falls
