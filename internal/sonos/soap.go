@@ -141,14 +141,35 @@ type (
 		UpdateID       int    `xml:"UpdateID"`
 	}
 
-	// setAVTransportURIAction points a speaker's transport somewhere. Used
-	// here only to point it at another speaker, which is how a group is made.
+	// setAVTransportURIAction points a speaker's transport somewhere: at
+	// another speaker, which is how a group is made, or at its own queue.
 	setAVTransportURIAction struct {
 		XMLName            xml.Name
 		Namespace          string `xml:"xmlns:u,attr"`
 		InstanceID         int    `xml:"InstanceID"`
 		CurrentURI         string `xml:"CurrentURI"`
 		CurrentURIMetaData string `xml:"CurrentURIMetaData"`
+	}
+
+	// addURIToQueueAction puts a track or a whole container into the queue.
+	// A DesiredFirstTrackNumberEnqueued of 0 means the end.
+	addURIToQueueAction struct {
+		XMLName                         xml.Name
+		Namespace                       string `xml:"xmlns:u,attr"`
+		InstanceID                      int    `xml:"InstanceID"`
+		EnqueuedURI                     string `xml:"EnqueuedURI"`
+		EnqueuedURIMetaData             string `xml:"EnqueuedURIMetaData"`
+		DesiredFirstTrackNumberEnqueued int    `xml:"DesiredFirstTrackNumberEnqueued"`
+		EnqueueAsNext                   int    `xml:"EnqueueAsNext"`
+	}
+
+	// setPlayModeAction sets shuffle and repeat together: Sonos has one mode
+	// for both.
+	setPlayModeAction struct {
+		XMLName     xml.Name
+		Namespace   string `xml:"xmlns:u,attr"`
+		InstanceID  int    `xml:"InstanceID"`
+		NewPlayMode string `xml:"NewPlayMode"`
 	}
 
 	// becomeCoordinatorAction takes a speaker out of its group. It takes no

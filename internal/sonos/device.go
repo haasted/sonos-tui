@@ -648,6 +648,34 @@ func (d *Device) Previous(ctx context.Context) error {
 	return nil
 }
 
+// ReplaceQueue empties the queue, fills it with the container and plays it
+// in mode. The mode is set every time: a shuffle left from before would
+// otherwise carry over. Only a coordinator has a queue to replace.
+func (d *Device) ReplaceQueue(ctx context.Context, c ServiceContainer, mode PlayMode) error {
+	metadata, err := c.Metadata()
+	if err != nil {
+		return err
+	}
+
+	steps := []func() error{
+		func() error { return d.client.RemoveAllTracksFromQueue(ctx) },
+		func() error { return d.client.AddURIToQueue(ctx, c.URI(), metadata) },
+		func() error { return d.client.SelectQueue(ctx, d.ID()) },
+		func() error { return d.client.SetPlayMode(ctx, mode) },
+		func() error { return d.client.Play(ctx) },
+	}
+	for _, step := range steps {
+		if err := step(); err != nil {
+			return fmt.Errorf("playing %s: %w", c.Title, err)
+		}
+	}
+
+	d.mu.Lock()
+	d.state.Transport.State = transportPlaying
+	d.mu.Unlock()
+	return nil
+}
+
 // PlayTrack jumps to the track at position within the queue and starts it,
 // whatever the speaker was doing before -- a station, another track, or this
 // one paused. Seek alone is not certain to resume a paused transport, so Play

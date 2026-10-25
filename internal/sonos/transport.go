@@ -74,6 +74,61 @@ func (c *SonosClient) SeekTrack(ctx context.Context, position int) error {
 	return err
 }
 
+// PlayMode is how a speaker moves through its queue. Sonos holds shuffle and
+// repeat as one value, and it belongs to the speaker, not to what is loaded.
+type PlayMode string
+
+const (
+	PlayModeNormal          PlayMode = "NORMAL"
+	PlayModeShuffleNoRepeat PlayMode = "SHUFFLE_NOREPEAT"
+)
+
+// SetPlayMode sets shuffle and repeat.
+func (c *SonosClient) SetPlayMode(ctx context.Context, mode PlayMode) error {
+	_, err := c.avTransport(ctx, "SetPlayMode", setPlayModeAction{
+		XMLName:     xml.Name{Local: "u:SetPlayMode"},
+		Namespace:   avtransportService,
+		NewPlayMode: string(mode),
+	})
+	return err
+}
+
+// RemoveAllTracksFromQueue empties the queue.
+func (c *SonosClient) RemoveAllTracksFromQueue(ctx context.Context) error {
+	_, err := c.avTransport(ctx, "RemoveAllTracksFromQueue",
+		instancePayload(avtransportService, "RemoveAllTracksFromQueue"))
+	return err
+}
+
+// AddURIToQueue puts uri at the end of the queue. A music-service item needs
+// its metadata too: the desc in it says which service and account it is from.
+func (c *SonosClient) AddURIToQueue(ctx context.Context, uri, metadata string) error {
+	_, err := c.avTransport(ctx, "AddURIToQueue", addURIToQueueAction{
+		XMLName:             xml.Name{Local: "u:AddURIToQueue"},
+		Namespace:           avtransportService,
+		EnqueuedURI:         uri,
+		EnqueuedURIMetaData: metadata,
+	})
+	return err
+}
+
+// queueURIScheme names a speaker's own queue as something to play.
+const queueURIScheme = "x-rincon-queue:"
+
+// SelectQueue makes the speaker play its own queue, rather than a station or
+// whatever else it had loaded. speakerID is its bare RINCON id.
+func (c *SonosClient) SelectQueue(ctx context.Context, speakerID string) error {
+	if speakerID == "" {
+		return fmt.Errorf("selecting the queue: no speaker named")
+	}
+	_, err := c.avTransport(ctx, "SetAVTransportURI", setAVTransportURIAction{
+		XMLName:    xml.Name{Local: "u:SetAVTransportURI"},
+		Namespace:  avtransportService,
+		CurrentURI: queueURIScheme + speakerID + "#0",
+	})
+	return err
+}
+
 // transportPlaying is the one TransportState that counts as playing.
 const transportPlaying = "PLAYING"
 
