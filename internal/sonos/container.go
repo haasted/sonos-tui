@@ -63,6 +63,8 @@ type (
 		Restricted bool     `xml:"restricted,attr"`
 		Title      string   `xml:"dc:title"`
 		Class      string   `xml:"upnp:class"`
+		Creator    string   `xml:"dc:creator,omitempty"`
+		Album      string   `xml:"upnp:album,omitempty"`
 		Desc       didlDesc `xml:"desc"`
 	}
 
@@ -86,35 +88,55 @@ func (c ServiceContainer) Metadata() (string, error) {
 	if !ok {
 		return "", fmt.Errorf("describing %q: unknown container kind %q", c.Title, c.Kind)
 	}
+	return marshalDIDL(didlItem{
+		ID:    c.itemID(),
+		Title: c.Title,
+		Class: class,
+	}, c.Service)
+}
+
+// Playable is the container as a speaker is given it.
+func (c ServiceContainer) Playable() (Playable, error) {
+	metadata, err := c.Metadata()
+	if err != nil {
+		return Playable{}, err
+	}
+	return Playable{URI: c.URI(), Metadata: metadata, Title: c.Title}, nil
+}
+
+// itemID is the kind's prefix and the escaped id:
+// "00060000libraryplaylist%3ap.V7VYpk7FYWLeW".
+func (c ServiceContainer) itemID() string {
+	return string(c.Kind) + escapeID(c.ID)
+}
+
+// marshalDIDL writes item as a DIDL-Lite document, filling in what every
+// item carries: no parent, restricted, and the desc naming the service.
+func marshalDIDL(item didlItem, service int) (string, error) {
+	item.ParentID = didlNoParent
+	item.Restricted = true
+	item.Desc = didlDesc{
+		ID:        didlServiceDescID,
+		NameSpace: rinconNamespace,
+		Value:     serviceToken(service),
+	}
 
 	out, err := xml.Marshal(didlLite{
 		DC:        dcNamespace,
 		UPnP:      upnpNamespace,
 		R:         rinconNamespace,
 		Namespace: didlNamespace,
-		Item: didlItem{
-			ID:         c.itemID(),
-			ParentID:   didlNoParent,
-			Restricted: true,
-			Title:      c.Title,
-			Class:      class,
-			Desc: didlDesc{
-				ID:        didlServiceDescID,
-				NameSpace: rinconNamespace,
-				Value:     c.serviceToken(),
-			},
-		},
+		Item:      item,
 	})
 	if err != nil {
-		return "", fmt.Errorf("describing %q: %w", c.Title, err)
+		return "", fmt.Errorf("describing %q: %w", item.Title, err)
 	}
 	return string(out), nil
 }
 
-// itemID is the kind's prefix and the escaped id, written with lowercase hex
-// as a speaker writes it: "00060000libraryplaylist%3ap.V7VYpk7FYWLeW".
-func (c ServiceContainer) itemID() string {
-	escaped := url.QueryEscape(c.ID)
+// escapeID escapes a service's id with lowercase hex, as a speaker writes it.
+func escapeID(id string) string {
+	escaped := url.QueryEscape(id)
 	var b strings.Builder
 	for i := 0; i < len(escaped); i++ {
 		b.WriteByte(escaped[i])
@@ -123,12 +145,12 @@ func (c ServiceContainer) itemID() string {
 			i += 2
 		}
 	}
-	return string(c.Kind) + b.String()
+	return b.String()
 }
 
 // serviceToken names the service. The service type is sid*256+7, as observed
 // for Apple Music; other services are untested. The account is in the URI.
-func (c ServiceContainer) serviceToken() string {
-	serviceType := c.Service<<8 + 7
+func serviceToken(service int) string {
+	serviceType := service<<8 + 7
 	return fmt.Sprintf("SA_RINCON%d_X_#Svc%d-0-Token", serviceType, serviceType)
 }

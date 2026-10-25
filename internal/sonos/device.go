@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 )
@@ -648,31 +649,60 @@ func (d *Device) Previous(ctx context.Context) error {
 	return nil
 }
 
-// ReplaceQueue empties the queue, fills it with the container and plays it
-// in mode. The mode is set every time: a shuffle left from before would
-// otherwise carry over. Only a coordinator has a queue to replace.
-func (d *Device) ReplaceQueue(ctx context.Context, c ServiceContainer, mode PlayMode) error {
-	metadata, err := c.Metadata()
-	if err != nil {
-		return err
-	}
-
-	steps := []func() error{
+// ReplaceQueue empties the queue, fills it with p and plays it in mode. The
+// mode is set every time: a shuffle left from before would otherwise carry
+// over. Only a coordinator has a queue to replace.
+func (d *Device) ReplaceQueue(ctx context.Context, p Playable, mode PlayMode) error {
+	return d.run(p, transportPlaying,
 		func() error { return d.client.RemoveAllTracksFromQueue(ctx) },
-		func() error { return d.client.AddURIToQueue(ctx, c.URI(), metadata) },
+		func() error { return d.client.AddURIToQueue(ctx, p.URI, p.Metadata, queueEnd, false) },
 		func() error { return d.client.SelectQueue(ctx, d.ID()) },
 		func() error { return d.client.SetPlayMode(ctx, mode) },
 		func() error { return d.client.Play(ctx) },
+	)
+}
+
+// PlayNext puts p into the queue after the playing track. When the queue is
+// not what plays, there is no playing track to follow, so it goes first.
+func (d *Device) PlayNext(ctx context.Context, p Playable) error {
+	position := 1
+	if state := d.State(); strings.HasPrefix(state.Source.URI, queueURIScheme) && state.Track > 0 {
+		position = state.Track + 1
 	}
+	return d.run(p, "",
+		func() error { return d.client.AddURIToQueue(ctx, p.URI, p.Metadata, position, true) },
+	)
+}
+
+// AddToQueue puts p at the end of the queue, leaving playback alone.
+func (d *Device) AddToQueue(ctx context.Context, p Playable) error {
+	return d.run(p, "",
+		func() error { return d.client.AddURIToQueue(ctx, p.URI, p.Metadata, queueEnd, false) },
+	)
+}
+
+// PlayStation plays p in place of whatever plays now. A station is not
+// queued: the queue stays as it was, ready to return to.
+func (d *Device) PlayStation(ctx context.Context, p Playable) error {
+	return d.run(p, transportPlaying,
+		func() error { return d.client.SetTransportURI(ctx, p.URI, p.Metadata) },
+		func() error { return d.client.Play(ctx) },
+	)
+}
+
+// run sends steps in order and stops at the first refusal, so nothing after
+// it reaches the speaker. A non-empty transport is the state it leaves.
+func (d *Device) run(p Playable, transport string, steps ...func() error) error {
 	for _, step := range steps {
 		if err := step(); err != nil {
-			return fmt.Errorf("playing %s: %w", c.Title, err)
+			return fmt.Errorf("playing %s: %w", p.Title, err)
 		}
 	}
-
-	d.mu.Lock()
-	d.state.Transport.State = transportPlaying
-	d.mu.Unlock()
+	if transport != "" {
+		d.mu.Lock()
+		d.state.Transport.State = transport
+		d.mu.Unlock()
+	}
 	return nil
 }
 

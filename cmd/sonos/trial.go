@@ -55,7 +55,11 @@ func (m speakerModel) trialKey(key string) (tea.Cmd, bool) {
 		return nil, false
 	}
 	return func() tea.Msg {
-		if err := m.transport().ReplaceQueue(m.ctx, playlist, mode); err != nil {
+		playable, err := playlist.Playable()
+		if err == nil {
+			err = m.transport().ReplaceQueue(m.ctx, playable, mode)
+		}
+		if err != nil {
 			slog.Warn("playing a trial playlist failed",
 				"speaker", m.device.Speaker, "playlist", playlist.Title, "err", err)
 			return m.failed(err)

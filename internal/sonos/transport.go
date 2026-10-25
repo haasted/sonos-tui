@@ -100,14 +100,36 @@ func (c *SonosClient) RemoveAllTracksFromQueue(ctx context.Context) error {
 	return err
 }
 
-// AddURIToQueue puts uri at the end of the queue. A music-service item needs
-// its metadata too: the desc in it says which service and account it is from.
-func (c *SonosClient) AddURIToQueue(ctx context.Context, uri, metadata string) error {
+// queueEnd is the position AddURIToQueue reads as "after the last track".
+const queueEnd = 0
+
+// AddURIToQueue puts uri into the queue at position, 1-based, or at the end
+// for queueEnd. A music-service item needs its metadata too: the desc in it
+// says which service it is from. asNext marks it as played next.
+func (c *SonosClient) AddURIToQueue(ctx context.Context, uri, metadata string, position int, asNext bool) error {
+	enqueueAsNext := 0
+	if asNext {
+		enqueueAsNext = 1
+	}
 	_, err := c.avTransport(ctx, "AddURIToQueue", addURIToQueueAction{
-		XMLName:             xml.Name{Local: "u:AddURIToQueue"},
-		Namespace:           avtransportService,
-		EnqueuedURI:         uri,
-		EnqueuedURIMetaData: metadata,
+		XMLName:                         xml.Name{Local: "u:AddURIToQueue"},
+		Namespace:                       avtransportService,
+		EnqueuedURI:                     uri,
+		EnqueuedURIMetaData:             metadata,
+		DesiredFirstTrackNumberEnqueued: position,
+		EnqueueAsNext:                   enqueueAsNext,
+	})
+	return err
+}
+
+// SetTransportURI points the transport straight at uri, as a station is
+// played. It neither starts playback nor touches the queue.
+func (c *SonosClient) SetTransportURI(ctx context.Context, uri, metadata string) error {
+	_, err := c.avTransport(ctx, "SetAVTransportURI", setAVTransportURIAction{
+		XMLName:            xml.Name{Local: "u:SetAVTransportURI"},
+		Namespace:          avtransportService,
+		CurrentURI:         uri,
+		CurrentURIMetaData: metadata,
 	})
 	return err
 }

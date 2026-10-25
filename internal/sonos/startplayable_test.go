@@ -22,7 +22,7 @@ func TestDevice_ReplaceQueue_SendsTheWholeSequence(t *testing.T) {
 	srv := newRecordingServer(t, "")
 	d := newQueueDevice(t, srv.Server)
 
-	require.NoError(t, d.ReplaceQueue(context.Background(), awesomeSingles, sonos.PlayModeNormal))
+	require.NoError(t, d.ReplaceQueue(context.Background(), playableSingles(t), sonos.PlayModeNormal))
 
 	assert.Equal(t, []string{
 		"RemoveAllTracksFromQueue", "AddURIToQueue", "SetAVTransportURI", "SetPlayMode", "Play",
@@ -38,7 +38,7 @@ func TestDevice_ReplaceQueue_SetsShuffle(t *testing.T) {
 	srv := newRecordingServer(t, "")
 	d := newQueueDevice(t, srv.Server)
 
-	require.NoError(t, d.ReplaceQueue(context.Background(), awesomeSingles, sonos.PlayModeShuffleNoRepeat))
+	require.NoError(t, d.ReplaceQueue(context.Background(), playableSingles(t), sonos.PlayModeShuffleNoRepeat))
 
 	assert.Contains(t, srv.body("SetPlayMode"), "<NewPlayMode>SHUFFLE_NOREPEAT</NewPlayMode>")
 }
@@ -49,11 +49,75 @@ func TestDevice_ReplaceQueue_StopsAtARefusal(t *testing.T) {
 	srv := newRecordingServer(t, "AddURIToQueue")
 	d := newQueueDevice(t, srv.Server)
 
-	err := d.ReplaceQueue(context.Background(), awesomeSingles, sonos.PlayModeNormal)
+	err := d.ReplaceQueue(context.Background(), playableSingles(t), sonos.PlayModeNormal)
 
 	require.Error(t, err)
 	assert.Equal(t, []string{"RemoveAllTracksFromQueue", "AddURIToQueue"}, srv.actions())
 	assert.Empty(t, d.State().Transport.State)
+}
+
+// Case: play next while the queue plays track 5. It must land at 6, marked
+// as next, and leave playback alone.
+func TestDevice_PlayNext_FollowsThePlayingTrack(t *testing.T) {
+	srv := newRecordingServer(t, "")
+	d := newQueueDevice(t, srv.Server)
+	applyEvent(t, d, lastChange(
+		`<AVTransportURI val="x-rincon-queue:RINCON_TEST01400#0"/>`, `<CurrentTrack val="5"/>`))
+
+	require.NoError(t, d.PlayNext(context.Background(), playableSingles(t)))
+
+	body := srv.body("AddURIToQueue")
+	assert.Contains(t, body, "<DesiredFirstTrackNumberEnqueued>6</DesiredFirstTrackNumberEnqueued>")
+	assert.Contains(t, body, "<EnqueueAsNext>1</EnqueueAsNext>")
+	assert.NotContains(t, srv.actions(), "Play")
+}
+
+// Case: play next while a station plays. There is no playing track in the
+// queue to follow, so it must go first.
+func TestDevice_PlayNext_GoesFirstWhenTheQueueIsNotPlaying(t *testing.T) {
+	srv := newRecordingServer(t, "")
+	d := newQueueDevice(t, srv.Server)
+	applyEvent(t, d, lastChange(
+		`<AVTransportURI val="x-sonosapi-hls:urn%3adr%3aradio%3achannel%3a5fa156d2?sid=290"/>`,
+		`<CurrentTrack val="1"/>`))
+
+	require.NoError(t, d.PlayNext(context.Background(), playableSingles(t)))
+
+	assert.Contains(t, srv.body("AddURIToQueue"),
+		"<DesiredFirstTrackNumberEnqueued>1</DesiredFirstTrackNumberEnqueued>")
+}
+
+// Case: adding to the end, which must ask for the end and nothing else.
+func TestDevice_AddToQueue_AppendsAndLeavesPlaybackAlone(t *testing.T) {
+	srv := newRecordingServer(t, "")
+	d := newQueueDevice(t, srv.Server)
+
+	require.NoError(t, d.AddToQueue(context.Background(), playableSingles(t)))
+
+	assert.Equal(t, []string{"AddURIToQueue"}, srv.actions())
+	body := srv.body("AddURIToQueue")
+	assert.Contains(t, body, "<DesiredFirstTrackNumberEnqueued>0</DesiredFirstTrackNumberEnqueued>")
+	assert.Contains(t, body, "<EnqueueAsNext>0</EnqueueAsNext>")
+}
+
+// Case: a station, which is played straight from its URI and DIDL and must
+// not touch the queue.
+func TestDevice_PlayStation_PointsTheTransportAtIt(t *testing.T) {
+	srv := newRecordingServer(t, "")
+	d := newQueueDevice(t, srv.Server)
+	station := sonos.Playable{
+		URI:      "x-sonosapi-hls:urn%3adr%3aradio%3achannel%3a5fa156d1?sid=290&flags=8232&sn=3",
+		Metadata: "<DIDL-Lite>DR P1</DIDL-Lite>",
+		Title:    "DR P1",
+	}
+
+	require.NoError(t, d.PlayStation(context.Background(), station))
+
+	assert.Equal(t, []string{"SetAVTransportURI", "Play"}, srv.actions())
+	body := srv.body("SetAVTransportURI")
+	assert.Contains(t, body, "<CurrentURI>x-sonosapi-hls:urn%3adr%3aradio%3achannel%3a5fa156d1?sid=290&amp;flags=8232&amp;sn=3</CurrentURI>")
+	assert.Contains(t, body, "<CurrentURIMetaData>&lt;DIDL-Lite&gt;DR P1&lt;/DIDL-Lite&gt;</CurrentURIMetaData>")
+	assert.Equal(t, "PLAYING", d.State().Transport.State)
 }
 
 // recordingServer fakes AVTransport, keeping each action and its body. The
@@ -113,4 +177,11 @@ func newQueueDevice(t *testing.T, srv *httptest.Server) *sonos.Device {
 	}
 	client := &sonos.SonosClient{BaseURL: srv.URL, HTTPClient: srv.Client()}
 	return sonos.NewDeviceWithClient(speaker, client)
+}
+
+func playableSingles(t *testing.T) sonos.Playable {
+	t.Helper()
+	playable, err := awesomeSingles.Playable()
+	require.NoError(t, err)
+	return playable
 }
