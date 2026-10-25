@@ -39,6 +39,11 @@ const (
 	// so the cursor stops when the fingers do rather than running on.
 	queueWheelStep = 50 * time.Millisecond
 
+	// queueSourceShortest is the fewest characters of a playlist's name worth
+	// showing in the heading. Clipped any shorter, it is dropped instead.
+	queueSourceShortest  = 6
+	queueSourceSeparator = " · "
+
 	// A scroll speeds up one row per queueWheelRampNotches, up to
 	// queueWheelMaxRows, and starts slow again after a pause longer than
 	// queueWheelRunGap or a change of direction.
@@ -103,8 +108,9 @@ func landingsIn(model, carried []int, uriAt map[int]string) []landing {
 // queueContent lists a speaker's queue inside a modal. It holds what it was
 // given and where the reader has scrolled to; it fetches nothing itself.
 type queueContent struct {
-	room  string
-	items []sonos.QueueItem
+	room   string
+	source string // the playlist or album the queue was loaded from, if known
+	items  []sonos.QueueItem
 
 	// filter is what the reader has typed, and filtering says the box is open
 	// and taking their keys. Open with nothing typed still shows everything,
@@ -1371,8 +1377,9 @@ func (q queueContent) ruleWidth() int { return q.width }
 // nothing else to read it from.
 // headingPart is one run of the heading, drawn in its own style.
 type headingPart struct {
-	text  string
-	style lipgloss.Style
+	text   string
+	style  lipgloss.Style
+	shrink bool // clipped to fit before it is dropped, rather than dropped whole
 }
 
 func (q queueContent) heading() string {
@@ -1387,28 +1394,35 @@ func (q queueContent) heading() string {
 // the size of the queue, then the selection count that follows them. The
 // count is empty when there is none to show, or no room to show it in.
 func (q queueContent) headingParts() []headingPart {
-	parts := []headingPart{{q.room, queueRoomStyle()}}
+	parts := []headingPart{{text: q.room, style: queueRoomStyle()}}
 
 	// The key that opens the box, kept on screen while it is open so a reader
 	// who has not typed yet can see that they may. Drawn quieter than what
 	// they type into it: it is the prompt, not the search.
 	if q.filtering {
 		parts = append(parts,
-			headingPart{" · ", queueRoomStyle()},
-			headingPart{"/", queueFilterPromptStyle()},
-			headingPart{q.filter, queueRoomStyle()})
+			headingPart{text: " · ", style: queueRoomStyle()},
+			headingPart{text: "/", style: queueFilterPromptStyle()},
+			headingPart{text: q.filter, style: queueRoomStyle()})
 	}
 
 	// How much of the queue is showing, or how big it is. Never both: a
 	// narrowed list's own length is not a thing the reader asked about.
 	if q.filter != "" {
-		parts = append(parts, headingPart{" · " + q.matchLabel(), queueRoomStyle()})
+		parts = append(parts, headingPart{text: " · " + q.matchLabel(), style: queueRoomStyle()})
 	} else {
-		parts = append(parts, headingPart{q.sizeSuffix(), queueRoomStyle()})
+		parts = append(parts, headingPart{text: q.sizeSuffix(), style: queueRoomStyle()})
 	}
 
-	if picked := q.selectionCount(); picked > selectionCountFloor {
-		parts = append(parts, headingPart{fmt.Sprintf(" · %d selected", picked), queueCountStyle()})
+	picked := q.selectionCount()
+	if picked > selectionCountFloor {
+		parts = append(parts, headingPart{text: fmt.Sprintf(" · %d selected", picked), style: queueCountStyle()})
+	}
+
+	// What the queue was loaded from, while nothing temporary -- a search or a
+	// selection -- needs the heading. It gives way first when space runs out.
+	if q.source != "" && !q.filtering && q.filter == "" && picked <= selectionCountFloor {
+		parts = append(parts, headingPart{text: queueSourceSeparator + q.source, style: queueRoomStyle(), shrink: true})
 	}
 	return q.fitHeading(parts)
 }
@@ -1426,6 +1440,13 @@ func (q queueContent) fitHeading(parts []headingPart) []headingPart {
 		return total
 	}
 
+	if last := len(parts) - 1; q.width > 0 && parts[last].shrink && width(parts) > q.width {
+		room := q.width - width(parts[:last]) - lipgloss.Width(queueSourceSeparator)
+		if room > queueSourceShortest { // the ellipsis takes one of the columns
+			name := strings.TrimPrefix(parts[last].text, queueSourceSeparator)
+			parts[last].text = queueSourceSeparator + clip(name, room)
+		}
+	}
 	for q.width > 0 && len(parts) > 1 && width(parts) > q.width {
 		parts = parts[:len(parts)-1]
 	}

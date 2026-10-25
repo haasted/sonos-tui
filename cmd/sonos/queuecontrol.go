@@ -233,6 +233,7 @@ func (m appModel) openQueue() (tea.Model, tea.Cmd) {
 	m.queue = m.queue.Open()
 	content := queueContent{
 		room:     speaker.device.RoomName(),
+		source:   state.QueueSource,
 		items:    state.Queue,
 		playing:  playingPosition(state),
 		loading:  !state.QueueKnown,
@@ -477,7 +478,8 @@ func (m appModel) applyQueueLoaded(msg queueLoadedMsg) (tea.Model, tea.Cmd) {
 	if !ok || !m.queue.IsOpen() {
 		return m, nil
 	}
-	if speaker, found := m.activeSpeaker(); !found || speaker.transport() != msg.device {
+	speaker, found := m.activeSpeaker()
+	if !found || speaker.transport() != msg.device {
 		return m, nil
 	}
 
@@ -511,6 +513,7 @@ func (m appModel) applyQueueLoaded(msg queueLoadedMsg) (tea.Model, tea.Cmd) {
 	content = content.clearRemoving()
 
 	content.room = msg.room
+	content.source = speaker.shown().QueueSource
 	content.items, content.all = msg.items, nil
 	content = content.narrow() // a filter on screen still means what it says
 	content.playing = msg.playing
