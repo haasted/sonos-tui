@@ -124,6 +124,7 @@ var helpLayers = map[string]struct {
 	"appModel.go": {"player", playerHelp},
 	"tabs.go":     {"player", playerHelp},
 	"queue.go":    {"queue", queueHelp},
+	"trial.go":    {"player", playerHelp}, // TODO: TEMPORARY. Remove with trial.go.
 }
 
 // helpLayersWithoutAPopup are files whose bindings no popup documents yet,

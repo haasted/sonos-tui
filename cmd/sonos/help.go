@@ -60,6 +60,11 @@ var playerHelp = helpTable{
 			{"↑  ↓", "volume"},
 			{"m", "mute"},
 		}},
+		// TODO: TEMPORARY. Remove with trial.go.
+		{"Trial", []helpKey{
+			{"z  Z", "Awesome singles / shuffled"},
+			{"c  C", "Metallica / shuffled"},
+		}},
 	},
 	{
 		{"Rooms", []helpKey{
