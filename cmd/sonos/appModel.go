@@ -500,6 +500,8 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.applyModalSweepDue(msg)
 	case modalSweepTickMsg:
 		return m.applyModalSweepTick(msg)
+	case tea.MouseWheelMsg:
+		return m.applyQueueWheel(msg)
 	case queueHintDueMsg:
 		return m.applyQueueHintDue(msg)
 	case queueHintTickMsg:
@@ -708,7 +710,11 @@ func (m appModel) View() tea.View {
 	framed := padToHeight(content, max(m.frameRows, playerHeightRows))
 	// Help draws over the queue, not under it. The two can be open together
 	// now: "?" inside the queue explains the queue.
-	return tea.NewView(m.help.ViewOver(m.grouping.ViewOver(queue.ViewOver(framed))))
+	view := tea.NewView(m.help.ViewOver(m.grouping.ViewOver(queue.ViewOver(framed))))
+	if m.queueTakesTheWheel() {
+		view.MouseMode = tea.MouseModeCellMotion
+	}
+	return view
 }
 
 // applyGroupChange moves one speaker in or out of the group the room on

@@ -198,6 +198,29 @@ func queueTick(gen int) tea.Cmd {
 	})
 }
 
+// applyQueueWheel hands a wheel notch to the queue, the way the arrow keys
+// are handed to it, while the queue is what the reader is looking at.
+func (m appModel) applyQueueWheel(msg tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
+	if !m.queueTakesTheWheel() {
+		return m, nil
+	}
+	m = m.retireQueueHint()
+
+	queue, cmd := m.queue.Update(msg)
+	m.queue = queue
+	if content, ok := m.queue.Content.(queueContent); ok && content.bumping() {
+		return m.restartQueueChain()
+	}
+	return m, cmd
+}
+
+// queueTakesTheWheel reports the queue as the topmost thing on screen, the
+// only time the program asks for the mouse: everywhere else the terminal
+// keeps it, and with it the reader's text selection.
+func (m appModel) queueTakesTheWheel() bool {
+	return m.queue.IsOpen() && !m.help.IsOpen() && m.fits()
+}
+
 // openQueue asks the selected speaker for its queue. Every open fetches again:
 // the queue changes underneath us, and a stale list is worse than a short wait.
 func (m appModel) openQueue() (tea.Model, tea.Cmd) {

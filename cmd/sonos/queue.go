@@ -34,6 +34,18 @@ const (
 	// against it. Short: it answers a keypress and then gets out of the way.
 	bumpDuration = 320 * time.Millisecond
 
+	// queueWheelStep is the least time between two rows moved by the wheel. A
+	// flicked trackpad sends notches in a burst; those inside it are dropped,
+	// so the cursor stops when the fingers do rather than running on.
+	queueWheelStep = 50 * time.Millisecond
+
+	// A scroll speeds up one row per queueWheelRampNotches, up to
+	// queueWheelMaxRows, and starts slow again after a pause longer than
+	// queueWheelRunGap or a change of direction.
+	queueWheelMaxRows     = 3
+	queueWheelRampNotches = 4
+	queueWheelRunGap      = 250 * time.Millisecond
+
 	// highlightDuration is how long a moved track flashes before fading back
 	// to normal. Short, like the edge bump: it answers a command that just
 	// landed, not a state to dwell on.
@@ -121,6 +133,13 @@ type queueContent struct {
 	edge     bumpEdge  // which end the reader last pressed against
 	bumpedAt time.Time // when they did; zero when nothing is lit
 
+	wheeledAt   time.Time // when the wheel last moved the cursor
+	wheelSeenAt time.Time // when the last notch arrived, moved or dropped
+	wheelRun    int       // notches moved in the current gesture
+	wheelDir    int       // which way that gesture is going: -1 up, 1 down
+	wheelBumped bool      // the current swipe has lit an end already
+	swipe       swipeTracker
+
 	// selected are the tracks the reader has picked out, in the order they
 	// picked them. A slice because that order is the point, and a map has
 	// none of its own.
@@ -181,6 +200,9 @@ func (queueContent) Init() tea.Cmd { return nil }
 // The keys are the ones charm.land/bubbles binds by default, which are the
 // ones less and vi established.
 func (q queueContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if wheel, ok := msg.(tea.MouseWheelMsg); ok {
+		return q.wheel(wheel), nil
+	}
 	key, ok := msg.(tea.KeyMsg)
 	if !ok {
 		return q, nil
@@ -235,6 +257,45 @@ func (q queueContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return q.shift(1)
 	}
 	return q, nil
+}
+
+// wheel moves the cursor through moveBy, as the arrow keys do: no oftener
+// than queueWheelStep, and further per notch the longer the wheel keeps going.
+func (q queueContent) wheel(msg tea.MouseWheelMsg) queueContent {
+	dir := map[tea.MouseButton]int{tea.MouseWheelUp: -1, tea.MouseWheelDown: 1}[msg.Button]
+	if dir == 0 {
+		return q
+	}
+
+	now := time.Now()
+	var fresh bool
+	if q.swipe, fresh = q.swipe.notch(dir, now); fresh {
+		q.wheelBumped = false
+	}
+	if dir != q.wheelDir || now.Sub(q.wheelSeenAt) > queueWheelRunGap {
+		q.wheelRun = 0
+	}
+	q.wheelSeenAt, q.wheelDir = now, dir
+	if now.Sub(q.wheeledAt) < queueWheelStep {
+		return q
+	}
+
+	rows := min(1+q.wheelRun/queueWheelRampNotches, queueWheelMaxRows)
+	q.wheelRun, q.wheeledAt = q.wheelRun+1, now
+	if q.filtering {
+		return q.filterKey(map[int]string{-1: "up", 1: "down"}[dir])
+	}
+
+	// One pulse per swipe, and never on top of one still running out.
+	edge, bumpedAt, running := q.edge, q.bumpedAt, q.bumping()
+	q = q.moveBy(dir * rows)
+	if bumped := !q.bumpedAt.Equal(bumpedAt); bumped {
+		if q.wheelBumped || (running && q.edge == edge) {
+			q.edge, q.bumpedAt = edge, bumpedAt
+		}
+		q.wheelBumped = true
+	}
+	return q
 }
 
 // shift moves the track under the cursor one place and keeps the cursor on it.
