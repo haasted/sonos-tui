@@ -1,6 +1,6 @@
 // How the application drives the queue: opening the modal, reading a speaker's
-// queue into it, and the repaint chain behind the arrows. queue.go holds the
-// list itself, which fetches nothing and knows nothing of appModel.
+// queue into it, and sending what the reader did. queue.go holds the list
+// itself, which fetches nothing; listmodal.go the chains every list shares.
 package main
 
 import (
@@ -178,48 +178,15 @@ func modalSweepDue(gen int) tea.Cmd {
 }
 
 func modalSweepTick(gen int) tea.Cmd {
-	return tea.Tick(queuePulseInterval, func(time.Time) tea.Msg {
+	return tea.Tick(listPulseInterval, func(time.Time) tea.Msg {
 		return modalSweepTickMsg{gen: gen}
 	})
 }
 
-// queueTickMsg is one frame of the arrows' breath. The generation dies with the
-// modal, so a chain cannot outlive the list that began it.
-type queueTickMsg struct{ gen int }
-
 var queueGenerations atomic.Int64
 
-// nextQueueGen returns a generation unique across the process.
-func nextQueueGen() int { return int(queueGenerations.Add(1)) }
-
-func queueTick(gen int) tea.Cmd {
-	return tea.Tick(queuePulseInterval, func(time.Time) tea.Msg {
-		return queueTickMsg{gen: gen}
-	})
-}
-
-// applyQueueWheel hands a wheel notch to the queue, the way the arrow keys
-// are handed to it, while the queue is what the reader is looking at.
-func (m appModel) applyQueueWheel(msg tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
-	if !m.queueTakesTheWheel() {
-		return m, nil
-	}
-	m = m.retireQueueHint()
-
-	queue, cmd := m.queue.Update(msg)
-	m.queue = queue
-	if content, ok := m.queue.Content.(queueContent); ok && content.bumping() {
-		return m.restartQueueChain()
-	}
-	return m, cmd
-}
-
-// queueTakesTheWheel reports the queue as the topmost thing on screen, the
-// only time the program asks for the mouse: everywhere else the terminal
-// keeps it, and with it the reader's text selection.
-func (m appModel) queueTakesTheWheel() bool {
-	return m.queue.IsOpen() && !m.help.IsOpen() && m.fits()
-}
+// nextGen returns a generation unique across the process, for any chain.
+func nextGen() int { return int(queueGenerations.Add(1)) }
 
 // openQueue asks the selected speaker for its queue. Every open fetches again:
 // the queue changes underneath us, and a stale list is worse than a short wait.
@@ -232,14 +199,16 @@ func (m appModel) openQueue() (tea.Model, tea.Cmd) {
 	state := speaker.shown()
 	m.queue = m.queue.Open()
 	content := queueContent{
-		room:     speaker.device.RoomName(),
-		source:   state.QueueSource,
-		items:    state.Queue,
-		playing:  playingPosition(state),
-		loading:  !state.QueueKnown,
-		rows:     m.queue.ContentRows(),
-		width:    m.queue.ContentColumns(),
-		openedAt: time.Now(),
+		listView: listView[sonos.QueueItem]{
+			items:    state.Queue,
+			rows:     m.queue.ContentRows(),
+			width:    m.queue.ContentColumns(),
+			openedAt: time.Now(),
+		},
+		room:    speaker.device.RoomName(),
+		source:  state.QueueSource,
+		playing: playingPosition(state),
+		loading: !state.QueueKnown,
 	}
 
 	// Opening lands on the playing track, as if the reader had pressed c right
@@ -252,7 +221,7 @@ func (m appModel) openQueue() (tea.Model, tea.Cmd) {
 	// has been kept current by events since. A read here is the fallback for a
 	// speaker whose first read has not landed yet.
 	m, sweeping := m.restartSweepChain()
-	m, hint := m.restartQueueHint()
+	hint := restartListHint(m.queueSlot())
 	if state.QueueKnown {
 		return m, tea.Batch(sweeping, hint)
 	}
@@ -553,25 +522,8 @@ func (m appModel) applyQueueLoaded(msg queueLoadedMsg) (tea.Model, tea.Cmd) {
 	if !content.overflows() && !content.highlighting() {
 		return m, abandoned
 	}
-	m.queueGen = nextQueueGen()
-	return m, tea.Batch(abandoned, queueTick(m.queueGen))
-}
-
-// applyQueueTick repaints the arrows. It re-arms only while the same modal is
-// open and still has an arrow, so the chain cannot outlive either.
-func (m appModel) applyQueueTick(msg queueTickMsg) (tea.Model, tea.Cmd) {
-	content, ok := m.queue.Content.(queueContent)
-	if msg.gen != m.queueGen || !m.queue.IsOpen() || !ok {
-		return m, nil
-	}
-
-	// The arrows breathe while the queue overflows, a bumped edge cools
-	// whether it does or not, and a moved track fades regardless of either.
-	// None of the three is true: nothing on screen is moving.
-	if !content.overflows() && !content.bumping() && !content.highlighting() {
-		return m, nil
-	}
-	return m, queueTick(msg.gen)
+	m.queueGen = nextGen()
+	return m, tea.Batch(abandoned, listTick(m.queueGen))
 }
 
 // applyModalSweepDue sends the next light round, and does nothing at all if
@@ -580,11 +532,14 @@ func (m appModel) applyModalSweepDue(msg modalSweepDueMsg) (tea.Model, tea.Cmd) 
 	if msg.gen != m.sweepGen {
 		return m, nil
 	}
-	if !m.help.IsOpen() && !m.queue.IsOpen() {
+	if _, list := m.openList(); !m.help.IsOpen() && !list {
 		return m, nil
 	}
 
-	m.help, m.queue = m.help.StartSweep(), m.queue.StartSweep()
+	m.help = m.help.StartSweep()
+	for _, slot := range m.listSlots() {
+		*slot.modal = slot.modal.StartSweep()
+	}
 	return m, modalSweepTick(msg.gen)
 }
 
@@ -594,7 +549,7 @@ func (m appModel) applyModalSweepTick(msg modalSweepTickMsg) (tea.Model, tea.Cmd
 	if msg.gen != m.sweepGen {
 		return m, nil
 	}
-	if !m.queue.Sweeping() && !m.help.Sweeping() {
+	if !m.help.Sweeping() && !m.listSweeping() {
 		return m, modalSweepDue(msg.gen) // rest, then go round again
 	}
 	return m, modalSweepTick(msg.gen)
@@ -607,14 +562,6 @@ func (m appModel) applyModalSweepTick(msg modalSweepTickMsg) (tea.Model, tea.Cmd
 // would teach the reader to expect it, and the point is to be caught sight
 // of rather than watched for.
 func (m appModel) restartSweepChain() (appModel, tea.Cmd) {
-	m.sweepGen = nextQueueGen()
+	m.sweepGen = nextGen()
 	return m, modalSweepDue(m.sweepGen)
-}
-
-// restartQueueChain begins a fresh repaint chain and abandons any running one.
-// A bump on a queue that fits has no chain to ride, and taking a generation
-// each time is what keeps exactly one of them alive.
-func (m appModel) restartQueueChain() (appModel, tea.Cmd) {
-	m.queueGen = nextQueueGen()
-	return m, queueTick(m.queueGen)
 }

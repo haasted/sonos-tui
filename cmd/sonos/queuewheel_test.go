@@ -34,7 +34,7 @@ func TestQueueWheel_ABurstIsThinnedOut(t *testing.T) {
 		t.Fatalf("a notch inside the step moved the cursor to %d", q.cursor)
 	}
 
-	q.wheeledAt = time.Now().Add(-queueWheelStep)
+	q.wheeledAt = time.Now().Add(-listWheelStep)
 	q = notch(q, tea.MouseWheelDown)
 	if q.cursor != 12 {
 		t.Fatalf("a notch after the step did not move the cursor; it is on %d", q.cursor)
@@ -75,14 +75,14 @@ func TestQueueWheel_OneSwipeLightsTheEndOnce(t *testing.T) {
 func TestQueueWheel_DroppedNotchesKeepTheSwipeGoing(t *testing.T) {
 	q := upToSpeed(navQueue(400, 0))
 
-	q.wheeledAt = time.Now().Add(-2 * queueWheelRunGap)    // nothing moved for a while...
+	q.wheeledAt = time.Now().Add(-2 * listWheelRunGap)     // nothing moved for a while...
 	q.wheelSeenAt = time.Now().Add(-10 * time.Millisecond) // ...but notches kept arriving
 	before := q.cursor
 	q = notch(q, tea.MouseWheelDown)
 
-	if q.cursor-before != queueWheelMaxRows {
+	if q.cursor-before != listWheelMaxRows {
 		t.Fatalf("the swipe was taken as over: a notch moved %d rows, want %d",
-			q.cursor-before, queueWheelMaxRows)
+			q.cursor-before, listWheelMaxRows)
 	}
 }
 
@@ -92,14 +92,14 @@ func TestQueueWheel_AKeptScrollSpeedsUp(t *testing.T) {
 	q := navQueue(400, 0)
 
 	var steps []int
-	for range 3 * queueWheelRampNotches {
+	for range 3 * listWheelRampNotches {
 		before := q.cursor
 		q = sustained(q, tea.MouseWheelDown)
 		steps = append(steps, q.cursor-before)
 	}
 
 	for i, step := range steps {
-		want := min(1+i/queueWheelRampNotches, queueWheelMaxRows)
+		want := min(1+i/listWheelRampNotches, listWheelMaxRows)
 		if step != want {
 			t.Fatalf("notch %d moved %d rows, want %d (all: %v)", i, step, want, steps)
 		}
@@ -182,7 +182,7 @@ func TestQueueWheel_TheMouseIsAskedForOnlyOverTheQueue(t *testing.T) {
 // keypress is, and cancels it.
 func TestQueueWheel_ANotchCancelsTheHint(t *testing.T) {
 	m := openedQueue(t, 40)
-	due := queueHintDueMsg{gen: m.queueHintGen}
+	due := listHintDueMsg{gen: m.queueHintGen}
 
 	m = deliver(m, tea.MouseWheelMsg{Button: tea.MouseWheelDown})
 	m = deliver(m, due)
@@ -195,20 +195,20 @@ func TestQueueWheel_ANotchCancelsTheHint(t *testing.T) {
 // sustained is a notch arriving as part of a continuous scroll: just past the
 // rate limit, well inside the gap that would end the run.
 func sustained(q queueContent, button tea.MouseButton) queueContent {
-	q.wheeledAt = time.Now().Add(-queueWheelStep)
+	q.wheeledAt = time.Now().Add(-listWheelStep)
 	return notch(q, button)
 }
 
 // afterAPause is the wheel left still for longer than a swipe's gap.
 func afterAPause(q queueContent) queueContent {
-	paused := time.Now().Add(-queueWheelRunGap - time.Millisecond)
+	paused := time.Now().Add(-listWheelRunGap - time.Millisecond)
 	q.wheeledAt, q.wheelSeenAt = paused, paused
 	return q
 }
 
 // upToSpeed scrolls down long enough to reach the most a notch may move.
 func upToSpeed(q queueContent) queueContent {
-	for range queueWheelRampNotches * queueWheelMaxRows {
+	for range listWheelRampNotches * listWheelMaxRows {
 		q = sustained(q, tea.MouseWheelDown)
 	}
 	return q

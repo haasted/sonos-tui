@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/haasted/sonos-sandbox/internal/sonos"
 )
 
 // Case: the key itself, which must pick the track out and then step down, so
@@ -91,8 +93,8 @@ func TestQueueSelect_TellsTwoCopiesOfOneTrackApart(t *testing.T) {
 // the cursor to pick.
 func TestQueueSelect_PicksNothingWithNoTrackUnderTheCursor(t *testing.T) {
 	for name, q := range map[string]queueContent{
-		"empty":   {room: "Køkken", rows: 12, width: 70},
-		"loading": {room: "Køkken", rows: 12, width: 70, loading: true},
+		"empty":   {room: "Køkken", listView: listView[sonos.QueueItem]{rows: 12, width: 70}},
+		"loading": {room: "Køkken", listView: listView[sonos.QueueItem]{rows: 12, width: 70}, loading: true},
 	} {
 		if after := moveQueue(q, "s"); after.selectionCount() != 0 {
 			t.Fatalf("a %s queue picked something out", name)
@@ -217,8 +219,8 @@ func TestQueueSelect_AVanishedTrackIsIgnoredRatherThanPruned(t *testing.T) {
 func TestQueueSelect_APickedRowLooksDifferent(t *testing.T) {
 	// Both end with the cursor on row 5, so row 4 differs by the selection
 	// alone rather than by the cursor having moved off it.
-	plainRow := strings.Split(navQueue(20, 5).View().Content, "\n")[queueHeaderRows+4]
-	pickedRow := strings.Split(moveQueue(navQueue(20, 4), "s").View().Content, "\n")[queueHeaderRows+4]
+	plainRow := strings.Split(navQueue(20, 5).View().Content, "\n")[listHeaderRows+4]
+	pickedRow := strings.Split(moveQueue(navQueue(20, 4), "s").View().Content, "\n")[listHeaderRows+4]
 
 	if plainRow == pickedRow {
 		t.Fatal("picking a track out changed nothing about how its row is drawn")

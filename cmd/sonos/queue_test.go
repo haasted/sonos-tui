@@ -138,7 +138,7 @@ func TestQueue_CFindsTheTrackWhilePausedOrMuted(t *testing.T) {
 		Muted:     true,
 	}
 
-	q := queueContent{room: "Køkken", items: queueItems(10), rows: 14, width: 60, playing: playingPosition(state)}
+	q := queueContent{listView: listView[sonos.QueueItem]{items: queueItems(10), rows: 14, width: 60}, room: "Køkken", playing: playingPosition(state)}
 
 	moved, _ := q.Update(keyMsgFor("c"))
 	if got := moved.(queueContent).cursor; got != 5 {
@@ -150,9 +150,9 @@ func TestQueue_CFindsTheTrackWhilePausedOrMuted(t *testing.T) {
 // render an empty box the reader has to interpret.
 func TestQueue_SaysWhyThereAreNoRows(t *testing.T) {
 	cases := map[string]queueContent{
-		"Reading":   {room: "Køkken", loading: true, rows: 14},
-		"empty":     {room: "Køkken", rows: 14},
-		"Could not": {room: "Køkken", err: fmt.Errorf("connection refused"), rows: 14},
+		"Reading":   {room: "Køkken", loading: true, listView: listView[sonos.QueueItem]{rows: 14}},
+		"empty":     {room: "Køkken", listView: listView[sonos.QueueItem]{rows: 14}},
+		"Could not": {room: "Køkken", err: fmt.Errorf("connection refused"), listView: listView[sonos.QueueItem]{rows: 14}},
 	}
 
 	for want, content := range cases {
@@ -254,10 +254,12 @@ func plain(s string) string { return queueANSI.ReplaceAllString(s, "") }
 // and blue, says a row is playing.
 func TestQueue_NothingPlayingMarksNoRow(t *testing.T) {
 	q := queueContent{
-		room:  "Ovenpå",
-		items: []sonos.QueueItem{{TrackMetadata: sonos.TrackMetadata{Title: "A Track"}}},
-		rows:  14,
-		width: 70,
+		listView: listView[sonos.QueueItem]{
+			items: []sonos.QueueItem{{TrackMetadata: sonos.TrackMetadata{Title: "A Track"}}},
+			rows:  14,
+			width: 70,
+		},
+		room: "Ovenpå",
 	}
 
 	if anyRowIsPlaying(q) {
@@ -279,10 +281,10 @@ func TestQueue_NothingPlayingMarksNoRow(t *testing.T) {
 // escape is what to look for rather than a bold code of its own.
 func anyRowIsPlaying(q queueContent) bool {
 	lines := strings.Split(q.View().Content, "\n")
-	if len(lines) <= queueHeaderRows {
+	if len(lines) <= listHeaderRows {
 		return false
 	}
-	for _, line := range lines[queueHeaderRows:] {
+	for _, line := range lines[listHeaderRows:] {
 		if strings.Contains(line, "\x1b[1;") {
 			return true
 		}
@@ -297,10 +299,12 @@ func TestQueue_KeepsBothColumnsWholeWhenTheyFit(t *testing.T) {
 	const artist = "John Cxnnor & The Doom Squad"
 
 	q := queueContent{
-		room:  "Soveværelse",
-		items: []sonos.QueueItem{{Position: 1, TrackMetadata: sonos.TrackMetadata{Title: "HellWalkers", Artist: artist}}},
-		rows:  14,
-		width: 70,
+		listView: listView[sonos.QueueItem]{
+			items: []sonos.QueueItem{{Position: 1, TrackMetadata: sonos.TrackMetadata{Title: "HellWalkers", Artist: artist}}},
+			rows:  14,
+			width: 70,
+		},
+		room: "Soveværelse",
 	}
 
 	body := plain(q.View().Content)
@@ -320,14 +324,16 @@ func TestQueue_KeepsBothColumnsWholeWhenTheyFit(t *testing.T) {
 // long rows sat one step to the right of the short ones.
 func TestQueue_ArtistColumnStartsAtOneOffset(t *testing.T) {
 	q := queueContent{
-		room: "Spisestue",
-		items: []sonos.QueueItem{
-			{Position: 1, TrackMetadata: sonos.TrackMetadata{Title: "Night Raid", Artist: "Nick Cave"}},
-			{Position: 2, TrackMetadata: sonos.TrackMetadata{
-				Title: "Idiot Prayer (Live at Alexandra Palace, 2020) and then some more", Artist: "Nick Cave"}},
+		listView: listView[sonos.QueueItem]{
+			items: []sonos.QueueItem{
+				{Position: 1, TrackMetadata: sonos.TrackMetadata{Title: "Night Raid", Artist: "Nick Cave"}},
+				{Position: 2, TrackMetadata: sonos.TrackMetadata{
+					Title: "Idiot Prayer (Live at Alexandra Palace, 2020) and then some more", Artist: "Nick Cave"}},
+			},
+			rows:  14,
+			width: 70,
 		},
-		rows:  14,
-		width: 70,
+		room: "Spisestue",
 	}
 
 	// Display columns, not bytes: the ellipsis a clipped title ends on is three
@@ -353,7 +359,7 @@ func TestQueue_ArtistColumnStartsAtOneOffset(t *testing.T) {
 // reserved line that empties at an edge used to cost the modal a row, so the
 // box jumped on the last press.
 func TestQueue_KeepsOneHeightWhileScrolling(t *testing.T) {
-	q := queueContent{room: "Køkken", items: queueItems(32), playing: 3, rows: 9, width: 70}
+	q := queueContent{listView: listView[sonos.QueueItem]{items: queueItems(32), rows: 9, width: 70}, room: "Køkken", playing: 3}
 	want := lipgloss.Height(q.View().Content)
 
 	for step := range 40 {
@@ -367,7 +373,7 @@ func TestQueue_KeepsOneHeightWhileScrolling(t *testing.T) {
 // Case: the top of the list, which must carry an item rather than a blank line
 // held open for a count that is not there.
 func TestQueue_TopRowHoldsAnItem(t *testing.T) {
-	q := queueContent{room: "Køkken", items: queueItems(32), rows: 9, width: 70}
+	q := queueContent{listView: listView[sonos.QueueItem]{items: queueItems(32), rows: 9, width: 70}, room: "Køkken"}
 
 	first := strings.Split(plain(q.View().Content), "\n")[2]
 	if strings.TrimSpace(first) == "" {
@@ -383,8 +389,17 @@ func TestQueue_TopRowHoldsAnItem(t *testing.T) {
 func TestQueue_CursorAndArrowBothFitOnARow(t *testing.T) {
 	// The playing track is far down the queue, so the marker on the top row can
 	// only have come from the cursor.
-	q := queueContent{room: "Køkken", items: queueItems(32), playing: 30,
-		rows: 9, width: 70, cursor: 2, offset: 2}
+	q := queueContent{
+		listView: listView[sonos.QueueItem]{
+			items:  queueItems(32),
+			rows:   9,
+			width:  70,
+			cursor: 2,
+			offset: 2,
+		},
+		room:    "Køkken",
+		playing: 30,
+	}
 
 	row := strings.Split(plain(q.View().Content), "\n")[2]
 	if !strings.Contains(row, "▶") || !strings.Contains(row, "↑") {
@@ -395,9 +410,9 @@ func TestQueue_CursorAndArrowBothFitOnARow(t *testing.T) {
 // Case: the marker, which follows the cursor and not the playing track. What
 // is playing is said by colour alone.
 func TestQueue_TheMarkerFollowsTheCursor(t *testing.T) {
-	q := queueContent{room: "Køkken", items: queueItems(8), playing: 6, rows: 12, width: 70, cursor: 1}
+	q := queueContent{listView: listView[sonos.QueueItem]{items: queueItems(8), rows: 12, width: 70, cursor: 1}, room: "Køkken", playing: 6}
 
-	rows := strings.Split(plain(q.View().Content), "\n")[queueHeaderRows:]
+	rows := strings.Split(plain(q.View().Content), "\n")[listHeaderRows:]
 	if !strings.Contains(rows[1], "▶") {
 		t.Fatalf("the cursor row carries no marker: %q", rows[1])
 	}
@@ -417,7 +432,7 @@ func TestQueue_KeepsOneWidthWhileScrolling(t *testing.T) {
 	for i := range items {
 		items[i].Title, items[i].Artist = "A", "B"
 	}
-	q := queueContent{room: "Køkken", items: items, rows: 9, width: 70}
+	q := queueContent{listView: listView[sonos.QueueItem]{items: items, rows: 9, width: 70}, room: "Køkken"}
 
 	want := lipgloss.Width(q.View().Content)
 	for _, offset := range []int{0, 1, 9, 60, 999} {
@@ -433,7 +448,7 @@ func TestQueue_KeepsOneWidthWhileScrolling(t *testing.T) {
 // one width holds the box steady but puts a gap either side of the dash, which
 // reads as a fault rather than as alignment.
 func TestQueue_HeadingRangeHasNoStrayPadding(t *testing.T) {
-	q := queueContent{room: "Køkken", items: queueItems(124), rows: 9, width: 70, offset: 3}
+	q := queueContent{listView: listView[sonos.QueueItem]{items: queueItems(124), rows: 9, width: 70, offset: 3}, room: "Køkken"}
 
 	if got := q.heading(); strings.Contains(got, " -") || strings.Contains(got, "- ") {
 		t.Fatalf("the heading %q pads around the dash", got)
@@ -443,7 +458,7 @@ func TestQueue_HeadingRangeHasNoStrayPadding(t *testing.T) {
 // Case: the two ends of the queue. An arrow at an edge with nothing past it
 // promises more than the queue holds.
 func TestQueue_NoArrowWhereTheQueueEnds(t *testing.T) {
-	q := queueContent{room: "Køkken", items: queueItems(32), rows: 9, width: 70}
+	q := queueContent{listView: listView[sonos.QueueItem]{items: queueItems(32), rows: 9, width: 70}, room: "Køkken"}
 
 	if got := plain(q.View().Content); strings.Contains(got, "↑") {
 		t.Fatalf("an up arrow at the top of the queue:\n%s", got)
@@ -471,12 +486,12 @@ func TestQueue_TheBreathRunsOnlyWhereThereIsAnArrow(t *testing.T) {
 	if !queueOf(t, long).overflows() {
 		t.Fatal("a 40-item queue should overflow the modal, or this proves nothing")
 	}
-	if _, cmd := long.Update(queueTickMsg{gen: long.queueGen}); cmd == nil {
+	if _, cmd := long.Update(listTickMsg{gen: long.queueGen}); cmd == nil {
 		t.Fatal("a list with an arrow stops repainting")
 	}
 
 	short := openWithQueue(t, 2)
-	if _, cmd := short.Update(queueTickMsg{gen: short.queueGen}); cmd != nil {
+	if _, cmd := short.Update(listTickMsg{gen: short.queueGen}); cmd != nil {
 		t.Fatal("a list with no arrow repaints anyway")
 	}
 }
@@ -511,7 +526,7 @@ func TestQueue_TheBreathDiesWithTheList(t *testing.T) {
 		t.Fatal("esc did not close the list")
 	}
 
-	if _, cmd := m.Update(queueTickMsg{gen: gen}); cmd != nil {
+	if _, cmd := m.Update(listTickMsg{gen: gen}); cmd != nil {
 		t.Fatal("a tick from the closed list started another chain")
 	}
 	if m.queueGen == gen {
@@ -529,7 +544,7 @@ func TestQueue_ASecondOpenDoesNotRunTwoBreaths(t *testing.T) {
 		t.Fatal("the second open reused the first generation")
 	}
 
-	if _, cmd := second.Update(queueTickMsg{gen: firstGen}); cmd != nil {
+	if _, cmd := second.Update(listTickMsg{gen: firstGen}); cmd != nil {
 		t.Fatal("the first chain is still running behind the second")
 	}
 }
@@ -537,7 +552,7 @@ func TestQueue_ASecondOpenDoesNotRunTwoBreaths(t *testing.T) {
 // Case: the arrow itself, which must change colour as the breath runs. The
 // row beside it must not.
 func TestQueue_TheArrowChangesColourAndTheRowDoesNot(t *testing.T) {
-	q := queueContent{room: "Køkken", items: queueItems(40), rows: 9, width: 70}
+	q := queueContent{listView: listView[sonos.QueueItem]{items: queueItems(40), rows: 9, width: 70}, room: "Køkken"}
 
 	q.openedAt = time.Now()
 	atRest := q.View().Content
@@ -572,7 +587,7 @@ func TestQueue_TheArrowSwingIsWideEnoughToNotice(t *testing.T) {
 func arrowBrightness(t *testing.T, at time.Duration) int {
 	t.Helper()
 
-	rendered := queueArrowStyle(time.Now().Add(-at)).Render("↓")
+	rendered := listArrowStyle(time.Now().Add(-at)).Render("↓")
 	m := regexp.MustCompile(`38;2;(\d+);`).FindStringSubmatch(rendered)
 	if m == nil {
 		t.Fatalf("the arrow carries no truecolor foreground: %q", rendered)
@@ -629,7 +644,7 @@ func TestQueue_ScrollingDoesNotLightAnything(t *testing.T) {
 // Case: which border carries the light. The end the reader pressed against is
 // the one that answers, and the other must stay quiet.
 func TestQueue_TheLitBorderIsTheOneAtThatEnd(t *testing.T) {
-	q := queueContent{room: "Køkken", items: queueItems(40), rows: 7, width: 60}
+	q := queueContent{listView: listView[sonos.QueueItem]{items: queueItems(40), rows: 7, width: 60}, room: "Køkken"}
 
 	top := q.bump(bumpTop).borderLight()
 	if (top(panes.ModalTop, 0) == panes.BorderCell{}) {
@@ -651,7 +666,7 @@ func TestQueue_TheLitBorderIsTheOneAtThatEnd(t *testing.T) {
 // Case: the pulse itself. It starts at the centre of the border and runs out to
 // the corners, rather than lighting the whole edge at once.
 func TestQueue_TheLightTravelsFromTheCentreOutward(t *testing.T) {
-	q := queueContent{room: "Køkken", items: queueItems(40), rows: 7, width: 60}.bump(bumpTop)
+	q := queueContent{listView: listView[sonos.QueueItem]{items: queueItems(40), rows: 7, width: 60}, room: "Køkken"}.bump(bumpTop)
 
 	at := func(age time.Duration, fromCentre float32) bool {
 		lit := q
@@ -677,7 +692,7 @@ func TestQueue_TheLightTravelsFromTheCentreOutward(t *testing.T) {
 // Case: the light going out. It answers a keypress and then leaves, rather
 // than staying on the screen as a warning would.
 func TestQueue_TheLightCoolsToNothing(t *testing.T) {
-	q := queueContent{room: "Køkken", items: queueItems(40), rows: 7, width: 60}.bump(bumpTop)
+	q := queueContent{listView: listView[sonos.QueueItem]{items: queueItems(40), rows: 7, width: 60}, room: "Køkken"}.bump(bumpTop)
 
 	if q.heat() < 0.9 {
 		t.Fatalf("a fresh bump starts at %.2f, want close to 1", q.heat())
@@ -700,7 +715,7 @@ func TestQueue_TheLightCoolsToNothing(t *testing.T) {
 // Case: a held key, which repeats about thirty times a second. Each press
 // restarts the light, so the edge stays lit until the reader lets go.
 func TestQueue_AHeldKeyHoldsTheLightOn(t *testing.T) {
-	q := queueContent{room: "Køkken", items: queueItems(40), rows: 7, width: 60}.bump(bumpTop)
+	q := queueContent{listView: listView[sonos.QueueItem]{items: queueItems(40), rows: 7, width: 60}, room: "Køkken"}.bump(bumpTop)
 
 	q.bumpedAt = time.Now().Add(-bumpDuration * 9 / 10) // nearly cooled
 	faded := q.heat()
@@ -737,7 +752,7 @@ func TestQueue_ABumpStartsARepaintChain(t *testing.T) {
 	}
 
 	m = updated.(appModel)
-	if _, again := m.Update(queueTickMsg{gen: m.queueGen}); again == nil {
+	if _, again := m.Update(listTickMsg{gen: m.queueGen}); again == nil {
 		t.Fatal("the chain stopped while the light was still lit")
 	}
 
@@ -745,7 +760,7 @@ func TestQueue_ABumpStartsARepaintChain(t *testing.T) {
 	content := queueOf(t, m)
 	content.bumpedAt = time.Now().Add(-bumpDuration)
 	m.queue.Content = content
-	if _, stopped := m.Update(queueTickMsg{gen: m.queueGen}); stopped != nil {
+	if _, stopped := m.Update(listTickMsg{gen: m.queueGen}); stopped != nil {
 		t.Fatal("the chain kept repainting a list with nothing moving")
 	}
 }
@@ -753,7 +768,7 @@ func TestQueue_ABumpStartsARepaintChain(t *testing.T) {
 // Case: the list under the border. A bump answers on the frame, so the list
 // itself must not change at all — not its size, and not its colours.
 func TestQueue_ABumpLeavesTheListAlone(t *testing.T) {
-	q := queueContent{room: "Køkken", items: queueItems(40), rows: 7, width: 60}
+	q := queueContent{listView: listView[sonos.QueueItem]{items: queueItems(40), rows: 7, width: 60}, room: "Køkken"}
 
 	before := q.View().Content
 	lit := q.bump(bumpTop).View().Content
@@ -766,7 +781,7 @@ func TestQueue_ABumpLeavesTheListAlone(t *testing.T) {
 // Case: the weight of the line. Colour alone spread the pulse into a smear of
 // close shades and was hard to see, so the front thickens the border glyph.
 func TestQueue_ThePulseThickensTheLine(t *testing.T) {
-	q := queueContent{room: "Køkken", items: queueItems(40), rows: 7, width: 60}.bump(bumpTop)
+	q := queueContent{listView: listView[sonos.QueueItem]{items: queueItems(40), rows: 7, width: 60}, room: "Køkken"}.bump(bumpTop)
 
 	weight := func(age time.Duration, fromCentre float32) bool {
 		lit := q
@@ -792,7 +807,7 @@ func TestQueue_ThePulseThickensTheLine(t *testing.T) {
 // coloured run, so the pulse has an edge and a fainter tail behind it. A run
 // that is heavy wherever it is coloured is the wide blur this replaced.
 func TestQueue_TheHeavyCoreIsNarrowerThanTheGlow(t *testing.T) {
-	q := queueContent{room: "Køkken", items: queueItems(40), rows: 7, width: 60}.bump(bumpTop)
+	q := queueContent{listView: listView[sonos.QueueItem]{items: queueItems(40), rows: 7, width: 60}, room: "Køkken"}.bump(bumpTop)
 	q.bumpedAt = time.Now().Add(-bumpDuration / 3)
 	paint := q.borderLight()
 

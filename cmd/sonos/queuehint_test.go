@@ -12,7 +12,7 @@ import (
 func TestQueueHint_ShowsAfterTheWait(t *testing.T) {
 	m := openedQueue(t, 40)
 
-	m = deliver(m, queueHintDueMsg{gen: m.queueHintGen})
+	m = deliver(m, listHintDueMsg{gen: m.queueHintGen})
 
 	if !m.queue.NoticeShowing() {
 		t.Fatal("no hint after the queue sat open with nothing pressed")
@@ -23,7 +23,7 @@ func TestQueueHint_ShowsAfterTheWait(t *testing.T) {
 // keyboard, so the hint has nothing to offer them this time.
 func TestQueueHint_AKeyCancelsIt(t *testing.T) {
 	m := openedQueue(t, 40)
-	due := queueHintDueMsg{gen: m.queueHintGen}
+	due := listHintDueMsg{gen: m.queueHintGen}
 
 	m = pressKey(m, "down")
 	m = deliver(m, due)
@@ -37,7 +37,7 @@ func TestQueueHint_AKeyCancelsIt(t *testing.T) {
 // player's does, rather than vanishing mid-sentence.
 func TestQueueHint_OneAlreadyShowingPlaysOut(t *testing.T) {
 	m := openedQueue(t, 40)
-	m = deliver(m, queueHintDueMsg{gen: m.queueHintGen})
+	m = deliver(m, listHintDueMsg{gen: m.queueHintGen})
 
 	m = pressKey(m, "down")
 
@@ -50,7 +50,7 @@ func TestQueueHint_OneAlreadyShowingPlaysOut(t *testing.T) {
 // never land over the player.
 func TestQueueHint_DiesWithTheQueue(t *testing.T) {
 	m := openedQueue(t, 40)
-	due := queueHintDueMsg{gen: m.queueHintGen}
+	due := listHintDueMsg{gen: m.queueHintGen}
 
 	m = pressKey(m, "esc")
 	m = deliver(m, due)
@@ -64,7 +64,7 @@ func TestQueueHint_DiesWithTheQueue(t *testing.T) {
 // open's must not fire into the second.
 func TestQueueHint_ReopeningStartsOneWait(t *testing.T) {
 	m := openedQueue(t, 40)
-	first := queueHintDueMsg{gen: m.queueHintGen}
+	first := listHintDueMsg{gen: m.queueHintGen}
 	m = pressKey(pressKey(m, "esc"), "enter")
 
 	m = deliver(m, first)
@@ -72,7 +72,7 @@ func TestQueueHint_ReopeningStartsOneWait(t *testing.T) {
 		t.Fatal("the first open's wait fired into the second")
 	}
 
-	m = deliver(m, queueHintDueMsg{gen: m.queueHintGen})
+	m = deliver(m, listHintDueMsg{gen: m.queueHintGen})
 	if !m.queue.NoticeShowing() {
 		t.Fatal("the second open's own wait did nothing")
 	}
@@ -82,7 +82,7 @@ func TestQueueHint_ReopeningStartsOneWait(t *testing.T) {
 func TestQueueHint_NotOverAnEmptyQueue(t *testing.T) {
 	m := openedQueue(t, 0)
 
-	m = deliver(m, queueHintDueMsg{gen: m.queueHintGen})
+	m = deliver(m, listHintDueMsg{gen: m.queueHintGen})
 
 	if m.queue.NoticeShowing() {
 		t.Fatal("a hint over a queue with no tracks in it")
@@ -97,7 +97,7 @@ func TestQueueHint_NotWhileTheQueueLoads(t *testing.T) {
 	m.tabs.Items[0].Content = newSpeakerModel(context.Background(), device)
 	m = pressKey(resize(m), "enter")
 
-	m = deliver(m, queueHintDueMsg{gen: m.queueHintGen})
+	m = deliver(m, listHintDueMsg{gen: m.queueHintGen})
 
 	if m.queue.NoticeShowing() {
 		t.Fatal("a hint over a queue still being read")
@@ -108,16 +108,16 @@ func TestQueueHint_NotWhileTheQueueLoads(t *testing.T) {
 // it has closed back into the border.
 func TestQueueHint_FramesRunWhileItShows(t *testing.T) {
 	m := openedQueue(t, 40)
-	model, frame := m.Update(queueHintDueMsg{gen: m.queueHintGen})
+	model, frame := m.Update(listHintDueMsg{gen: m.queueHintGen})
 	m = model.(appModel)
 	if frame == nil {
 		t.Fatal("the hint showed with no frames to draw it")
 	}
 
-	if _, next := m.Update(queueHintTickMsg{gen: m.queueHintGen}); next == nil {
+	if _, next := m.Update(listHintTickMsg{gen: m.queueHintGen}); next == nil {
 		t.Fatal("the frames stopped while the hint was still showing")
 	}
-	if _, stale := m.Update(queueHintTickMsg{gen: m.queueHintGen - 1}); stale != nil {
+	if _, stale := m.Update(listHintTickMsg{gen: m.queueHintGen - 1}); stale != nil {
 		t.Fatal("a frame from an abandoned chain kept running")
 	}
 }

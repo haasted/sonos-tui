@@ -108,10 +108,10 @@ func (g groupContent) picked() []string {
 func (g groupContent) View() tea.View {
 	var b strings.Builder
 	b.WriteString(groupHeadingStyle.Render(g.heading()) + "\n")
-	b.WriteString(queueRuleStyle().Render(strings.Repeat("─", g.ruleWidth())) + "\n")
+	b.WriteString(listRuleStyle().Render(strings.Repeat("─", g.ruleWidth())) + "\n")
 
 	if len(g.rows) == 0 {
-		b.WriteString(queueNoteStyle().Render(g.note()))
+		b.WriteString(listNoteStyle().Render(g.note()))
 		return tea.NewView(b.String())
 	}
 
@@ -119,7 +119,7 @@ func (g groupContent) View() tea.View {
 	for i, row := range g.rows {
 		mark := " "
 		if i == g.cursor {
-			mark = queueCursorGlyph
+			mark = listCursorGlyph
 		}
 
 		style := groupRowStyle
@@ -150,7 +150,7 @@ func (g groupContent) note() string {
 func (g groupContent) ruleWidth() int {
 	widest := lipgloss.Width(g.heading())
 	for _, row := range g.rows {
-		widest = max(widest, lipgloss.Width(row.room)+queueMarkWidth)
+		widest = max(widest, lipgloss.Width(row.room)+listMarkWidth)
 	}
 	return max(widest, lipgloss.Width(g.note()))
 }

@@ -8,6 +8,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/haasted/sonos-sandbox/internal/ui/panes"
+
+	"github.com/haasted/sonos-sandbox/internal/sonos"
 )
 
 // Case: the key, which must take the track the cursor is on rather than the
@@ -51,8 +53,8 @@ func TestQueueRemove_TheRowIsMarkedAtOnce(t *testing.T) {
 // another kind of important, and only its colouring may change -- a row whose
 // text changed would move the columns under the reader.
 func TestQueueRemove_AGoingRowIsDimmed(t *testing.T) {
-	plainRow := strings.Split(navQueue(20, 5).View().Content, "\n")[queueHeaderRows+4]
-	goingRow := strings.Split(moveQueue(navQueue(20, 4), "x").View().Content, "\n")[queueHeaderRows+4]
+	plainRow := strings.Split(navQueue(20, 5).View().Content, "\n")[listHeaderRows+4]
+	goingRow := strings.Split(moveQueue(navQueue(20, 4), "x").View().Content, "\n")[listHeaderRows+4]
 
 	if plainRow == goingRow {
 		t.Fatal("removing a track changed nothing about how its row is drawn")
@@ -177,8 +179,8 @@ func TestQueueRemove_DropsTheSelection(t *testing.T) {
 // cursor, so there is nothing to ask for.
 func TestQueueRemove_AsksForNothingWithNoTrackUnderTheCursor(t *testing.T) {
 	for name, q := range map[string]queueContent{
-		"empty":   {room: "Køkken", rows: 12, width: 70},
-		"loading": {room: "Køkken", rows: 12, width: 70, loading: true},
+		"empty":   {room: "Køkken", listView: listView[sonos.QueueItem]{rows: 12, width: 70}},
+		"loading": {room: "Køkken", listView: listView[sonos.QueueItem]{rows: 12, width: 70}, loading: true},
 	} {
 		if _, cmd := q.Update(keyMsgFor("x")); cmd != nil {
 			t.Fatalf("a %s queue asked for a track to be removed", name)

@@ -29,7 +29,7 @@ func queueRoomStyle() lipgloss.Style {
 		Foreground(theme.LightDark(lipgloss.Color("#B45309"), lipgloss.Color("#FBBF24")))
 }
 
-func queueRuleStyle() lipgloss.Style {
+func listRuleStyle() lipgloss.Style {
 	return lipgloss.NewStyle().
 		Foreground(theme.LightDark(lipgloss.Color("#D0D0D0"), lipgloss.Color("#4A4A4A")))
 }
@@ -50,10 +50,10 @@ func queuePlayingStyle() lipgloss.Style {
 	return lipgloss.NewStyle().Bold(true).Foreground(themedPlayingColor())
 }
 
-// queueArrowStyle breathes the arrow from near the colour of the rule to the
+// listArrowStyle breathes the arrow from near the colour of the rule to the
 // far end of the palette. A wide swing on purpose: the arrow is one character,
 // so a narrow one is only found by a reader who already knows to look.
-func queueArrowStyle(since time.Time) lipgloss.Style {
+func listArrowStyle(since time.Time) lipgloss.Style {
 	return lipgloss.NewStyle().
 		Foreground(flashsweep.BreathAt(time.Since(since), themedArrowRest(), themedArrowLit()))
 }
@@ -91,7 +91,7 @@ func themedSelectedBackground() color.Color {
 	return theme.LightDark(lipgloss.Color("#D4D4D8"), lipgloss.Color("#3F3F46"))
 }
 
-func queueNoteStyle() lipgloss.Style {
+func listNoteStyle() lipgloss.Style {
 	return lipgloss.NewStyle().
 		Foreground(theme.LightDark(lipgloss.Color("#4A4A4A"), lipgloss.Color("#9B9B9B")))
 }
@@ -144,7 +144,7 @@ func smoothstep01(edge0, edge1, x float32) float32 {
 // room name beside it, and not bold: the room says what the reader is looking
 // at, where the count answers a question they ask only now and then.
 //
-// Deliberately the same grey as queueNoteStyle rather than a fourth colour.
+// Deliberately the same grey as listNoteStyle rather than a fourth colour.
 // The heading already carries amber, and the list below it blue and amber
 // again; a new hue here would mean something it does not.
 func queueCountStyle() lipgloss.Style {

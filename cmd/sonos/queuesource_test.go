@@ -40,7 +40,7 @@ func TestQueueSource_GivesWayToSearchAndSelection(t *testing.T) {
 // and the room and the range keep every character.
 func TestQueueSource_ANarrowBoxClipsTheName(t *testing.T) {
 	q := sourcedQueue("Awesome singles")
-	q.width = baseWidth(q) + lipgloss.Width(queueSourceSeparator) + 9
+	q.width = baseWidth(q) + lipgloss.Width(headingSeparator) + 9
 
 	heading := headingOf(q)
 
@@ -56,7 +56,7 @@ func TestQueueSource_ANarrowBoxClipsTheName(t *testing.T) {
 // the name goes and the rest of the heading is as it would be without one.
 func TestQueueSource_TooLittleRoomDropsTheName(t *testing.T) {
 	q := sourcedQueue("Awesome singles")
-	q.width = baseWidth(q) + lipgloss.Width(queueSourceSeparator) + queueSourceShortest
+	q.width = baseWidth(q) + lipgloss.Width(headingSeparator) + headingShortest
 
 	heading := headingOf(q)
 

@@ -6,6 +6,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/haasted/sonos-sandbox/internal/ui/panes"
+
+	"github.com/haasted/sonos-sandbox/internal/sonos"
 )
 
 // Case: the key, which must ask for the track the cursor is on rather than
@@ -31,8 +33,8 @@ func TestQueuePlayFrom_AsksForTheTrackUnderTheCursor(t *testing.T) {
 // cursor, so there is nothing to play.
 func TestQueuePlayFrom_AsksForNothingWithNoTrackUnderTheCursor(t *testing.T) {
 	for name, q := range map[string]queueContent{
-		"empty":   {room: "Køkken", rows: 12, width: 70},
-		"loading": {room: "Køkken", rows: 12, width: 70, loading: true},
+		"empty":   {room: "Køkken", listView: listView[sonos.QueueItem]{rows: 12, width: 70}},
+		"loading": {room: "Køkken", listView: listView[sonos.QueueItem]{rows: 12, width: 70}, loading: true},
 	} {
 		if _, cmd := q.Update(keyMsgFor("enter")); cmd != nil {
 			t.Fatalf("a %s queue asked to play a track", name)

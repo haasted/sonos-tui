@@ -347,9 +347,8 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height, m.sized = msg.Width, msg.Height, true
 		m.tabs.Width = msg.Width
 		m.help = m.help.SetSize(msg.Width, msg.Height)
-		m.queue = m.queue.SetSize(msg.Width, msg.Height)
 		m.grouping = m.grouping.SetSize(msg.Width, msg.Height)
-		m = m.resizeQueue()
+		m = m.resizeLists(msg.Width, msg.Height)
 	case tea.KeyMsg:
 		m.hintDone = true // the user has found the keyboard; nothing left to hint
 
@@ -392,22 +391,8 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
-		if m.queue.IsOpen() {
-			m = m.retireQueueHint()
-			if msg.String() == "?" {
-				return m.openHelp(queueHelp)
-			}
-			queue, cmd := m.queue.Update(msg)
-			m.queue = queue
-			if !m.queue.IsOpen() {
-				m.queueGen = nextQueueGen() // the breath dies with the list
-				m.queueHintGen = nextQueueGen()
-				return m, cmd
-			}
-			if content, ok := m.queue.Content.(queueContent); ok && content.bumping() {
-				return m.restartQueueChain()
-			}
-			return m, cmd
+		if _, open := m.openList(); open {
+			return m.updateList(msg)
 		}
 
 		switch msg.String() {
@@ -494,18 +479,18 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.applyQueueRemoveCommit(msg)
 	case queueMoveCommitMsg:
 		return m.applyQueueMoveCommit(msg)
-	case queueTickMsg:
-		return m.applyQueueTick(msg)
+	case listTickMsg:
+		return m.applyListTick(msg)
 	case modalSweepDueMsg:
 		return m.applyModalSweepDue(msg)
 	case modalSweepTickMsg:
 		return m.applyModalSweepTick(msg)
 	case tea.MouseWheelMsg:
-		return m.applyQueueWheel(msg)
-	case queueHintDueMsg:
-		return m.applyQueueHintDue(msg)
-	case queueHintTickMsg:
-		return m.applyQueueHintTick(msg)
+		return m.applyListWheel(msg)
+	case listHintDueMsg:
+		return m.applyListHintDue(msg)
+	case listHintTickMsg:
+		return m.applyListHintTick(msg)
 	case panes.NoticeMsg:
 		// A degraded speaker surfaces in the same seconds the hint would, and a
 		// hint replacing it would bury the one message that mattered. Falls
@@ -702,16 +687,14 @@ func (m appModel) View() tea.View {
 	// The border light is read fresh each frame: it depends on when the reader
 	// last pressed against an end, which changes under the modal rather than
 	// on it.
-	queue := m.queue
-	if content, ok := queue.Content.(queueContent); ok {
-		queue.Light = content.borderLight()
-	}
-
 	framed := padToHeight(content, max(m.frameRows, playerHeightRows))
-	// Help draws over the queue, not under it. The two can be open together
-	// now: "?" inside the queue explains the queue.
-	view := tea.NewView(m.help.ViewOver(m.grouping.ViewOver(queue.ViewOver(framed))))
-	if m.queueTakesTheWheel() {
+	for _, list := range m.litLists() {
+		framed = list.ViewOver(framed)
+	}
+	// Help draws over a list, not under it. The two can be open together:
+	// "?" inside the queue explains the queue.
+	view := tea.NewView(m.help.ViewOver(m.grouping.ViewOver(framed)))
+	if m.listTakesTheWheel() {
 		view.MouseMode = tea.MouseModeCellMotion
 	}
 	return view
@@ -820,17 +803,4 @@ func padToHeight(content string, rows int) string {
 		return content + strings.Repeat("\n", missing)
 	}
 	return content
-}
-
-// resizeQueue tells the queue list how many rows it may draw. The modal clips
-// anything past that, so a list which does not know cannot scroll correctly.
-func (m appModel) resizeQueue() appModel {
-	content, ok := m.queue.Content.(queueContent)
-	if !ok {
-		return m
-	}
-	content.rows = m.queue.ContentRows()
-	content.width = m.queue.ContentColumns()
-	m.queue.Content = content
-	return m
 }

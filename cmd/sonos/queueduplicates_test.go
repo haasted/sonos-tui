@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/haasted/sonos-sandbox/internal/sonos"
+)
 
 // Case: the flash after play next, in a queue holding one track twice. Only
 // the copy that moved lit up; the other is still where it was.
@@ -71,8 +75,16 @@ func TestQueueDuplicates_AChangedQueueFallsBackToTheURI(t *testing.T) {
 // dupQueue is a queue built from URIs, which may repeat, with the cursor on
 // row cursor and the track at position playing playing.
 func dupQueue(uris []string, cursor, playing int) queueContent {
-	q := queueContent{room: "Køkken", items: itemsFor(uris), rows: 12, width: 70,
-		cursor: cursor, playing: playing}
+	q := queueContent{
+		listView: listView[sonos.QueueItem]{
+			items:  itemsFor(uris),
+			rows:   12,
+			width:  70,
+			cursor: cursor,
+		},
+		room:    "Køkken",
+		playing: playing,
+	}
 	return q.follow()
 }
 

@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"charm.land/lipgloss/v2"
+
+	"github.com/haasted/sonos-sandbox/internal/sonos"
 )
 
 // Case: nothing picked, which is the ordinary state. The heading says only
@@ -111,7 +113,7 @@ func TestQueueHeading_PickingDoesNotResizeTheBox(t *testing.T) {
 // need before they need to know how many are picked. Neither may overflow
 // the box, which wraps what it cannot fit and pushes a row off the bottom.
 func TestQueueHeading_DropsTheCountBeforeItOverflows(t *testing.T) {
-	q := queueContent{room: "Soveværelse", items: queueItems(130), rows: 16, width: 32}
+	q := queueContent{listView: listView[sonos.QueueItem]{items: queueItems(130), rows: 16, width: 32}, room: "Soveværelse"}
 	q = moveQueue(q, "*") // everything picked, the longest the count can be
 
 	head := q.heading()
@@ -130,7 +132,7 @@ func TestQueueHeading_DropsTheCountBeforeItOverflows(t *testing.T) {
 // Case: a heading too long even without a count, which a long room name on a
 // narrow terminal gives. It is clipped rather than wrapped.
 func TestQueueHeading_ClipsWhatCannotFitAtAll(t *testing.T) {
-	q := queueContent{room: strings.Repeat("Soveværelse ", 4), items: queueItems(130), rows: 16, width: 32}
+	q := queueContent{listView: listView[sonos.QueueItem]{items: queueItems(130), rows: 16, width: 32}, room: strings.Repeat("Soveværelse ", 4)}
 
 	if got := lipgloss.Width(q.heading()); got > 32 {
 		t.Fatalf("the heading is %d wide in a box of 32: %q", got, q.heading())

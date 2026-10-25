@@ -158,7 +158,7 @@ func mixedQueue() queueContent {
 			},
 		})
 	}
-	return queueContent{room: "Køkken", items: items, rows: 12, width: 70}
+	return queueContent{listView: listView[sonos.QueueItem]{items: items, rows: 12, width: 70}, room: "Køkken"}
 }
 
 // typeInto opens the filter and types, a key at a time, as a reader would.
@@ -193,12 +193,12 @@ func TestQueueFilter_DownLeavesTheBoxLikeEnter(t *testing.T) {
 // under them with every letter as the list narrows.
 func TestQueueFilter_NoCursorUntilTheListHasTheKeys(t *testing.T) {
 	typing := typeInto(mixedQueue(), "nick")
-	if strings.Contains(plain(typing.View().Content), queueCursorGlyph) {
+	if strings.Contains(plain(typing.View().Content), listCursorGlyph) {
 		t.Fatal("the cursor is drawn while the reader is still typing")
 	}
 
 	inList := moveQueue(typing, "down")
-	if !strings.Contains(plain(inList.View().Content), queueCursorGlyph) {
+	if !strings.Contains(plain(inList.View().Content), listCursorGlyph) {
 		t.Fatal("the cursor did not come back once the list had the keys")
 	}
 }

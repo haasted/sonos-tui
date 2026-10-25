@@ -7,74 +7,20 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 
 	"github.com/haasted/sonos-sandbox/internal/sonos"
-	"github.com/haasted/sonos-sandbox/internal/ui/flashsweep"
 	"github.com/haasted/sonos-sandbox/internal/ui/panes"
 )
 
-const (
-	queueHeaderRows = 2 // the room line and the rule below it
-	queueMarkWidth  = 2 // the cursor and the space after it
-	queueArrowWidth = 1 // the scroll arrow at the right edge of a row
-	queueGap        = 2 // between one column and the next
-
-	// The floors the two columns keep when the modal cannot hold them both.
-	// Below these a column stops carrying information and only carries an
-	// ellipsis.
-	queueTitleMin  = 20
-	queueArtistMin = 12
-
-	// queuePulseInterval is how often the arrows repaint. A breath takes five
-	// seconds, so twenty frames a second is more than the eye asks for.
-	queuePulseInterval = 50 * time.Millisecond
-
-	// bumpDuration is how long the edge stays lit after the reader presses
-	// against it. Short: it answers a keypress and then gets out of the way.
-	bumpDuration = 320 * time.Millisecond
-
-	// queueWheelStep is the least time between two rows moved by the wheel. A
-	// flicked trackpad sends notches in a burst; those inside it are dropped,
-	// so the cursor stops when the fingers do rather than running on.
-	queueWheelStep = 50 * time.Millisecond
-
-	// queueSourceShortest is the fewest characters of a playlist's name worth
-	// showing in the heading. Clipped any shorter, it is dropped instead.
-	queueSourceShortest  = 6
-	queueSourceSeparator = " · "
-
-	// A scroll speeds up one row per queueWheelRampNotches, up to
-	// queueWheelMaxRows, and starts slow again after a pause longer than
-	// queueWheelRunGap or a change of direction.
-	queueWheelMaxRows     = 3
-	queueWheelRampNotches = 4
-	queueWheelRunGap      = 250 * time.Millisecond
-
-	// highlightDuration is how long a moved track flashes before fading back
-	// to normal. Short, like the edge bump: it answers a command that just
-	// landed, not a state to dwell on.
-	highlightDuration = 500 * time.Millisecond
-)
+// highlightDuration is how long a moved track flashes before fading back
+// to normal. Short, like the edge bump: it answers a command that just
+// landed, not a state to dwell on.
+const highlightDuration = 500 * time.Millisecond
 
 // selectionCountFloor is how many tracks must be picked before the heading
 // says how many. Up to it the marks on the rows are the answer and the reader
 // has not lost count; a number appearing on the first press is noise.
 const selectionCountFloor = 3
-
-// queueCursorGlyph marks the row the reader is on. It used to mark the playing
-// track, which now shows as colour alone: the cursor moves and so needs the
-// stronger signal of the two.
-const queueCursorGlyph = "▶"
-
-// bumpEdge is which end of the list the reader pressed against.
-type bumpEdge int
-
-const (
-	bumpNone bumpEdge = iota
-	bumpTop
-	bumpBottom
-)
 
 // selectedTrack names one slot of the queue in a way that survives a reload.
 // The URI alone cannot: the same track can sit in a queue twice, so a URI
@@ -108,9 +54,10 @@ func landingsIn(model, carried []int, uriAt map[int]string) []landing {
 // queueContent lists a speaker's queue inside a modal. It holds what it was
 // given and where the reader has scrolled to; it fetches nothing itself.
 type queueContent struct {
+	listView[sonos.QueueItem]
+
 	room   string
 	source string // the playlist or album the queue was loaded from, if known
-	items  []sonos.QueueItem
 
 	// filter is what the reader has typed, and filtering says the box is open
 	// and taking their keys. Open with nothing typed still shows everything,
@@ -129,22 +76,6 @@ type queueContent struct {
 	playing int
 	err     error
 	loading bool
-
-	cursor   int       // the row the reader is on, as an index into items
-	offset   int       // first visible item
-	rows     int       // how many rows the modal will show, its frame excluded
-	width    int       // how many columns it will show, likewise
-	openedAt time.Time // when the list appeared, which is when the breath began
-
-	edge     bumpEdge  // which end the reader last pressed against
-	bumpedAt time.Time // when they did; zero when nothing is lit
-
-	wheeledAt   time.Time // when the wheel last moved the cursor
-	wheelSeenAt time.Time // when the last notch arrived, moved or dropped
-	wheelRun    int       // notches moved in the current gesture
-	wheelDir    int       // which way that gesture is going: -1 up, 1 down
-	wheelBumped bool      // the current swipe has lit an end already
-	swipe       swipeTracker
 
 	// selected are the tracks the reader has picked out, in the order they
 	// picked them. A slice because that order is the point, and a map has
@@ -195,16 +126,26 @@ type queueContent struct {
 	highlightAt time.Time
 }
 
-var _ tea.Model = queueContent{}
+var _ listContent = queueContent{}
 
 func (queueContent) Init() tea.Cmd { return nil }
 
-// Update scrolls the list. The modal forwards every key except esc, so these
-// keys mean the queue here and the player everywhere else: j is the previous
-// track outside this list and one row down inside it.
-//
-// The keys are the ones charm.land/bubbles binds by default, which are the
-// ones less and vi established.
+// animating reports anything on screen that moves: the arrows breathe while
+// the queue overflows, a bumped edge cools, and a moved track fades.
+func (q queueContent) animating() bool { return q.overflows() || q.bumping() || q.highlighting() }
+
+// hintReady holds the hint back while the queue is loading, empty or could not
+// be read: there are no tracks for the keys to act on.
+func (q queueContent) hintReady() bool { return q.note() == "" }
+
+func (q queueContent) resized(rows, width int) tea.Model {
+	q.rows, q.width = rows, width
+	return q
+}
+
+// Update scrolls the list and acts on its tracks. The modal forwards every key
+// except esc, so these keys mean the queue here and the player everywhere
+// else: j is the previous track outside this list and one row down inside it.
 func (q queueContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if wheel, ok := msg.(tea.MouseWheelMsg); ok {
 		return q.wheel(wheel), nil
@@ -220,27 +161,16 @@ func (q queueContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return q.filterKey(key.String()), nil
 	}
 
+	if list, moved := q.navigate(key.String()); moved {
+		q.listView = list
+		return q, nil
+	}
+
 	switch key.String() {
 	case "esc":
 		return q.closeFilter(), nil
 	case "/":
 		return q.openFilter(), nil
-	case "up", "k":
-		q = q.moveBy(-1)
-	case "down", "j":
-		q = q.moveBy(1)
-	case "pgup", "b":
-		q = q.moveBy(-q.page())
-	case "pgdown", "f", "space":
-		q = q.moveBy(q.page())
-	case "ctrl+u":
-		q = q.moveBy(-q.halfPage())
-	case "ctrl+d":
-		q = q.moveBy(q.halfPage())
-	case "home", "g":
-		q = q.moveToEnd(bumpTop)
-	case "end", "G":
-		q = q.moveToEnd(bumpBottom)
 	case "c":
 		q = q.jumpToPlaying()
 	case "x", "delete":
@@ -265,42 +195,20 @@ func (q queueContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return q, nil
 }
 
-// wheel moves the cursor through moveBy, as the arrow keys do: no oftener
-// than queueWheelStep, and further per notch the longer the wheel keeps going.
+// wheel moves the cursor as the arrow keys do, or through the filter's own
+// keys while the filter box has the keyboard.
 func (q queueContent) wheel(msg tea.MouseWheelMsg) queueContent {
-	dir := map[tea.MouseButton]int{tea.MouseWheelUp: -1, tea.MouseWheelDown: 1}[msg.Button]
-	if dir == 0 {
+	var delta int
+	if q.listView, delta = q.wheelStep(msg); delta == 0 {
 		return q
 	}
-
-	now := time.Now()
-	var fresh bool
-	if q.swipe, fresh = q.swipe.notch(dir, now); fresh {
-		q.wheelBumped = false
-	}
-	if dir != q.wheelDir || now.Sub(q.wheelSeenAt) > queueWheelRunGap {
-		q.wheelRun = 0
-	}
-	q.wheelSeenAt, q.wheelDir = now, dir
-	if now.Sub(q.wheeledAt) < queueWheelStep {
-		return q
-	}
-
-	rows := min(1+q.wheelRun/queueWheelRampNotches, queueWheelMaxRows)
-	q.wheelRun, q.wheeledAt = q.wheelRun+1, now
 	if q.filtering {
-		return q.filterKey(map[int]string{-1: "up", 1: "down"}[dir])
-	}
-
-	// One pulse per swipe, and never on top of one still running out.
-	edge, bumpedAt, running := q.edge, q.bumpedAt, q.bumping()
-	q = q.moveBy(dir * rows)
-	if bumped := !q.bumpedAt.Equal(bumpedAt); bumped {
-		if q.wheelBumped || (running && q.edge == edge) {
-			q.edge, q.bumpedAt = edge, bumpedAt
+		if delta < 0 {
+			return q.filterKey("up")
 		}
-		q.wheelBumped = true
+		return q.filterKey("down")
 	}
+	q.listView = q.wheelMove(delta)
 	return q
 }
 
@@ -342,7 +250,7 @@ func (q queueContent) shift(delta int) (queueContent, tea.Cmd) {
 	// Every press restarts the wait, taking a generation of its own so the
 	// tick the last press left behind is ignored when it arrives. The move
 	// therefore goes out once the keys are still, however long the run.
-	q.moveGen = nextQueueGen()
+	q.moveGen = nextGen()
 	return q, queueMoveTick(q.moveGen)
 }
 
@@ -924,7 +832,7 @@ func (q queueContent) remove() (queueContent, tea.Cmd) {
 
 	// Every press restarts the wait, taking a generation of its own, so the
 	// tick an earlier press left behind is ignored when it arrives.
-	q.removeGen = nextQueueGen()
+	q.removeGen = nextGen()
 	return q, tea.Batch(queueRemoveTick(q.removeGen), dropped)
 }
 
@@ -1205,38 +1113,26 @@ func (q queueContent) playFromCursor() (queueContent, tea.Cmd) {
 	return q, ask
 }
 
-// moveBy moves the cursor by delta rows, stopping at either end. It lights an
-// edge only where the cursor could not move at all: a page down that would run
-// past the last row lands on it instead, which is no refusal.
-//
-// Every relative key goes through it, and every absolute one through
-// moveToEnd, so what a move means is decided in two functions rather than in
-// each of eight bindings.
+// moveBy, moveToEnd, follow and bump are the list's own, kept on the queue so
+// a chain of queue methods stays one type.
 func (q queueContent) moveBy(delta int) queueContent {
-	target := max(min(q.cursor+delta, q.lastRow()), 0)
-	if target == q.cursor {
-		if delta < 0 {
-			return q.bump(bumpTop)
-		}
-		return q.bump(bumpBottom)
-	}
-	q.cursor = target
-	return q.follow()
+	q.listView = q.listView.moveBy(delta)
+	return q
 }
 
-// moveToEnd puts the cursor on the first or the last row. The edge is passed in
-// rather than derived from the row it lands on, because a queue of one item has
-// the same row at both ends and the two keys would then light the same border.
 func (q queueContent) moveToEnd(edge bumpEdge) queueContent {
-	target := 0
-	if edge == bumpBottom {
-		target = q.lastRow()
-	}
-	if target == q.cursor {
-		return q.bump(edge)
-	}
-	q.cursor = target
-	return q.follow()
+	q.listView = q.listView.moveToEnd(edge)
+	return q
+}
+
+func (q queueContent) follow() queueContent {
+	q.listView = q.listView.follow()
+	return q
+}
+
+func (q queueContent) bump(edge bumpEdge) queueContent {
+	q.listView = q.listView.bump(edge)
+	return q
 }
 
 // jumpToPlaying moves the cursor to the track now playing. Pausing or muting
@@ -1256,132 +1152,24 @@ func (q queueContent) jumpToPlaying() queueContent {
 	return q
 }
 
-// follow scrolls the window the least it can to keep the cursor on screen. The
-// window is what moves; the cursor is where the reader is.
-func (q queueContent) follow() queueContent {
-	switch {
-	case q.cursor < q.offset:
-		q.offset = q.cursor
-	case q.cursor >= q.offset+q.visibleRows():
-		q.offset = q.cursor - q.visibleRows() + 1
-	}
-	q.offset = max(min(q.offset, q.maxOffset()), 0)
-	return q
-}
-
-// lastRow is the index of the final item, or zero for a queue with none. The
-// cursor always sits somewhere, even on a list with nowhere to sit.
-func (q queueContent) lastRow() int { return max(len(q.items)-1, 0) }
-
-// page is how far a page move travels: one whole window, as a pager does. The
-// reader keeps their place by the heading, which names the rows on screen.
-func (q queueContent) page() int { return q.visibleRows() }
-
-// halfPage is the move ctrl+u and ctrl+d make, which keeps half the window in
-// view and so needs no heading to stay oriented.
-func (q queueContent) halfPage() int { return max(q.visibleRows()/2, 1) }
-
-// bump lights the end the reader pressed against. Every press restarts it, so
-// a held key holds the edge lit and it cools once the key is released.
-func (q queueContent) bump(edge bumpEdge) queueContent {
-	q.edge, q.bumpedAt = edge, time.Now()
-	return q
-}
-
-// bumping reports whether an edge is still lit.
-func (q queueContent) bumping() bool { return q.heat() > 0 }
-
-// heat is how lit the bumped edge is, from 1 at the press to 0 once cooled.
-func (q queueContent) heat() float32 {
-	if q.bumpedAt.IsZero() {
-		return 0
-	}
-	left := bumpDuration - time.Since(q.bumpedAt)
-	if left <= 0 {
-		return 0
-	}
-	return float32(left) / float32(bumpDuration)
-}
-
 func (q queueContent) View() tea.View {
-	title, artist := q.columns()
-
-	var b strings.Builder
-	var heading strings.Builder
-	for _, part := range q.headingParts() {
-		heading.WriteString(part.style.Render(part.text))
-	}
-	b.WriteString(heading.String() + "\n")
-	b.WriteString(queueRuleStyle().Render(strings.Repeat("─", q.ruleWidth())) + "\n")
-
-	if note := q.note(); note != "" {
-		b.WriteString(queueNoteStyle().Render(note))
-		return tea.NewView(b.String())
-	}
-
 	// Resolved once for the whole pass: which copy of a repeated URI a row is
 	// depends on every row above it, so asking per row would walk the queue
-	// again for each one. Keyed by the speaker's own position, which a row
-	// carries with it wherever the row sits.
+	// again for each one. Keyed by the speaker's own position.
 	picked := q.pickedPositions()
+	title, artist := q.columns(
+		func(item sonos.QueueItem) string { return item.Title },
+		func(item sonos.QueueItem) string { return item.Artist })
 
-	first, last := q.window()
-	for i, item := range q.items[first:last] {
-		b.WriteString(q.row(item, first+i, picked[item.Position], title, artist,
-			q.arrow(first, last, i)) + "\n")
-	}
-
-	return tea.NewView(strings.TrimRight(b.String(), "\n"))
+	return tea.NewView(q.render(q.headingParts(), q.note(), func(index int, item sonos.QueueItem, arrow string) string {
+		return q.row(item, index, picked[item.Position], [2]int{title, artist}, arrow)
+	}))
 }
-
-// columns is how wide the title and the artist should be. Neither is truncated
-// while both fit. They are measured across the WHOLE queue rather than the
-// visible window, so the columns do not shift as the reader scrolls.
-func (q queueContent) columns() (title, artist int) {
-	for _, item := range q.items {
-		title = max(title, lipgloss.Width(item.Title))
-		artist = max(artist, lipgloss.Width(item.Artist))
-	}
-
-	room := q.width - queueMarkWidth - queueGap
-	if q.overflows() {
-		room -= queueGap + queueArrowWidth
-	}
-	if room <= 0 {
-		return title, artist
-	}
-	if title+artist <= room {
-		// The box is a fixed width, so the row fills it rather than stopping
-		// short of the rule above. The title takes the slack, being the field
-		// that most often wants it.
-		return room - artist, artist
-	}
-
-	// The artist is the shorter field and the one a reader recognises from
-	// less of it, so it keeps its natural width while that fits in half the
-	// row. The title takes what is left, which is the larger share.
-	artist = min(artist, max(room/2, queueArtistMin))
-	return max(room-artist, queueTitleMin), artist
-}
-
-// ruleWidth spans the widest thing under it, so the rule marks the list out
-// rather than stopping short of it or running past.
-func (q queueContent) ruleWidth() int { return q.width }
 
 // heading names the room and the size of its queue, so a reader knows what
 // they are looking at and how much of it they can see, and says how many
-// tracks are picked when any are.
-//
-// The count is here because the rows alone cannot carry it: a reader who has
-// scrolled away from what they picked, or who inverted the selection, has
-// nothing else to read it from.
-// headingPart is one run of the heading, drawn in its own style.
-type headingPart struct {
-	text   string
-	style  lipgloss.Style
-	shrink bool // clipped to fit before it is dropped, rather than dropped whole
-}
-
+// tracks are picked when any are. The count is here because the rows alone
+// cannot carry it once the reader scrolls away from what they picked.
 func (q queueContent) heading() string {
 	var b strings.Builder
 	for _, part := range q.headingParts() {
@@ -1422,42 +1210,10 @@ func (q queueContent) headingParts() []headingPart {
 	// What the queue was loaded from, while nothing temporary -- a search or a
 	// selection -- needs the heading. It gives way first when space runs out.
 	if q.source != "" && !q.filtering && q.filter == "" && picked <= selectionCountFloor {
-		parts = append(parts, headingPart{text: queueSourceSeparator + q.source, style: queueRoomStyle(), shrink: true})
+		parts = append(parts, headingPart{text: headingSeparator + q.source, style: queueRoomStyle(), shrink: true})
 	}
-	return q.fitHeading(parts)
+	return fitHeading(parts, q.width)
 }
-
-// fitHeading drops what a narrow box cannot hold, last part first. The room
-// and how much of the queue is showing answer where the reader is, which they
-// need before the rest, so the rest is what goes rather than anything being
-// cut in half.
-func (q queueContent) fitHeading(parts []headingPart) []headingPart {
-	width := func(parts []headingPart) int {
-		var total int
-		for _, part := range parts {
-			total += lipgloss.Width(part.text)
-		}
-		return total
-	}
-
-	if last := len(parts) - 1; q.width > 0 && parts[last].shrink && width(parts) > q.width {
-		room := q.width - width(parts[:last]) - lipgloss.Width(queueSourceSeparator)
-		if room > queueSourceShortest { // the ellipsis takes one of the columns
-			name := strings.TrimPrefix(parts[last].text, queueSourceSeparator)
-			parts[last].text = queueSourceSeparator + clip(name, room)
-		}
-	}
-	for q.width > 0 && len(parts) > 1 && width(parts) > q.width {
-		parts = parts[:len(parts)-1]
-	}
-	if q.width > 0 && width(parts) > q.width {
-		parts[0].text = clip(parts[0].text, q.width)
-	}
-	return parts
-}
-
-// queueLabel is the room and the size of its queue, which is the whole
-// heading until something is picked.
 
 // matchLabel is how much of the queue is showing.
 func (q queueContent) matchLabel() string {
@@ -1471,18 +1227,12 @@ func (q queueContent) sizeSuffix() string {
 	case q.loading, len(q.items) == 0:
 		return ""
 	case q.overflows():
-		first, last := q.window()
-		return " · " + q.rangeLabel(first, last)
+		return " · " + q.rangeLabel()
 	case len(q.items) == 1:
 		return " · 1 track"
 	default:
 		return fmt.Sprintf(" · %d tracks", len(q.items))
 	}
-}
-
-// rangeLabel says which part of the queue is on screen.
-func (q queueContent) rangeLabel(first, last int) string {
-	return fmt.Sprintf("%d-%d of %d", first+1, last, len(q.items))
 }
 
 // note is the whole body when there are no rows to draw, and empty otherwise.
@@ -1499,58 +1249,9 @@ func (q queueContent) note() string {
 	}
 }
 
-// window is the slice of items on screen. It keeps both marker lines in place
-// while the queue overflows, so the layout does not jump as the reader scrolls.
-func (q queueContent) window() (first, last int) {
-	first = min(q.offset, q.maxOffset())
-	return first, min(first+q.visibleRows(), len(q.items))
-}
-
-// visibleRows is how many items fit. Every row below the heading holds an item,
-// so the count does not change with where the reader has scrolled to.
-func (q queueContent) visibleRows() int {
-	return max(q.rows-queueHeaderRows, 1)
-}
-
-// overflows reports whether the queue is longer than the window.
-func (q queueContent) overflows() bool {
-	return len(q.items) > q.rows-queueHeaderRows
-}
-
-func (q queueContent) maxOffset() int {
-	return max(len(q.items)-q.visibleRows(), 0)
-}
-
-// arrow is the mark at the right edge of one visible row. It sits on the first
-// and the last row of the window, and only where the queue really goes on past
-// that edge. Rows carry it rather than lines of their own, so the list keeps
-// one height from the top of a queue to the bottom.
-func (q queueContent) arrow(first, last, row int) string {
-	switch {
-	case row == 0 && first > 0:
-		return "↑"
-	case row == last-first-1 && last < len(q.items):
-		return "↓"
-	default:
-		return " "
-	}
-}
-
-// row draws one queue item: the title and the artist, a marker on the one
+// row draws one queue item: the title and the artist, coloured for the one
 // that is playing, and a brief flash on one that just landed from a move.
-func (q queueContent) row(item sonos.QueueItem, index int, picked bool, title, artist int, arrow string) string {
-	// No cursor while the filter box has the keyboard. It would point at a
-	// row the reader's keys are not reaching, and move under them as the
-	// list narrows on every letter.
-	mark := " "
-	if index == q.cursor && !q.filtering {
-		mark = queueCursorGlyph
-	}
-
-	body := fmt.Sprintf("%s %s  %s", mark,
-		padRight(clip(item.Title, title), title),
-		clip(item.Artist, artist))
-
+func (q queueContent) row(item sonos.QueueItem, index int, picked bool, widths [2]int, arrow string) string {
 	base := themedRowColor()
 	style := queueRowStyle()
 	if q.isPlaying(item) {
@@ -1569,28 +1270,16 @@ func (q queueContent) row(item sonos.QueueItem, index int, picked bool, title, a
 		style = style.Background(themedSelectedBackground())
 	}
 
-	// A track on its way out is drawn over whatever else the row is saying:
-	// it is leaving, so what it was is no longer the useful thing to read.
-	//
-	// Dimmed and not struck through. lipgloss re-emits the whole style for
-	// every grapheme of a struck line -- 1750 bytes and 140 escapes against
-	// 92 and 2, measured -- and the list repaints every 50ms while the
-	// arrows breathe. The contrast drop is large enough on its own.
+	// A track on its way out is drawn over whatever else the row is saying.
+	// Dimmed and not struck through: lipgloss re-emits the whole style for
+	// every grapheme of a struck line, and the list repaints every 50ms.
 	if q.isRemoving(item.Position) {
 		style = style.Foreground(themedGoingColor()).Bold(false)
 	}
 
-	// The arrow column exists only where the queue overflows, so a short queue
-	// draws no trailing space and the modal still shrinks to it. The arrow
-	// carries its own colour, which breathes, so it is styled apart from the row.
-	if !q.overflows() {
-		return style.Render(body)
-	}
-
-	full := queueMarkWidth + title + queueGap + artist
-	return style.Render(padRight(body, full)) +
-		strings.Repeat(" ", queueGap) +
-		queueArrowStyle(q.openedAt).Render(arrow)
+	// No cursor while the filter box has the keyboard. It would point at a
+	// row the reader's keys are not reaching.
+	return q.drawRow(index, item.Title, item.Artist, widths, style, arrow, q.filtering)
 }
 
 // isPlaying guards the zero as well as matching the position. A queue counts
@@ -1598,52 +1287,4 @@ func (q queueContent) row(item sonos.QueueItem, index int, picked bool, title, a
 // somehow carries no position must not answer to that.
 func (q queueContent) isPlaying(item sonos.QueueItem) bool {
 	return q.playing > 0 && item.Position == q.playing
-}
-
-// borderLight is the pulse that answers a press against an end of the list. It
-// leaves the centre of that border and runs out to both corners, which is the
-// language the notice entrance already speaks. Nil when nothing is lit, so the
-// modal draws its own resting colour.
-func (q queueContent) borderLight() panes.BorderLight {
-	heat := q.heat()
-	if heat <= 0 {
-		return nil
-	}
-	progress := 1 - heat
-
-	return func(edge panes.ModalEdge, fromCentre float32) panes.BorderCell {
-		if !q.lights(edge) {
-			return panes.BorderCell{}
-		}
-
-		lit := flashsweep.Spread(fromCentre, progress)
-		if lit < bumpVisibleAt {
-			return panes.BorderCell{} // the modal keeps its own border here
-		}
-		return panes.BorderCell{Color: bumpColour(lit), Heavy: lit >= bumpHeavyAt}
-	}
-}
-
-// lights reports whether a border carries the pulse. The end the reader pressed
-// against is the one that answers.
-func (q queueContent) lights(edge panes.ModalEdge) bool {
-	return (q.edge == bumpTop && edge == panes.ModalTop) ||
-		(q.edge == bumpBottom && edge == panes.ModalBottom)
-}
-
-// clip shortens to a display width, marking the cut. It walks runes rather
-// than bytes: track titles carry accents, and half a rune is not a character.
-func clip(s string, width int) string {
-	if lipgloss.Width(s) <= width {
-		return s
-	}
-	kept, total := []rune(nil), 0
-	for _, r := range s {
-		w := lipgloss.Width(string(r))
-		if total+w > width-1 {
-			break
-		}
-		kept, total = append(kept, r), total+w
-	}
-	return string(kept) + "…"
 }

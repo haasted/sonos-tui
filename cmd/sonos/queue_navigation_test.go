@@ -2,6 +2,8 @@ package main
 
 import (
 	"testing"
+
+	"github.com/haasted/sonos-sandbox/internal/sonos"
 )
 
 // Case: the keys that move by one row, including the vi pair the player binds
@@ -140,7 +142,7 @@ func TestQueueNav_AShortQueueNeverScrolls(t *testing.T) {
 // navQueue is a list with the cursor already on a given row, and the window
 // wherever that row put it.
 func navQueue(items, cursor int) queueContent {
-	q := queueContent{room: "Køkken", items: queueItems(items), rows: 12, width: 70, cursor: cursor}
+	q := queueContent{listView: listView[sonos.QueueItem]{items: queueItems(items), rows: 12, width: 70, cursor: cursor}, room: "Køkken"}
 	return q.follow()
 }
 
