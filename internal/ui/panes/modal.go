@@ -93,6 +93,7 @@ type Modal struct {
 	Content tea.Model // rendered inside the box; nil renders an empty modal
 	Mode    ModalMode
 	Light   BorderLight // nil leaves the border in one resting colour
+	Color   color.Color // the border's resting colour; nil keeps the default
 
 	// sweep and sweptAt are the light that runs once round the border as the
 	// modal opens: where it began, which way it goes, and when. Zero sweptAt
@@ -304,7 +305,7 @@ func (m Modal) box() string {
 
 	// height, not inner: lipgloss counts a border in a bordered style's
 	// Height, so asking for inner drew short content two rows shorter.
-	box := modalStyle.Width(width).Height(height).Render(body)
+	box := m.frameStyle().Width(width).Height(height).Render(body)
 	if m.Light == nil {
 		return box
 	}
@@ -345,7 +346,7 @@ func (m Modal) edge(which ModalEdge, width int) string {
 		if cell.Heavy {
 			r = heavy(r)
 		}
-		style := modalBorderStyle()
+		style := m.borderStyle()
 		if cell.Color != nil {
 			style = lipgloss.NewStyle().Foreground(cell.Color)
 		}
@@ -393,13 +394,25 @@ var modalInnerStyle = lipgloss.NewStyle().Padding(0, 1)
 
 var modalStyle = lipgloss.NewStyle().
 	Border(lipgloss.RoundedBorder()).
-	BorderForeground(modalBorderColor()).
 	Padding(0, 1)
 
 func modalBorderColor() color.Color {
 	return theme.LightDark(lipgloss.Color("#B45309"), lipgloss.Color("#FBBF24"))
 }
 
-func modalBorderStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(modalBorderColor())
+// borderColor is the colour the border rests at.
+func (m Modal) borderColor() color.Color {
+	if m.Color != nil {
+		return m.Color
+	}
+	return modalBorderColor()
+}
+
+func (m Modal) borderStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(m.borderColor())
+}
+
+// frameStyle is the whole box, drawn in this modal's border colour.
+func (m Modal) frameStyle() lipgloss.Style {
+	return modalStyle.BorderForeground(m.borderColor())
 }

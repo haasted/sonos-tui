@@ -182,7 +182,7 @@ func (m Modal) sweptRowReversed(first, mid, last string, fill, from int, w sweep
 func (m Modal) sweptCell(glyph string, index int, w sweepWalk) string {
 	burst := m.sweepBurst(index, w)
 	if burst <= modalSweepVisibleAt {
-		return modalBorderStyle().Render(glyph)
+		return m.borderStyle().Render(glyph)
 	}
 
 	if burst >= modalSweepHeavyAt {
@@ -190,7 +190,7 @@ func (m Modal) sweptCell(glyph string, index int, w sweepWalk) string {
 	}
 
 	ramp := flashsweep.Ramp{
-		Base:  flashsweep.FromColor(modalBorderColor()),
+		Base:  flashsweep.FromColor(m.borderColor()),
 		Flash: flashsweep.FromColor(modalSweepPeak()),
 	}
 	lit := ramp.Base.Lerp(ramp.Flash, burst)
