@@ -32,6 +32,25 @@ CREATE TABLE speaker_cache_session (
     selected TEXT NOT NULL
 ) STRICT;
 `,
+	// 2. Favourites: what the reader marked, kept as the URI and DIDL a
+	// speaker is given. service, account and item_id are read from the URI,
+	// and say when two marks are the same thing.
+	`
+CREATE TABLE favourite (
+    id       INTEGER PRIMARY KEY,
+    kind     TEXT    NOT NULL CHECK (kind IN ('track', 'album', 'playlist', 'station')),
+    title    TEXT    NOT NULL,
+    artist   TEXT    NOT NULL DEFAULT '',
+    album    TEXT    NOT NULL DEFAULT '',
+    uri      TEXT    NOT NULL,
+    metadata TEXT    NOT NULL,
+    service  INTEGER NOT NULL,
+    account  INTEGER NOT NULL,
+    item_id  TEXT    NOT NULL,
+    added_at TEXT    NOT NULL,
+    UNIQUE (service, account, item_id)
+) STRICT;
+`,
 }
 
 // migrate brings the database up to the last of steps. An empty file and a

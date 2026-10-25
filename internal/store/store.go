@@ -1,5 +1,5 @@
 // Package store is this application's SQLite database: one file holding the
-// speaker cache and, later, playlists and remembered tracks. It knows nothing
+// speaker cache, the favourites and, later, playlists. It knows nothing
 // about Sonos or terminals -- callers hand it values and get values back.
 package store
 
