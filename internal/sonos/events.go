@@ -38,7 +38,11 @@ type AVTransportEvent struct {
 	HasTracks         bool
 	HasCurrent        bool
 
-	QueueSource string // title of the playlist/container playback started from, if any
+	// HasQueueSource says the event named a playlist or album loaded into the
+	// queue. A station or a single track started instead is not one.
+	HasQueueSource bool
+
+	QueueSource string // title of the playlist or album last loaded into the queue
 
 	// Source is what is loaded on the speaker, as opposed to the track
 	// currently coming out of it: a queue, a radio station, a line-in. Its
@@ -214,13 +218,17 @@ func ParseAVTransportEvent(body []byte) (AVTransportEvent, error) {
 	next := parseDIDLTrack(instance.NextTrackMetaData.Val)
 	next.URI = instance.NextTrackURI.Val
 
-	queueSource := parseDIDLTrack(instance.EnqueuedTransportURIMetaData.Val).Title
-
 	event := AVTransportEvent{
-		PlayMode:    instance.CurrentPlayMode.Val,
-		RelTime:     instance.RelativeTimePosition.Val, // rarely sent — LastChange usually omits it (see AVTransportEvent doc)
-		Next:        next,
-		QueueSource: queueSource,
+		PlayMode: instance.CurrentPlayMode.Val,
+		RelTime:  instance.RelativeTimePosition.Val, // rarely sent — LastChange usually omits it (see AVTransportEvent doc)
+		Next:     next,
+	}
+
+	// The speaker reports whatever was last started, which is a station while
+	// radio plays. Only a container -- a playlist, an album -- names the queue.
+	enqueued := instance.EnqueuedTransportURIMetaData.Val
+	if title := parseDIDLTrack(enqueued).Title; title != "" && strings.HasPrefix(didlClass(enqueued), "object.container") {
+		event.QueueSource, event.HasQueueSource = title, true
 	}
 
 	if instance.TransportState != nil {
@@ -267,6 +275,22 @@ func ParseAVTransportEvent(body []byte) (AVTransportEvent, error) {
 // raw's escaping depth varies by caller (see ParseAVTransportEvent's
 // LastChange handling for the same issue one level up), so the same
 // try-raw-then-one-unescape-pass approach applies here too.
+// didlClass is the upnp:class of a DIDL-Lite item, which says what kind of
+// thing it describes: a track, a station, a playlist, an album.
+func didlClass(raw string) string {
+	var doc struct {
+		Item struct {
+			Class string `xml:"class"`
+		} `xml:"item"`
+	}
+	if err := xml.Unmarshal([]byte(raw), &doc); err != nil {
+		if err := xml.Unmarshal([]byte(html.UnescapeString(raw)), &doc); err != nil {
+			return ""
+		}
+	}
+	return strings.TrimSpace(doc.Item.Class)
+}
+
 func parseDIDLTrack(raw string) TrackMetadata {
 	if raw == "" || raw == "NOT_IMPLEMENTED" {
 		return TrackMetadata{}

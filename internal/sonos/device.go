@@ -56,6 +56,11 @@ type DeviceState struct {
 	// length, nor by QueueUpdateID, whose zero is also a real value.
 	QueueKnown bool
 
+	// QueueSource names the playlist or album last loaded into the queue, kept
+	// while a station plays so the queue keeps its name. Approximate: an edit
+	// to the queue since may have left it describing what the queue was.
+	QueueSource string
+
 	// QueueUpdateID is the speaker's own version number for its queue. It
 	// rises whenever the queue changes, so a copy read at a lower id is
 	// stale. Zero until an event or a Browse has reported one.
@@ -155,6 +160,9 @@ func (d *Device) HandleAVTransportEvent(ctx context.Context, body []byte) error 
 	}
 	if parsed.HasSource {
 		d.state.Source = parsed.Source
+	}
+	if parsed.HasQueueSource {
+		d.state.QueueSource = parsed.QueueSource
 	}
 	if parsed.HasCurrent {
 		d.state.Current = parsed.Current
