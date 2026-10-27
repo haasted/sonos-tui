@@ -19,6 +19,12 @@ production code never imports from here.
   the point is a body nothing can parse yet, and EventManager only hands out
   events it already understands. Needs real speakers; see
   `make notify-capture`.
+- `discoverprobe/` — looks for speakers for 10 seconds by every means at once:
+  the client's own `sonos.Discover`, SSDP on every IPv4 interface (the search
+  sent again each second), and mDNS on each interface. Logs every answer, reads
+  each speaker's description, and ends with how long each means took to find
+  each speaker. For a machine that finds too few speakers. Console output only;
+  see `make discover-probe` (`PROBE_ARGS=-for=20s` changes the time).
 - `coverart/` — evaluates `github.com/blacktop/go-termimg` and
   `github.com/BourgeoisBear/rasterm` for rendering album art in the terminal.
   Runs against fixture images in `data/`, no live speaker calls.

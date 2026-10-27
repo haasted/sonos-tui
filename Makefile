@@ -1,4 +1,4 @@
-.PHONY: build fmt vet test test-verbose test-race test-live run run-logs run-nocache queue-events notify-capture uitest worktrees tidy adr-html help
+.PHONY: build fmt vet test test-verbose test-race test-live run run-logs run-nocache queue-events notify-capture discover-probe uitest worktrees tidy adr-html help
 
 .DEFAULT_GOAL := help
 
@@ -53,6 +53,9 @@ queue-events: ## Watch ContentDirectory events while a queue is edited
 
 notify-capture: ## Record the raw NOTIFY bodies of one event service
 	cd experiments && go run ./notifycapture $(NOTIFY_ARGS)
+
+discover-probe: ## Look for speakers for 10s by SSDP and mDNS on every interface, logging all
+	cd experiments && go run ./discoverprobe $(PROBE_ARGS)
 
 run-logs: ## Run the CLI and print the logs once it exits
 	go run ./cmd/sonos -logs
