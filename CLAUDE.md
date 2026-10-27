@@ -56,7 +56,7 @@ Use a parent for containment. Use a dependency for order.
 
 A parent says "this is part of that epic". A dependency says "this must wait for that". Do not use a dependency to record that two tasks belong to one piece of work.
 
-Start an epic when new work splits into several tasks. Do not make an epic out of tasks that already exist: a reparented task keeps its old id, so its id and its place in the tree disagree from then on.
+Start an epic when new work splits into several tasks. Bead ids are not referenced anywhere, so they may change: when a task moves to another parent, rename it to match (`bd rename son-abc son-xyz.3`).
 
 ## Task labels
 
