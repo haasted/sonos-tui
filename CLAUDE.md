@@ -14,6 +14,8 @@ When working on generic functionality or utilities, consider whether it's possib
 
 If my instructions are vague, ambiguous or are over-looking something, feel free to doubt and press for more reflection or answers.
 
+The project is early, before any release. The database may be reset or deleted at any time, so do not spend effort keeping stored data or existing databases working across schema changes. Change the schema in whatever way is simplest, and say when a change needs the database deleted (`make run-nocache` deletes it).
+
 ## Go style
 
 When structuring a package, prefer to place constant, variable and type declarations at the top. Functions and member functions should come after that.
