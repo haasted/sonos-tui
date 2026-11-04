@@ -10,6 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/haasted/sonos-sandbox/internal/sonos"
+	"github.com/haasted/sonos-sandbox/internal/store"
 	"github.com/haasted/sonos-sandbox/internal/ui/nowplaying"
 	"github.com/haasted/sonos-sandbox/internal/ui/panes"
 )
@@ -49,7 +50,9 @@ type appModel struct {
 	quitting      bool
 	help          panes.Modal
 	queue         panes.Modal
+	favourites    panes.Modal
 	grouping      panes.Modal
+	db            *store.Store // the database; nil only in tests
 
 	sized bool // a size has arrived; until then fits refuses nothing
 
@@ -85,6 +88,9 @@ type appModel struct {
 	sweepGen int
 
 	queueHintGen int // the queue hint's chain: its wait, then its frames
+
+	favouritesGen     int // the favourites list's repaint chain, as queueGen
+	favouritesHintGen int // the favourites hint's chain, as queueHintGen
 }
 
 // newAppModel builds the model, seeding tabs straight from the cache so the
@@ -104,13 +110,19 @@ func newAppModel(ctx context.Context, events *sonos.EventManager, cached []sonos
 	queue := panes.NewModal(queueContent{})
 	queue.Mode = panes.ModalFixed
 
+	// Fixed, as the queue is, and in its own colour so the two are not
+	// mistaken for each other.
+	favourites := panes.NewModal(favouritesContent{})
+	favourites.Mode = panes.ModalFixed
+	favourites.Color = favouritesBorderColor()
+
 	// Hovering, not fixed: it lists a handful of rooms and has nothing that
 	// changes under the reader, so it can fit itself to what it holds.
 	grouping := panes.NewModal(groupContent{})
 	grouping.Mode = panes.ModalHover
 
 	m := appModel{ctx: ctx, tabs: tabs, eventManager: events, fromCache: len(cached) > 0,
-		help: help, queue: queue, grouping: grouping,
+		help: help, queue: queue, favourites: favourites, grouping: grouping,
 		cachedStates: map[string]cachedState{}, found: map[string]bool{}}
 	for _, speaker := range cached {
 		m = m.insertSpeaker(speakerKey(speaker), speaker.RoomName(), newSpeakerModel(ctx, sonos.NewDevice(speaker)))
@@ -241,7 +253,7 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // closing a modal would leave a copy of it behind, once per cycle.
 func (m appModel) growFrame() appModel {
 	needed := playerHeightRows
-	for _, modal := range []panes.Modal{m.help, m.queue, m.grouping} {
+	for _, modal := range []panes.Modal{m.help, m.queue, m.favourites, m.grouping} {
 		if !modal.IsOpen() {
 			continue
 		}
@@ -417,6 +429,8 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.openHelp(playerHelp)
 		case "enter":
 			return m.openQueue()
+		case "f":
+			return m.openFavourites()
 		}
 	case speakerFoundMsg:
 		return m.applyFound(msg.speaker)
@@ -475,6 +489,12 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return next, ask
 	case hintTickMsg:
 		return m.applyHintTick()
+	case favouritesLoadedMsg:
+		return m.applyFavouritesLoaded(msg)
+	case favouriteKindChosenMsg:
+		return m.applyFavouriteKindChosen(msg)
+	case favouriteActionMsg:
+		return m.applyFavouriteAction(msg)
 	case queueLoadedMsg:
 		return m.applyQueueLoaded(msg)
 	case queueRemoveMsg:
@@ -502,8 +522,11 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case panes.NoticeMsg:
 		// A degraded speaker surfaces in the same seconds the hint would, and a
 		// hint replacing it would bury the one message that mattered. Falls
-		// through to Tabs, which owns the rule.
+		// through to Tabs, which owns the rule, unless a list modal covers it.
 		m.hintDone = true
+		if _, open := m.openList(); open {
+			return m.noticeOnList(msg)
+		}
 	}
 
 	tabs, cmd := m.tabs.Update(msg)

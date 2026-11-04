@@ -14,6 +14,7 @@ type SettingKey string
 // The settings.
 const (
 	SettingSelectedSpeaker SettingKey = "speaker.selected" // RINCON id of the tab selected at exit
+	SettingFavouritesKind  SettingKey = "favourites.kind"  // the media type the favourites modal showed last
 )
 
 // Settings is the handle on the setting table: single remembered values,

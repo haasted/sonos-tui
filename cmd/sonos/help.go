@@ -55,6 +55,7 @@ var playerHelp = helpTable{
 			{"l", "next track"},
 			{"enter", "show the queue"},
 			{"g", "group with"},
+			{"f", "favourites"},
 		}},
 		{"Sound", []helpKey{
 			{"↑  ↓", "volume"},
@@ -101,6 +102,26 @@ var queueHelp = helpTable{
 			{"S", "select none"},
 			{"*", "invert the selection"},
 			{"J K ⇧↑ ⇧↓", "move a track"},
+			{"esc", "close"},
+		}},
+	},
+}
+
+// favouritesHelp is what "?" shows over the favourites. The list moves with
+// the queue's keys, and ← → switch between the kinds of favourite.
+var favouritesHelp = helpTable{
+	{
+		{"Favourites", []helpKey{
+			{"↑ ↓  k j", "move a row"},
+			{"pgup  b", "page up"},
+			{"pgdn f spc", "page down"},
+			{"^u  ^d", "half a page"},
+			{"home  g", "to the top"},
+			{"end  G", "to the end"},
+			{"←  →", "tracks, albums, playlists, stations"},
+			{"enter", "play, replacing the queue"},
+			{"n", "play next"},
+			{"N", "add to the end of the queue"},
 			{"esc", "close"},
 		}},
 	},

@@ -58,6 +58,7 @@ func main() {
 	}
 
 	model := newAppModel(ctx, events, cached, selected)
+	model.db = db
 	program := tea.NewProgram(model, tea.WithContext(ctx))
 
 	go discoverSpeakers(ctx, program)

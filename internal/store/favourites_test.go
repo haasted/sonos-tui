@@ -10,7 +10,7 @@ import (
 
 // Case: a favourite stored and read back, which must keep every field.
 func TestFavourites_AFavouriteSurvivesTheRoundTrip(t *testing.T) {
-	s := openTemp(t)
+	s := openWithoutFavourites(t)
 	want := playlistFavourite(time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC))
 
 	added, err := s.Favourites().Add(t.Context(), want)
@@ -28,7 +28,7 @@ func TestFavourites_AFavouriteSurvivesTheRoundTrip(t *testing.T) {
 // Case: the same thing marked twice. One row stays, and the second mark
 // reports that nothing was added.
 func TestFavourites_MarkingTwiceKeepsOneRow(t *testing.T) {
-	s := openTemp(t)
+	s := openWithoutFavourites(t)
 	first := playlistFavourite(time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC))
 	again := first
 	again.Title = "Renamed"
@@ -48,7 +48,7 @@ func TestFavourites_MarkingTwiceKeepsOneRow(t *testing.T) {
 
 // Case: several favourites, which must list newest first.
 func TestFavourites_ListIsNewestFirst(t *testing.T) {
-	s := openTemp(t)
+	s := openWithoutFavourites(t)
 	older := playlistFavourite(time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC))
 	newer := playlistFavourite(time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC))
 	newer.ItemID, newer.Title = "libraryplaylist:p.ZOAXddOUZE1LE", "Metallica"
@@ -67,7 +67,7 @@ func TestFavourites_ListIsNewestFirst(t *testing.T) {
 
 // Case: a kind the table does not know, which the schema must refuse.
 func TestFavourites_AnUnknownKindIsRefused(t *testing.T) {
-	s := openTemp(t)
+	s := openWithoutFavourites(t)
 	fav := playlistFavourite(time.Now())
 	fav.Kind = "artist"
 
@@ -77,7 +77,7 @@ func TestFavourites_AnUnknownKindIsRefused(t *testing.T) {
 
 // Case: an empty list, which is a first run rather than a fault.
 func TestFavourites_AnEmptyListIsFine(t *testing.T) {
-	got, err := openTemp(t).Favourites().List(t.Context())
+	got, err := openWithoutFavourites(t).Favourites().List(t.Context())
 
 	require.NoError(t, err)
 	assert.Empty(t, got)
@@ -86,7 +86,7 @@ func TestFavourites_AnEmptyListIsFine(t *testing.T) {
 // Case: the cache cleared with favourites stored. Favourites are not cache
 // and must survive.
 func TestFavourites_ClearingTheCacheKeepsThem(t *testing.T) {
-	s := openTemp(t)
+	s := openWithoutFavourites(t)
 	fillCache(t, s)
 	_, err := s.Favourites().Add(t.Context(), playlistFavourite(time.Now()))
 	require.NoError(t, err)
@@ -107,4 +107,14 @@ func playlistFavourite(addedAt time.Time) Favourite {
 		ItemID:   "libraryplaylist:p.V7VYpk7FYWLeW",
 		AddedAt:  addedAt.UTC(),
 	}
+}
+
+// openWithoutFavourites opens a temporary store with the favourite table
+// emptied, so a test sees only the rows it adds, whatever a migration seeds.
+func openWithoutFavourites(t *testing.T) *Store {
+	t.Helper()
+	s := openTemp(t)
+	_, err := s.db.ExecContext(t.Context(), `DELETE FROM favourite`)
+	require.NoError(t, err)
+	return s
 }

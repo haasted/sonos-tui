@@ -75,7 +75,7 @@ func TestHelp_ThePlayerPopupHoldsNoQueueKeys(t *testing.T) {
 
 	// k and j are left out: they are bound in both places, meaning play/pause
 	// and previous track here, and one row up or down inside the list.
-	for _, key := range []string{"pgup", "pgdn", "spc", "^u", "^d", "home", "end", "G", "b", "f"} {
+	for _, key := range []string{"pgup", "pgdn", "spc", "^u", "^d", "home", "end", "G", "b"} {
 		if documented[key] {
 			t.Errorf("the player popup shows %q, which only moves the queue", key)
 		}
@@ -120,11 +120,12 @@ var helpLayers = map[string]struct {
 	name  string // what to call the popup when a key is missing from it
 	table helpTable
 }{
-	"speaker.go":  {"player", playerHelp},
-	"appModel.go": {"player", playerHelp},
-	"tabs.go":     {"player", playerHelp},
-	"queue.go":    {"queue", queueHelp},
-	"trial.go":    {"player", playerHelp}, // TODO: TEMPORARY. Remove with trial.go.
+	"speaker.go":    {"player", playerHelp},
+	"appModel.go":   {"player", playerHelp},
+	"tabs.go":       {"player", playerHelp},
+	"queue.go":      {"queue", queueHelp},
+	"favourites.go": {"favourites", favouritesHelp},
+	"trial.go":      {"player", playerHelp}, // TODO: TEMPORARY. Remove with trial.go.
 }
 
 // helpLayersWithoutAPopup are files whose bindings no popup documents yet,

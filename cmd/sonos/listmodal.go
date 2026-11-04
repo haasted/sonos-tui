@@ -61,11 +61,15 @@ func listHintTick(gen int, every time.Duration) tea.Cmd {
 
 // listSlots are every list modal, in the order they are drawn.
 func (m *appModel) listSlots() []listSlot {
-	return []listSlot{m.queueSlot()}
+	return []listSlot{m.queueSlot(), m.favouritesSlot()}
 }
 
 func (m *appModel) queueSlot() listSlot {
 	return listSlot{modal: &m.queue, pulse: &m.queueGen, hint: &m.queueHintGen, help: queueHelp}
+}
+
+func (m *appModel) favouritesSlot() listSlot {
+	return listSlot{modal: &m.favourites, pulse: &m.favouritesGen, hint: &m.favouritesHintGen, help: favouritesHelp}
 }
 
 // listSweeping reports whether the opening light is still going round any
@@ -202,6 +206,19 @@ func (m appModel) applyListHintTick(msg listHintTickMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// noticeOnList shows a notice in the open list modal's bottom border, where
+// the reader is looking. The tab row it would otherwise go to is under the
+// modal. It rides the hint's chain, which a notice replaces.
+func (m appModel) noticeOnList(msg panes.NoticeMsg) (tea.Model, tea.Cmd) {
+	slot, ok := m.openList()
+	if !ok {
+		return m, nil
+	}
+	*slot.hint = nextGen()
+	*slot.modal = slot.modal.Notify(msg)
+	return m, listHintTick(*slot.hint, slot.modal.NoticeInterval())
 }
 
 // resizeLists sizes every list modal to the terminal and tells each list how

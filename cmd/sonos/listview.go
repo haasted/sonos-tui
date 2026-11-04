@@ -58,13 +58,16 @@ const (
 // needs a stronger signal than the colour a playing track is drawn in.
 const listCursorGlyph = "▶"
 
-// bumpEdge is which end of the list the reader pressed against.
+// bumpEdge is which edge the reader pressed against: an end of the list, or
+// a side, for a list that pages sideways as well.
 type bumpEdge int
 
 const (
 	bumpNone bumpEdge = iota
 	bumpTop
 	bumpBottom
+	bumpLeft
+	bumpRight
 )
 
 // listView is the part of a list that knows nothing of what it lists: the
@@ -380,11 +383,13 @@ func (l listView[T]) borderLight() panes.BorderLight {
 	}
 }
 
-// lights reports whether a border carries the pulse. The end the reader pressed
-// against is the one that answers.
+// lights reports whether a border carries the pulse. The edge the reader
+// pressed against is the one that answers.
 func (l listView[T]) lights(edge panes.ModalEdge) bool {
 	return (l.edge == bumpTop && edge == panes.ModalTop) ||
-		(l.edge == bumpBottom && edge == panes.ModalBottom)
+		(l.edge == bumpBottom && edge == panes.ModalBottom) ||
+		(l.edge == bumpLeft && edge == panes.ModalLeft) ||
+		(l.edge == bumpRight && edge == panes.ModalRight)
 }
 
 // fitHeading drops what a narrow box cannot hold, last part first. The parts
