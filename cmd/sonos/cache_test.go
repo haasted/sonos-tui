@@ -23,16 +23,28 @@ func TestCachedSpeakersAppearImmediately(t *testing.T) {
 // Case: the speaker selected when the program last exited, which must be
 // re-selected rather than defaulting to the first tab.
 func TestCachedSelectionIsRestored(t *testing.T) {
-	m := newAppModel(context.Background(), nil, cachedSpeakers(), "uuid:C")
+	m := newAppModel(context.Background(), nil, cachedSpeakers(), "C")
 
 	if got := m.tabs.Items[m.tabs.Active].Title; got != "Office" {
 		t.Fatalf("expected the previously selected speaker, got %q", got)
 	}
 }
 
+// Case: the selection written on exit. It must be the RINCON id the next run
+// selects by, not the USN or the address.
+func TestTheSelectionIsSavedAsTheRINCONID(t *testing.T) {
+	m := newAppModel(context.Background(), nil, cachedSpeakers(), "B")
+
+	_, selected := m.speakerSnapshot()
+
+	if selected != "B" {
+		t.Fatalf("expected the selected speaker's id, got %q", selected)
+	}
+}
+
 // Case: an unknown selection, e.g. that speaker is gone from the cache.
 func TestUnknownSelectionFallsBackToTheFirstTab(t *testing.T) {
-	m := newAppModel(context.Background(), nil, cachedSpeakers(), "uuid:NOPE")
+	m := newAppModel(context.Background(), nil, cachedSpeakers(), "NOPE")
 
 	if m.tabs.Active != 0 {
 		t.Fatalf("an unknown selection should leave the first tab active, got index %d", m.tabs.Active)

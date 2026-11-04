@@ -7,12 +7,18 @@ import (
 )
 
 // migrations are applied in order, and the schema version is how many of them
-// a file has had. Append only: editing one that has shipped leaves every
-// existing file at a schema the code no longer describes. The SQL sits
-// flush left so `sqlite3 sonos.db .schema` reads properly.
+// a file has had. Before a release the list may be edited rather than added
+// to, at the price of deleting existing databases. The SQL sits flush left so
+// `sqlite3 sonos.db .schema` reads properly.
 var migrations = []string{
-	// 1. The speaker cache: the speakers last seen, and the context that
-	// judges whether they still apply.
+	// 1. The whole schema:
+	//   - the speaker cache: the speakers last seen, and the context that
+	//     judges whether they still apply;
+	//   - favourites: what the reader marked, kept as the URI and DIDL a
+	//     speaker is given. service, account and item_id are read from the
+	//     URI, and say when two marks are the same thing;
+	//   - settings: single remembered values, such as the reader's choices.
+	//     Not cache: clearing the cache never reaches this table.
 	`
 CREATE TABLE speaker_cache (
     usn          TEXT PRIMARY KEY,
@@ -28,14 +34,9 @@ CREATE TABLE speaker_cache (
 CREATE TABLE speaker_cache_session (
     id       INTEGER PRIMARY KEY CHECK (id = 1),
     saved_at TEXT NOT NULL,
-    subnet   TEXT NOT NULL,
-    selected TEXT NOT NULL
+    subnet   TEXT NOT NULL
 ) STRICT;
-`,
-	// 2. Favourites: what the reader marked, kept as the URI and DIDL a
-	// speaker is given. service, account and item_id are read from the URI,
-	// and say when two marks are the same thing.
-	`
+
 CREATE TABLE favourite (
     id       INTEGER PRIMARY KEY,
     kind     TEXT    NOT NULL CHECK (kind IN ('track', 'album', 'playlist', 'station')),
@@ -50,10 +51,7 @@ CREATE TABLE favourite (
     added_at TEXT    NOT NULL,
     UNIQUE (service, account, item_id)
 ) STRICT;
-`,
-	// 3. Settings: single remembered values, such as the reader's choices.
-	// Not cache: clearing the cache never reaches this table.
-	`
+
 CREATE TABLE setting (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL

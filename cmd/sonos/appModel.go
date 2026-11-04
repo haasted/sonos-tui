@@ -88,9 +88,9 @@ type appModel struct {
 }
 
 // newAppModel builds the model, seeding tabs straight from the cache so the
-// first frame already shows the speakers from last run. Nothing here touches
-// the network; verification happens behind the rendered tabs.
-func newAppModel(ctx context.Context, events *sonos.EventManager, cached []sonos.Speaker, selectedUSN string) appModel {
+// first frame already shows the speakers from last run, with the tab whose
+// RINCON id is selected chosen. Nothing here touches the network.
+func newAppModel(ctx context.Context, events *sonos.EventManager, cached []sonos.Speaker, selected string) appModel {
 	tabs := panes.NewTabs(nil)
 	tabs.Position = panes.Bottom
 	tabs.HideBorder = true
@@ -115,7 +115,7 @@ func newAppModel(ctx context.Context, events *sonos.EventManager, cached []sonos
 	for _, speaker := range cached {
 		m = m.insertSpeaker(speakerKey(speaker), speaker.RoomName(), newSpeakerModel(ctx, sonos.NewDevice(speaker)))
 		m.cachedStates[speakerKey(speaker)] = cachedChecking
-		if speaker.USN == selectedUSN && selectedUSN != "" {
+		if selected != "" && speakerKey(speaker) == selected {
 			m.tabs.Active = m.tabIndex(speakerKey(speaker))
 		}
 	}
@@ -204,8 +204,8 @@ func (m appModel) deviceFor(id string) (*sonos.Device, bool) {
 	return speaker.device, true
 }
 
-// speakerSnapshot returns the speakers still on screen and the USN of the
-// selected one, for writing to the cache on exit.
+// speakerSnapshot returns the speakers still on screen and the RINCON id of
+// the selected one, for the next run to start from.
 func (m appModel) speakerSnapshot() ([]sonos.Speaker, string) {
 	var speakers []sonos.Speaker
 	var selected string
@@ -216,7 +216,7 @@ func (m appModel) speakerSnapshot() ([]sonos.Speaker, string) {
 		}
 		speakers = append(speakers, speaker.device.Speaker)
 		if i == m.tabs.Active {
-			selected = speaker.device.USN
+			selected = speakerKey(speaker.device.Speaker)
 		}
 	}
 	return speakers, selected

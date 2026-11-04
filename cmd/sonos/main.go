@@ -51,7 +51,11 @@ func main() {
 		return
 	}
 
-	cached, selected := loadCachedSpeakers(ctx, db.Cache())
+	cached := loadCachedSpeakers(ctx, db.Cache())
+	selected, err := db.Settings().Get(ctx, store.SettingSelectedSpeaker, "")
+	if err != nil {
+		slog.Warn("reading the selected speaker", "err", err)
+	}
 
 	model := newAppModel(ctx, events, cached, selected)
 	program := tea.NewProgram(model, tea.WithContext(ctx))
@@ -59,7 +63,7 @@ func main() {
 	go discoverSpeakers(ctx, program)
 
 	final, runErr := program.Run()
-	saveCache(ctx, db.Cache(), final)
+	saveSession(ctx, db, final)
 	cancel() // stop discovery and anything else still tied to the root
 
 	// Deliberately rooted at Background, not ctx: ctx is cancelled just above
@@ -105,43 +109,50 @@ func openStore(ctx context.Context) (*store.Store, error) {
 // loadCachedSpeakers returns last run's speakers, or nothing when there is no
 // cache or it was recorded on a different network. Every failure is silent:
 // the cache is a shortcut, and discovery still runs regardless.
-func loadCachedSpeakers(ctx context.Context, cache *store.Cache) ([]sonos.Speaker, string) {
+func loadCachedSpeakers(ctx context.Context, cache *store.Cache) []sonos.Speaker {
 	cached, ok := sonos.LoadCache(ctx, cache)
 	if !ok {
 		slog.Info("no usable speaker cache — discovering from scratch")
-		return nil, ""
+		return nil
 	}
 
 	subnet, err := sonos.LocalSubnet()
 	if err != nil {
 		slog.Debug("cannot read local subnet — ignoring cache", "err", err)
-		return nil, ""
+		return nil
 	}
 	if !cached.UsableOn(subnet) {
 		slog.Info("cache was recorded on another network — ignoring it",
 			"cached", cached.Subnet, "current", subnet)
-		return nil, ""
+		return nil
 	}
 
 	slog.Info("seeding tabs from cache",
 		"speakers", len(cached.Speakers),
 		"subnet", cached.Subnet,
 		"age", time.Since(cached.SavedAt).Truncate(time.Second))
-	return cached.Speakers, cached.Selected
+	return cached.Speakers
 }
 
-// saveCache records the speakers still on screen, and which one was selected,
-// for the next run to start from.
-func saveCache(ctx context.Context, cache *store.Cache, final tea.Model) {
+// saveSession records what the next run starts from: the speakers still on
+// screen, in the cache, and the selected one, in settings. Each is written on
+// its own, so a failure in one does not lose the other.
+func saveSession(ctx context.Context, db *store.Store, final tea.Model) {
 	app, ok := final.(appModel)
 	if !ok {
 		return
 	}
 	speakers, selected := app.speakerSnapshot()
+
+	if selected != "" {
+		if err := db.Settings().Set(ctx, store.SettingSelectedSpeaker, selected); err != nil {
+			slog.Warn("writing the selected speaker", "err", err)
+		}
+	}
 	if len(speakers) == 0 {
 		return
 	}
-	if err := sonos.SaveCache(ctx, cache, speakers, selected); err != nil {
+	if err := sonos.SaveCache(ctx, db.Cache(), speakers); err != nil {
 		slog.Warn("writing speaker cache", "err", err)
 		return
 	}

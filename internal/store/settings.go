@@ -11,6 +11,11 @@ import (
 // list is in one place and a misspelt key cannot quietly make a second one.
 type SettingKey string
 
+// The settings.
+const (
+	SettingSelectedSpeaker SettingKey = "speaker.selected" // RINCON id of the tab selected at exit
+)
+
 // Settings is the handle on the setting table: single remembered values,
 // such as the reader's choices. Values are text; a caller that reads one it
 // does not recognise uses its own default, since a newer build may have

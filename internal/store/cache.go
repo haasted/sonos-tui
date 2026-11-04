@@ -38,7 +38,6 @@ type CachedSpeaker struct {
 type Snapshot struct {
 	SavedAt  time.Time
 	Subnet   string // the network this was recorded on
-	Selected string // USN of the speaker whose tab was active at exit
 	Speakers []CachedSpeaker
 }
 
@@ -54,8 +53,8 @@ type Cache struct {
 func (c *Cache) Load(ctx context.Context) (snapshot Snapshot, ok bool, err error) {
 	var savedAt string
 	row := c.db.QueryRowContext(ctx,
-		`SELECT saved_at, subnet, selected FROM speaker_cache_session WHERE id = 1`)
-	switch err := row.Scan(&savedAt, &snapshot.Subnet, &snapshot.Selected); {
+		`SELECT saved_at, subnet FROM speaker_cache_session WHERE id = 1`)
+	switch err := row.Scan(&savedAt, &snapshot.Subnet); {
 	case errors.Is(err, sql.ErrNoRows):
 		return Snapshot{}, false, nil
 	case err != nil:
@@ -90,8 +89,8 @@ func (c *Cache) Save(ctx context.Context, snapshot Snapshot) error {
 	}
 
 	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO speaker_cache_session VALUES (1, ?, ?, ?)`,
-		snapshot.SavedAt.Format(timeFormat), snapshot.Subnet, snapshot.Selected); err != nil {
+		`INSERT INTO speaker_cache_session VALUES (1, ?, ?)`,
+		snapshot.SavedAt.Format(timeFormat), snapshot.Subnet); err != nil {
 		return fmt.Errorf("writing the cached session: %w", err)
 	}
 

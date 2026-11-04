@@ -54,9 +54,8 @@ func TestCache_ASnapshotSurvivesTheRoundTrip(t *testing.T) {
 	require := require.New(t)
 	s := openTemp(t)
 	saved := Snapshot{
-		SavedAt:  time.Date(2026, 9, 30, 10, 30, 0, 0, time.UTC),
-		Subnet:   "192.168.1",
-		Selected: "uuid:B",
+		SavedAt: time.Date(2026, 9, 30, 10, 30, 0, 0, time.UTC),
+		Subnet:  "192.168.1",
 		Speakers: []CachedSpeaker{{
 			USN: "uuid:A", IP: "192.168.1.10", Location: "http://a/d.xml", UDN: "uuid:A",
 			RoomName: "Kitchen", DisplayName: "One", ModelName: "Sonos One", ModelNumber: "S13",
@@ -101,19 +100,19 @@ func TestCache_AClearedCacheReadsAsAbsent(t *testing.T) {
 // than leave a session pointing at nothing.
 func TestCache_AFailedSaveLeavesTheOldCacheStanding(t *testing.T) {
 	s := openTemp(t)
-	good := Snapshot{SavedAt: time.Now(), Subnet: "192.168.1", Selected: "uuid:A",
+	good := Snapshot{SavedAt: time.Now(), Subnet: "192.168.1",
 		Speakers: []CachedSpeaker{{USN: "uuid:A"}}}
 	require.NoError(t, s.Cache().Save(t.Context(), good))
 
 	// Two speakers sharing a USN: the primary key refuses the second.
-	clash := Snapshot{SavedAt: time.Now(), Subnet: "10.0.0", Selected: "uuid:Z",
+	clash := Snapshot{SavedAt: time.Now(), Subnet: "10.0.0",
 		Speakers: []CachedSpeaker{{USN: "uuid:Z"}, {USN: "uuid:Z"}}}
 	require.Error(t, s.Cache().Save(t.Context(), clash))
 
 	loaded, ok, err := s.Cache().Load(t.Context())
 	require.NoError(t, err)
 	require.True(t, ok, "a failed save wiped the cache it could not replace")
-	assert.Equal(t, "uuid:A", loaded.Selected, "a rolled-back save left its session row behind")
+	assert.Equal(t, "192.168.1", loaded.Subnet, "a rolled-back save left its session row behind")
 }
 
 // Case: the session row is a singleton, enforced by the schema rather than
@@ -124,7 +123,7 @@ func TestCache_TheSessionRowCannotBeDuplicated(t *testing.T) {
 	fillCache(t, s)
 
 	_, err := s.db.ExecContext(t.Context(),
-		`INSERT INTO speaker_cache_session VALUES (2, '2026-01-01T00:00:00Z', '10.0.0', 'uuid:Z')`)
+		`INSERT INTO speaker_cache_session VALUES (2, '2026-01-01T00:00:00Z', '10.0.0')`)
 
 	require.Error(t, err, "the schema let a second session row in")
 }
@@ -145,7 +144,7 @@ func fillCache(t *testing.T, s *Store) {
 		INSERT INTO speaker_cache VALUES
 			('uuid:A','192.168.1.10','http://a','uuid:A','Kitchen','Play:1','S1','S1'),
 			('uuid:B','192.168.1.11','http://b','uuid:B','Bedroom','Era 100','S38','S38');
-		INSERT INTO speaker_cache_session VALUES (1,'2026-09-29T10:00:00Z','192.168.1','uuid:B');
+		INSERT INTO speaker_cache_session VALUES (1,'2026-09-29T10:00:00Z','192.168.1');
 	`)
 	require.NoError(t, err)
 }

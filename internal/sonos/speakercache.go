@@ -21,7 +21,6 @@ const verifyTimeout = 2 * time.Second
 type SpeakerCache struct {
 	SavedAt  time.Time
 	Subnet   string // network this was recorded on, as a fast pre-filter
-	Selected string // USN of the speaker whose tab was active at exit
 	Speakers []Speaker
 }
 
@@ -41,7 +40,6 @@ func LoadCache(ctx context.Context, cache *store.Cache) (SpeakerCache, bool) {
 	loaded := SpeakerCache{
 		SavedAt:  snapshot.SavedAt,
 		Subnet:   snapshot.Subnet,
-		Selected: snapshot.Selected,
 		Speakers: make([]Speaker, 0, len(snapshot.Speakers)),
 	}
 	for _, s := range snapshot.Speakers {
@@ -56,18 +54,16 @@ func LoadCache(ctx context.Context, cache *store.Cache) (SpeakerCache, bool) {
 	return loaded, true
 }
 
-// SaveCache records the speaker list and the selected speaker, replacing
-// whatever the store held.
-func SaveCache(ctx context.Context, cache *store.Cache, speakers []Speaker, selectedUSN string) error {
+// SaveCache records the speaker list, replacing whatever the store held.
+func SaveCache(ctx context.Context, cache *store.Cache, speakers []Speaker) error {
 	subnet, err := LocalSubnet()
 	if err != nil {
 		return fmt.Errorf("reading local subnet: %w", err)
 	}
 
 	snapshot := store.Snapshot{
-		SavedAt:  time.Now(),
-		Subnet:   subnet,
-		Selected: selectedUSN,
+		SavedAt: time.Now(),
+		Subnet:  subnet,
 	}
 	for _, s := range speakers {
 		desc, _ := s.Description()

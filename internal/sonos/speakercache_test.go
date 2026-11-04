@@ -26,12 +26,11 @@ func TestCacheRoundTrip(t *testing.T) {
 		sonos.NewSpeaker("192.168.1.11", "http://192.168.1.11:1400/xml/d.xml", "uuid:B",
 			sonos.DeviceDescription{RoomName: "Bedroom", UDN: "uuid:B"}),
 	}
-	require.NoError(sonos.SaveCache(t.Context(), cache, saved, "uuid:B"))
+	require.NoError(sonos.SaveCache(t.Context(), cache, saved))
 
 	loaded, ok := sonos.LoadCache(t.Context(), cache)
 	require.True(ok)
 
-	assert.Equal("uuid:B", loaded.Selected, "the selected tab must survive, to be re-selected next run")
 	require.Len(loaded.Speakers, 2)
 
 	desc, ok := loaded.Speakers[0].Description()
@@ -54,7 +53,7 @@ func TestCacheKeepsTheOrderItWasGiven(t *testing.T) {
 			"192.168.1.1"+string(rune('0'+i)), "http://x/d.xml", usn,
 			sonos.DeviceDescription{RoomName: room, UDN: usn}))
 	}
-	require.NoError(t, sonos.SaveCache(t.Context(), cache, saved, ""))
+	require.NoError(t, sonos.SaveCache(t.Context(), cache, saved))
 
 	loaded, ok := sonos.LoadCache(t.Context(), cache)
 	require.True(t, ok)
@@ -80,9 +79,9 @@ func TestSaveCacheReplacesWhatWasThere(t *testing.T) {
 		sonos.NewSpeaker("192.168.1.10", "http://x/d.xml", "uuid:A", sonos.DeviceDescription{UDN: "uuid:A"}),
 		sonos.NewSpeaker("192.168.1.11", "http://y/d.xml", "uuid:B", sonos.DeviceDescription{UDN: "uuid:B"}),
 	}
-	require.NoError(t, sonos.SaveCache(t.Context(), cache, first, "uuid:A"))
+	require.NoError(t, sonos.SaveCache(t.Context(), cache, first))
 
-	require.NoError(t, sonos.SaveCache(t.Context(), cache, first[:1], "uuid:A"))
+	require.NoError(t, sonos.SaveCache(t.Context(), cache, first[:1]))
 
 	loaded, ok := sonos.LoadCache(t.Context(), cache)
 	require.True(t, ok)
@@ -94,7 +93,7 @@ func TestCacheIsUnusableOnADifferentSubnet(t *testing.T) {
 	cache := tempCache(t)
 	require.NoError(t, sonos.SaveCache(t.Context(), cache, []sonos.Speaker{
 		sonos.NewSpeaker("192.168.1.10", "http://x/d.xml", "uuid:A", sonos.DeviceDescription{}),
-	}, ""))
+	}))
 
 	loaded, ok := sonos.LoadCache(t.Context(), cache)
 	require.True(t, ok)

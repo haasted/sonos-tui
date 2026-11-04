@@ -106,7 +106,7 @@ func TestPresence_ASpeakerAtANewAddressKeepsItsTab(t *testing.T) {
 // Case: a new speaker whose id sorts between two cached ones. It must go in
 // by id, and the selection must stay on the speaker it was on.
 func TestPresence_ANewSpeakerGoesInByIDAndTheSelectionStays(t *testing.T) {
-	m := newAppModel(context.Background(), nil, cachedSpeakers(), "uuid:C")
+	m := newAppModel(context.Background(), nil, cachedSpeakers(), "C")
 	newcomer := sonos.NewSpeaker("192.168.1.5", "http://192.168.1.5:1400/xml/d.xml", "uuid:AB",
 		sonos.DeviceDescription{RoomName: "Attic"})
 
