@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"charm.land/lipgloss/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -78,14 +79,49 @@ func TestFavourites_ANoticeShowsInTheModal(t *testing.T) {
 // Case: the heading. It names the type, marks with ‹ and › only the sides ←
 // and → can still go to, and counts what is shown.
 func TestFavourites_TheHeadingNamesTheType(t *testing.T) {
-	assert.Equal(t, "Favourites · Tracks › · 1", loadedFavourites(store.FavouriteTrack).heading(),
+	assert.Equal(t, "Favourites ·    Tracks   › · 1", loadedFavourites(store.FavouriteTrack).heading(),
 		"the first type offered a way back")
-	assert.Equal(t, "Favourites · ‹ Playlists · 2", loadedFavourites(store.FavouritePlaylist).heading(),
+	assert.Equal(t, "Favourites · ‹ Playlists   · 2", loadedFavourites(store.FavouritePlaylist).heading(),
 		"the last type offered a way on")
 
 	single := favouritesContent{listView: listView[store.Favourite]{rows: 12, width: 60}}.loaded(
 		favouritesLoadedMsg{favourites: sampleFavourites()[1:3], kind: store.FavouritePlaylist})
-	assert.Equal(t, "Favourites · Playlists · 2", single.heading(), "‹ › promised a switch with one type")
+	assert.Equal(t, "Favourites ·   Playlists   · 2", single.heading(), "‹ › promised a switch with one type")
+}
+
+// Case: the arrows either side of the type. They must stand apart from the
+// name in a colour of their own, while the name keeps the heading's colour.
+func TestFavourites_TheArrowsHaveTheirOwnColour(t *testing.T) {
+	parts := loadedFavourites(store.FavouritePlaylist).headingParts()
+
+	var arrow, name headingPart
+	for _, part := range parts {
+		switch strings.TrimSpace(part.text) {
+		case "‹":
+			arrow = part
+		case "Playlists":
+			name = part
+		}
+	}
+	assert.Equal(t, themedArrowLit(), arrow.style.GetForeground(), "‹ is not in the arrow colour")
+	assert.Equal(t, favouritesBorderColor(), name.style.GetForeground(), "the name lost the heading colour")
+}
+
+// Case: switching between types whose names differ in length, with arrows
+// coming and going. The label must keep one width, so the count after it
+// never moves.
+func TestFavourites_TheHeadingKeepsOneWidthAcrossTypes(t *testing.T) {
+	all := []store.Favourite{
+		{Kind: store.FavouriteTrack, Title: "a"}, {Kind: store.FavouriteAlbum, Title: "b"},
+		{Kind: store.FavouritePlaylist, Title: "c"}, {Kind: store.FavouriteStation, Title: "d"},
+	}
+	widths := map[int]bool{}
+	for _, kind := range favouriteKinds {
+		f := favouritesContent{listView: listView[store.Favourite]{rows: 12, width: 60}}.loaded(
+			favouritesLoadedMsg{favourites: all, kind: kind})
+		widths[lipgloss.Width(f.heading())] = true
+	}
+	assert.Len(t, widths, 1, "the heading changed width between types")
 }
 
 // Case: no favourites at all. The body says so, and the heading names no type.

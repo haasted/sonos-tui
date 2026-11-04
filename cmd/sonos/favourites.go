@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"image/color"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -236,15 +237,12 @@ func (f favouritesContent) heading() string {
 func (f favouritesContent) headingParts() []headingPart {
 	parts := []headingPart{{text: "Favourites", style: favouritesHeadingStyle()}}
 	if f.kind != "" {
-		before, after := f.neighbours()
-		name := favouriteKindNames[f.kind]
-		if before {
-			name = "‹ " + name
-		}
-		if after {
-			name += " ›"
-		}
-		parts = append(parts, headingPart{text: headingSeparator + name, style: favouritesHeadingStyle()})
+		left, name, right := f.kindLabel()
+		parts = append(parts,
+			headingPart{text: headingSeparator, style: favouritesHeadingStyle()},
+			headingPart{text: left, style: favouritesArrowStyle()},
+			headingPart{text: name, style: favouritesHeadingStyle()},
+			headingPart{text: right, style: favouritesArrowStyle()})
 	}
 	switch {
 	case f.note() != "":
@@ -254,6 +252,34 @@ func (f favouritesContent) headingParts() []headingPart {
 		parts = append(parts, headingPart{text: fmt.Sprintf("%s%d", headingSeparator, len(f.items)), style: favouritesHeadingStyle()})
 	}
 	return fitHeading(parts, f.width)
+}
+
+// kindLabel is the media type and the arrows either side, always the same
+// width so the heading stays still as ← and → switch: an arrow that does not
+// apply leaves its space, and the name is centred in the longest one's width.
+func (f favouritesContent) kindLabel() (left, name, right string) {
+	before, after := f.neighbours()
+	left, right = "  ", "  "
+	if before {
+		left = "‹ "
+	}
+	if after {
+		right = " ›"
+	}
+
+	name = favouriteKindNames[f.kind]
+	spare := widestKindName() - lipgloss.Width(name)
+	name = strings.Repeat(" ", spare/2) + name + strings.Repeat(" ", spare-spare/2)
+	return left, name, right
+}
+
+// widestKindName is the display width of the longest media type name.
+func widestKindName() int {
+	widest := 0
+	for _, name := range favouriteKindNames {
+		widest = max(widest, lipgloss.Width(name))
+	}
+	return widest
 }
 
 // note is the whole body when there are no rows to draw, and empty otherwise.
@@ -278,4 +304,10 @@ func favouritesBorderColor() color.Color {
 
 func favouritesHeadingStyle() lipgloss.Style {
 	return lipgloss.NewStyle().Bold(true).Foreground(favouritesBorderColor())
+}
+
+// favouritesArrowStyle sets ‹ and › apart from the name between them: white
+// on a dark ground, near-black on a light one, as the queue's scroll arrows.
+func favouritesArrowStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Bold(true).Foreground(themedArrowLit())
 }
