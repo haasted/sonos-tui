@@ -51,6 +51,14 @@ CREATE TABLE favourite (
     UNIQUE (service, account, item_id)
 ) STRICT;
 `,
+	// 3. Settings: single remembered values, such as the reader's choices.
+	// Not cache: clearing the cache never reaches this table.
+	`
+CREATE TABLE setting (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+) STRICT;
+`,
 }
 
 // migrate brings the database up to the last of steps. An empty file and a
