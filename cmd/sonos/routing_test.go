@@ -65,8 +65,8 @@ func TestResultForARemovedSpeakerIsDropped(t *testing.T) {
 	result := speakerModelFor(t, m, kitchen).to(
 		nowplaying.TrackMsg{Track: trackFromState(kitchen.State())})
 
-	model, _ := m.Update(speakerGoneMsg{ip: "192.168.1.10"})
-	m = deliver(model.(appModel), result)
+	m = removeCached(t, m, "A")
+	m = deliver(m, result)
 
 	for i := range m.tabs.Items {
 		check(t, !strings.Contains(render(m, i), "Kitchen Song"),
@@ -80,7 +80,7 @@ func modelPlaying(t *testing.T, title string) (appModel, *sonos.Device) {
 	t.Helper()
 
 	m := newAppModel(context.Background(), nil, cachedSpeakers(), "")
-	device, ok := m.deviceFor("192.168.1.10")
+	device, ok := m.deviceFor("A")
 	if !ok {
 		t.Fatal("no device for the first cached speaker")
 	}

@@ -67,7 +67,7 @@ func loadedModel(t *testing.T) appModel {
 	t.Helper()
 
 	m := newAppModel(context.Background(), nil, cachedSpeakers(), "")
-	device, ok := m.deviceFor("192.168.1.10")
+	device, ok := m.deviceFor("A")
 	if !ok {
 		t.Fatal("no device for the first cached speaker")
 	}

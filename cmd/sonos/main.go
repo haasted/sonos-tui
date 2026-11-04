@@ -148,27 +148,43 @@ func saveCache(ctx context.Context, cache *store.Cache, final tea.Model) {
 	slog.Info("wrote speaker cache", "speakers", len(speakers), "selected", selected)
 }
 
-// verifyCachedSpeaker proves a cached speaker is still there, refreshes it and
-// subscribes to its events. All three run behind the already-rendered tab.
-func verifyCachedSpeaker(ctx context.Context, events *sonos.EventManager, speaker sonos.Speaker, device *sonos.Device) tea.Cmd {
+// checkCachedSpeaker asks whether a cached speaker still answers at its cached
+// address, behind the already-rendered tab. It loads nothing: the app starts
+// one load per speaker, on this answer or a discovery answer, whichever is first.
+func checkCachedSpeaker(ctx context.Context, speaker sonos.Speaker) tea.Cmd {
 	return func() tea.Msg {
-		if err := sonos.VerifySpeaker(ctx, speaker); err != nil {
+		err := sonos.VerifySpeaker(ctx, speaker)
+		if err != nil {
 			slog.Info("cached speaker failed verification", "speaker", speaker.IP, "err", err)
-			return speakerGoneMsg{ip: speaker.IP}
+		}
+		return cachedCheckedMsg{id: speakerKey(speaker), err: err}
+	}
+}
+
+// activateSpeaker loads a cached speaker that has answered: reads its name
+// again, in case the room was renamed, refreshes its state and subscribes to
+// its events, all on the Device its tab already renders.
+func activateSpeaker(ctx context.Context, events *sonos.EventManager, device *sonos.Device) tea.Cmd {
+	return func() tea.Msg {
+		title := device.RoomName()
+		if desc, err := device.RefreshDescription(ctx); err != nil {
+			slog.Warn("reading a cached speaker's description", "speaker", device.IP, "err", err)
+		} else if desc.RoomName != "" {
+			title = desc.RoomName
 		}
 
 		var degraded []string
 		if err := device.RefreshAll(ctx); err != nil {
-			slog.Warn("refreshing cached speaker", "speaker", speaker.IP, "err", err)
+			slog.Warn("refreshing cached speaker", "speaker", device.IP, "err", err)
 			degraded = append(degraded, "state may be stale")
 		}
 		if err := events.Subscribe(ctx, device); err != nil {
-			slog.Warn("subscribing to cached speaker", "speaker", speaker.IP, "err", err)
+			slog.Warn("subscribing to cached speaker", "speaker", device.IP, "err", err)
 			degraded = append(degraded, "no live updates")
 		}
 		return speakerVerifiedMsg{
-			ip: speaker.IP, title: speaker.RoomName(), speaker: device,
-			degraded: degradedText(speaker.RoomName(), degraded),
+			title: title, speaker: device,
+			degraded: degradedText(title, degraded),
 		}
 	}
 }
@@ -204,15 +220,21 @@ func discoverSpeakers(ctx context.Context, program *tea.Program) {
 	program.Send(discoveryDoneMsg{found: found})
 }
 
-// loadSpeaker builds a speaker's tab: fetch its state, then subscribe to its events.
+// loadSpeaker builds a speaker's tab: its name, its state, then its events.
+// The tab waits for the name, so it never appears under its address and
+// moves once the room name arrives.
 func loadSpeaker(ctx context.Context, events *sonos.EventManager, speaker sonos.Speaker) tea.Cmd {
 	return func() tea.Msg {
-		slog.Debug("starting loadSpeaker", "speaker", speaker.RoomName())
-		defer slog.Debug("ending loadSpeaker", "speaker", speaker.RoomName())
-
-		device := sonos.NewDevice(speaker)
+		slog.Debug("starting loadSpeaker", "speaker", speaker.IP)
+		defer slog.Debug("ending loadSpeaker", "speaker", speaker.IP)
 
 		var degraded []string
+		if _, err := speaker.LoadDescription(ctx); err != nil {
+			slog.Warn("reading speaker description", "speaker", speaker.IP, "err", err)
+			degraded = append(degraded, "room name unknown")
+		}
+		device := sonos.NewDevice(speaker)
+
 		if err := device.RefreshAll(ctx); err != nil {
 			slog.Warn("refreshing speaker state", "speaker", speaker, "err", err)
 			degraded = append(degraded, "state may be stale")
@@ -223,7 +245,7 @@ func loadSpeaker(ctx context.Context, events *sonos.EventManager, speaker sonos.
 		}
 
 		return speakerReadyMsg{
-			title: speaker.RoomName(), ip: speaker.IP, speaker: newSpeakerModel(ctx, device),
+			title: speaker.RoomName(), id: speakerKey(speaker), speaker: newSpeakerModel(ctx, device),
 			degraded: degradedText(speaker.RoomName(), degraded),
 		}
 	}

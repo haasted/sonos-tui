@@ -195,7 +195,7 @@ func volumeBody(level int) []byte {
 // longer matters: nothing asks it any more.
 func TestRouting_ADrivenSpeakerIsNotPlayingWhenTheGroupIsPaused(t *testing.T) {
 	m, kitchen := modelPlaying(t, "Kitchen Song")
-	bedroom, ok := m.deviceFor("192.168.1.11")
+	bedroom, ok := m.deviceFor("B")
 	if !ok {
 		t.Fatal("no device for the second cached speaker")
 	}

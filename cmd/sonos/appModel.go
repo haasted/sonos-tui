@@ -24,16 +24,28 @@ var _ tea.Model = &appModel{}
 // surplus was the band of blank lines above the player.
 const playerHeightRows = 6
 
+// cachedState is where a cached speaker stands while the program finds out
+// whether it is still there.
+type cachedState int
+
+const (
+	cachedChecking cachedState = iota // its check has not answered, and no search has found it
+	cachedFailed                      // its check failed; it stays until the searches end without it
+	cachedLoading                     // it answered, by its check or a search, and is loading or loaded
+)
+
 type appModel struct {
 	ctx           context.Context // root context; Bubbletea commands carry none of their own
 	tabs          panes.Tabs
-	ips           []string
+	ids           []string // the RINCON id behind each tab, sorted, which is the tab order
 	eventManager  *sonos.EventManager
 	width         int
 	height        int
 	discoveryDone bool
 	fromCache     bool // tabs were seeded from the cache this run
 	cached        []sonos.Speaker
+	cachedStates  map[string]cachedState // by RINCON id, for every cached speaker
+	found         map[string]bool        // RINCON ids a search has found this run
 	quitting      bool
 	help          panes.Modal
 	queue         panes.Modal
@@ -98,56 +110,63 @@ func newAppModel(ctx context.Context, events *sonos.EventManager, cached []sonos
 	grouping.Mode = panes.ModalHover
 
 	m := appModel{ctx: ctx, tabs: tabs, eventManager: events, fromCache: len(cached) > 0,
-		help: help, queue: queue, grouping: grouping}
+		help: help, queue: queue, grouping: grouping,
+		cachedStates: map[string]cachedState{}, found: map[string]bool{}}
 	for _, speaker := range cached {
-		m = m.insertSpeaker(speaker.IP, speaker.RoomName(), newSpeakerModel(ctx, sonos.NewDevice(speaker)))
-	}
-	for i, ip := range m.ips {
-		if usnFor(cached, ip) == selectedUSN && selectedUSN != "" {
-			m.tabs.Active = i
+		m = m.insertSpeaker(speakerKey(speaker), speaker.RoomName(), newSpeakerModel(ctx, sonos.NewDevice(speaker)))
+		m.cachedStates[speakerKey(speaker)] = cachedChecking
+		if speaker.USN == selectedUSN && selectedUSN != "" {
+			m.tabs.Active = m.tabIndex(speakerKey(speaker))
 		}
 	}
 	m.cached = cached
 	return m
 }
 
-// usnFor finds the cached USN for an IP, for restoring the selected tab.
-func usnFor(speakers []sonos.Speaker, ip string) string {
-	for _, s := range speakers {
-		if s.IP == ip {
-			return s.USN
-		}
+// speakerKey is what a tab is keyed and sorted by: the RINCON id, which no
+// rename or new address changes. The address stands in only for a speaker
+// that gave no id, which no search delivers.
+func speakerKey(speaker sonos.Speaker) string {
+	if id := speaker.ID(); id != "" {
+		return id
 	}
-	return ""
+	return speaker.IP
 }
 
-// insertSpeaker adds a tab in IP order, keeping m.ips as the sorted index.
-func (m appModel) insertSpeaker(ip, title string, speaker speakerModel) appModel {
-	idx := sort.SearchStrings(m.ips, ip)
-	m.ips = append(m.ips, "")
-	copy(m.ips[idx+1:], m.ips[idx:])
-	m.ips[idx] = ip
+// insertSpeaker adds a tab in id order, keeping m.ids as the sorted index.
+// The selection stays on the speaker it was on, wherever the new tab goes.
+func (m appModel) insertSpeaker(id, title string, speaker speakerModel) appModel {
+	idx := sort.SearchStrings(m.ids, id)
+	m.ids = append(m.ids, "")
+	copy(m.ids[idx+1:], m.ids[idx:])
+	m.ids[idx] = id
 	m.tabs = m.tabs.InsertTabAt(idx, panes.Tab{Title: title, Content: speaker})
 	return m
 }
 
 // removeSpeaker drops a tab whose speaker turned out not to be there.
-func (m appModel) removeSpeaker(ip string) appModel {
-	idx := sort.SearchStrings(m.ips, ip)
-	if idx >= len(m.ips) || m.ips[idx] != ip {
+func (m appModel) removeSpeaker(id string) appModel {
+	idx := m.tabIndex(id)
+	if idx < 0 {
 		return m
 	}
-	m.ips = append(m.ips[:idx], m.ips[idx+1:]...)
+	m.ids = append(m.ids[:idx], m.ids[idx+1:]...)
 	m.tabs = m.tabs.RemoveTabAt(idx)
 	return m
 }
 
-// hasSpeaker reports whether a tab for this IP already exists, so discovery
-// does not duplicate one the cache already produced.
-func (m appModel) hasSpeaker(ip string) bool {
-	idx := sort.SearchStrings(m.ips, ip)
-	return idx < len(m.ips) && m.ips[idx] == ip
+// tabIndex is the position of the speaker's tab, or -1 when it has none.
+func (m appModel) tabIndex(id string) int {
+	idx := sort.SearchStrings(m.ids, id)
+	if idx >= len(m.ids) || m.ids[idx] != id {
+		return -1
+	}
+	return idx
 }
+
+// hasSpeaker reports whether this speaker already has a tab, so discovery
+// does not duplicate one the cache already produced.
+func (m appModel) hasSpeaker(id string) bool { return m.tabIndex(id) >= 0 }
 
 // Init starts the tabs and, when seeded from the cache, verifies every cached
 // speaker concurrently behind the already-rendered tabs.
@@ -156,12 +175,8 @@ func (m appModel) Init() tea.Cmd {
 	// answers for the whole household, so a cached one can say how things
 	// are grouped while the rest are still being looked for.
 	cmds := []tea.Cmd{m.tabs.Init(), hintTimer()}
-	for i, speaker := range m.cached {
-		device, ok := m.deviceFor(speaker.IP)
-		if !ok {
-			continue
-		}
-		cmds = append(cmds, verifyCachedSpeaker(m.ctx, m.eventManager, m.cached[i], device))
+	for _, speaker := range m.cached {
+		cmds = append(cmds, checkCachedSpeaker(m.ctx, speaker))
 	}
 	return tea.Batch(cmds...)
 }
@@ -175,11 +190,11 @@ func (m appModel) activeSpeaker() (speakerModel, bool) {
 	return speaker, ok
 }
 
-// deviceFor finds the Device backing a tab, so verification can refresh the
-// same instance the tab is already rendering.
-func (m appModel) deviceFor(ip string) (*sonos.Device, bool) {
-	idx := sort.SearchStrings(m.ips, ip)
-	if idx >= len(m.ips) || m.ips[idx] != ip {
+// deviceFor finds the Device backing a tab, so loading a cached speaker
+// refreshes the same instance the tab is already rendering.
+func (m appModel) deviceFor(id string) (*sonos.Device, bool) {
+	idx := m.tabIndex(id)
+	if idx < 0 {
 		return nil, false
 	}
 	speaker, ok := m.tabs.Items[idx].Content.(speakerModel)
@@ -404,22 +419,15 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.openQueue()
 		}
 	case speakerFoundMsg:
-		if m.hasSpeaker(msg.speaker.IP) {
-			return m, nil // the cache already produced this tab
-		}
-		return m, loadSpeaker(m.ctx, m.eventManager, msg.speaker)
+		return m.applyFound(msg.speaker)
+	case cachedCheckedMsg:
+		return m.applyChecked(msg)
 	case speakerVerifiedMsg:
 		return m.applyVerified(msg)
-	case speakerGoneMsg:
-		slog.Info("cached speaker did not answer — dropping its tab", "ip", msg.ip)
-		title := m.titleFor(msg.ip)
-		return m.removeSpeaker(msg.ip), notify(panes.NoticeWarn, title+" did not answer — removed")
 	case speakerReadyMsg:
-		if m.hasSpeaker(msg.ip) {
-			return m, nil // already on screen from the cache
-		}
 		wasEmpty := len(m.tabs.Items) == 0
-		m = m.insertSpeaker(msg.ip, msg.title, msg.speaker)
+		var replaced bool
+		m, replaced = m.placeSpeaker(msg)
 
 		// One read for each speaker, each in its own command and so in its own
 		// goroutine. They run behind the tab that is already on screen.
@@ -427,7 +435,7 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.eventManager != nil {
 			cmds = append(cmds, waitForEvent(msg.speaker.device))
 		}
-		if wasEmpty {
+		if wasEmpty || (replaced && m.ids[m.tabs.Active] == msg.id) {
 			cmds = append(cmds, msg.speaker.Init())
 		}
 
@@ -449,7 +457,7 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.applyEvent(msg)
 	case discoveryDoneMsg:
 		m.discoveryDone = true
-		return m, nil
+		return m.dropUnanswered()
 	case groupChangeMsg:
 		return m.applyGroupChange(msg)
 	case topologyLoadedMsg:
@@ -550,10 +558,10 @@ func notifyEntrance(level panes.NoticeLevel, text string, entrance panes.NoticeE
 
 // titleFor is the room name shown on a tab, for naming it in a notice after
 // the tab itself is gone.
-func (m appModel) titleFor(ip string) string {
-	idx := sort.SearchStrings(m.ips, ip)
-	if idx >= len(m.ips) || m.ips[idx] != ip {
-		return ip
+func (m appModel) titleFor(id string) string {
+	idx := m.tabIndex(id)
+	if idx < 0 {
+		return id
 	}
 	return m.tabs.Items[idx].Title
 }

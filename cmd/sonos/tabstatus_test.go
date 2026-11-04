@@ -15,7 +15,7 @@ func TestPlayingStateReachesTheTab(t *testing.T) {
 		t.Fatal("a speaker with no known state must start out idle")
 	}
 
-	startPlaying(t, m, "192.168.1.10")
+	startPlaying(t, m, "A")
 
 	m = pump(m)
 	if !m.tabs.Items[0].Playing {
@@ -30,7 +30,7 @@ func TestPlayingStateReachesTheTab(t *testing.T) {
 // the tabs rather than leaving the glyphs behind.
 func TestUnhandledMessageStillSyncsTheTabs(t *testing.T) {
 	m := newAppModel(context.Background(), nil, cachedSpeakers(), "")
-	startPlaying(t, m, "192.168.1.12")
+	startPlaying(t, m, "C")
 
 	m = pump(m)
 	if !m.tabs.Items[2].Playing {
@@ -40,12 +40,12 @@ func TestUnhandledMessageStillSyncsTheTabs(t *testing.T) {
 
 // startPlaying drives a device into PLAYING via an event carrying its own
 // position, so nothing reaches for the network to fill one in.
-func startPlaying(t *testing.T, m appModel, ip string) {
+func startPlaying(t *testing.T, m appModel, id string) {
 	t.Helper()
 
-	device, ok := m.deviceFor(ip)
+	device, ok := m.deviceFor(id)
 	if !ok {
-		t.Fatalf("no device for %s", ip)
+		t.Fatalf("no device for %s", id)
 	}
 	body := []byte(`<e:propertyset xmlns:e="urn:schemas-upnp-org:event-1-0"><e:property><LastChange>` +
 		`&lt;Event xmlns="urn:schemas-upnp-org:metadata-1-0/AVT/"&gt;&lt;InstanceID val="0"&gt;` +

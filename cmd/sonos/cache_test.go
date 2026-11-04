@@ -39,36 +39,17 @@ func TestUnknownSelectionFallsBackToTheFirstTab(t *testing.T) {
 	}
 }
 
-// Case: a cached speaker that failed verification, whose tab must go.
-func TestFailedVerificationRemovesTheTab(t *testing.T) {
-	m := newAppModel(context.Background(), nil, cachedSpeakers(), "")
-
-	updated, _ := m.Update(speakerGoneMsg{ip: "192.168.1.11"})
-	m = updated.(appModel)
-
-	if got := len(m.tabs.Items); got != 2 {
-		t.Fatalf("expected the unreachable speaker's tab to be dropped, got %d tabs", got)
-	}
-	for _, tab := range m.tabs.Items {
-		if tab.Title == "Bedroom" {
-			t.Fatal("the unreachable speaker is still on screen")
-		}
-	}
-	if m.hasSpeaker("192.168.1.11") {
-		t.Fatal("the removed speaker is still in the IP index")
-	}
-}
-
-// Case: discovery finding a speaker the cache already produced, which must not
-// create a second tab for it.
+// Case: discovery finding a speaker the cache already produced, twice. It must
+// not create a second tab, and the second answer must not load it again.
 func TestDiscoveryDoesNotDuplicateACachedSpeaker(t *testing.T) {
 	m := newAppModel(context.Background(), nil, cachedSpeakers(), "")
 
-	updated, cmd := m.Update(speakerFoundMsg{speaker: cachedSpeakers()[0]})
+	updated, _ := m.Update(speakerFoundMsg{speaker: cachedSpeakers()[0]})
+	updated, cmd := updated.(appModel).Update(speakerFoundMsg{speaker: cachedSpeakers()[0]})
 	m = updated.(appModel)
 
 	if cmd != nil {
-		t.Fatal("a speaker already on screen should not be loaded again")
+		t.Fatal("a speaker already loading should not be loaded again")
 	}
 	if got := len(m.tabs.Items); got != 3 {
 		t.Fatalf("expected no new tab, got %d", got)
