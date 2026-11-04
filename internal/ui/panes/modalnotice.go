@@ -30,6 +30,7 @@ func (m Modal) noticed(body string, width, height int) string {
 	drawn := lipgloss.Width(lines[0])
 	if m.Light != nil {
 		lines[0] = m.edge(ModalTop, drawn)
+		m.sides(lines)
 	}
 
 	border := lipgloss.RoundedBorder()

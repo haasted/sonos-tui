@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/haasted/sonos-sandbox/internal/ui/theme"
 )
@@ -57,6 +58,8 @@ type ModalEdge int
 const (
 	ModalTop ModalEdge = iota
 	ModalBottom
+	ModalLeft
+	ModalRight
 )
 
 // BorderCell is how one rune of a lit border is drawn. The zero value leaves
@@ -312,9 +315,9 @@ func (m Modal) box() string {
 	return m.lit(box)
 }
 
-// lit replaces the two horizontal borders with ones the caller has coloured.
-// The rows are rebuilt from the border runes rather than recoloured in place:
-// a rendered line carries its own escapes, and parsing those back out would be
+// lit replaces all four borders with ones the caller has coloured. The rows
+// are rebuilt from the border runes rather than recoloured in place: a
+// rendered line carries its own escapes, and parsing those back out would be
 // guesswork about how lipgloss chose to write them.
 func (m Modal) lit(box string) string {
 	lines := strings.Split(box, "\n")
@@ -325,7 +328,43 @@ func (m Modal) lit(box string) string {
 	width := lipgloss.Width(box)
 	lines[0] = m.edge(ModalTop, width)
 	lines[len(lines)-1] = m.edge(ModalBottom, width)
+	m.sides(lines)
 	return strings.Join(lines, "\n")
+}
+
+// sides redraws the vertical border on every line between the top and the
+// bottom, asking the caller for each rune's colour as edge does. The content
+// between the two runes is kept as it was drawn, escapes and all.
+func (m Modal) sides(lines []string) {
+	rows := len(lines) - 2
+	if rows <= 0 {
+		return
+	}
+	centre := float32(rows-1) / 2
+	vertical := lipgloss.RoundedBorder().Left
+	for i := 1; i <= rows; i++ {
+		width := ansi.StringWidth(lines[i])
+		if width < 2 {
+			continue
+		}
+		fromCentre := abs32(float32(i-1)-centre) / max(centre, 1)
+		lines[i] = m.sideRune(ModalLeft, vertical, fromCentre) +
+			ansi.Cut(lines[i], 1, width-1) +
+			m.sideRune(ModalRight, vertical, fromCentre)
+	}
+}
+
+// sideRune draws one rune of a vertical border, lit or at rest.
+func (m Modal) sideRune(which ModalEdge, glyph string, fromCentre float32) string {
+	cell := m.Light(which, fromCentre)
+	if cell.Heavy {
+		glyph = string(heavy([]rune(glyph)[0]))
+	}
+	style := m.borderStyle()
+	if cell.Color != nil {
+		style = lipgloss.NewStyle().Foreground(cell.Color)
+	}
+	return style.Render(glyph)
 }
 
 // edge draws one horizontal border, asking the caller for each rune's colour.
