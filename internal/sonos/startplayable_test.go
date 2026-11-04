@@ -25,8 +25,9 @@ func TestDevice_ReplaceQueue_SendsTheWholeSequence(t *testing.T) {
 	require.NoError(t, d.ReplaceQueue(context.Background(), playableSingles(t), sonos.PlayModeNormal))
 
 	assert.Equal(t, []string{
-		"RemoveAllTracksFromQueue", "AddURIToQueue", "SetAVTransportURI", "SetPlayMode", "Play",
+		"RemoveAllTracksFromQueue", "AddURIToQueue", "SetAVTransportURI", "SetPlayMode", "Seek", "Play",
 	}, srv.actions())
+	assert.Contains(t, srv.body("Seek"), "<Target>1</Target>", "in order, it must start from the first track")
 	assert.Contains(t, srv.body("AddURIToQueue"), "00060000libraryplaylist%3ap.V7VYpk7FYWLeW")
 	assert.Contains(t, srv.body("SetAVTransportURI"), "x-rincon-queue:RINCON_TEST01400#0")
 	assert.Contains(t, srv.body("SetPlayMode"), "<NewPlayMode>NORMAL</NewPlayMode>")
@@ -41,6 +42,7 @@ func TestDevice_ReplaceQueue_SetsShuffle(t *testing.T) {
 	require.NoError(t, d.ReplaceQueue(context.Background(), playableSingles(t), sonos.PlayModeShuffleNoRepeat))
 
 	assert.Contains(t, srv.body("SetPlayMode"), "<NewPlayMode>SHUFFLE_NOREPEAT</NewPlayMode>")
+	assert.NotContains(t, srv.actions(), "Seek", "shuffled, the speaker picks where to start")
 }
 
 // Case: a speaker that refuses the playlist. Nothing after the refusal may be

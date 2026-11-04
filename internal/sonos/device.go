@@ -652,14 +652,21 @@ func (d *Device) Previous(ctx context.Context) error {
 // ReplaceQueue empties the queue, fills it with p and plays it in mode. The
 // mode is set every time: a shuffle left from before would otherwise carry
 // over. Only a coordinator has a queue to replace.
+//
+// In order, it starts from the first track: the speaker keeps its old place
+// in the queue across the replacement. Shuffled, the speaker picks the start.
 func (d *Device) ReplaceQueue(ctx context.Context, p Playable, mode PlayMode) error {
-	return d.run(p, transportPlaying,
+	steps := []func() error{
 		func() error { return d.client.RemoveAllTracksFromQueue(ctx) },
 		func() error { return d.client.AddURIToQueue(ctx, p.URI, p.Metadata, queueEnd, false) },
 		func() error { return d.client.SelectQueue(ctx, d.ID()) },
 		func() error { return d.client.SetPlayMode(ctx, mode) },
-		func() error { return d.client.Play(ctx) },
-	)
+	}
+	if mode == PlayModeNormal {
+		steps = append(steps, func() error { return d.client.SeekTrack(ctx, 1) })
+	}
+	steps = append(steps, func() error { return d.client.Play(ctx) })
+	return d.run(p, transportPlaying, steps...)
 }
 
 // PlayNext puts p into the queue after the playing track. When the queue is
