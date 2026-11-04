@@ -651,3 +651,38 @@ either change in the other household -- no empty update, no mention.
 
 So a household is a real boundary in the eventing too: a speaker's silence
 says nothing about anyone else's arrangement.
+
+
+## The music services a system offers, and what that does not say
+
+Verified 2026-10-27 against Ovenpå and Værelse, with `make music-services`.
+
+`MusicServices` (`/MusicServices/Control`) action `ListAvailableServices`
+takes no arguments and answers with three things:
+
+- `AvailableServiceDescriptorList`: escaped XML, one `<Service>` per service.
+  93 here. Each carries `Id` (the sid in every URI), `Name`, `Uri` and
+  `SecureUri` (the service's SMAPI endpoint), `Capabilities` (a bitmask, not
+  decoded), a `<Policy Auth=... PollInterval=...>` and a `<Manifest>` URL.
+- `AvailableServiceTypeList`: comma-separated numbers, 92 here.
+- `AvailableServiceListVersion`: `RINCON_<id>:<n>`, the same on both speakers.
+
+**Auth** is one of `AppLink` (51), `Anonymous` (32) or `DeviceLink` (10).
+Apple Music is `AppLink`; DR LYD and myTuner Radio are `Anonymous`, so they
+need no account at all.
+
+**Every service type is sid*256+7.** All 92 numbers undo cleanly, and each
+names a listed service. That confirms the formula behind the `desc` token
+(`SA_RINCON52231_...` for Apple Music, 204) for every service, not just one.
+
+**The type list is not a list of accounts.** It holds every offered service
+except TuneIn (254), whose replacement "TuneIn (New)" (333) is in it. Nothing
+in the answer says which services this household has signed in to: that is
+still only visible from the sid/sn pairs in favourites, queues and sources.
+
+**Available, as the experiment counts it, means it streams here:** the auth is
+`Anonymous`, or a sid/sn pair for the service shows up in the household's
+favourites (FV:2) or the speaker's queue. Measured on Ovenpå: 33 of 93, three
+in use (Apple Music sn 2, DR LYD sn 3, myTuner Radio sn 5) and 30 that need no
+account. A service signed in to but never used in a favourite or a queue is
+missed: nothing on the speaker names it.

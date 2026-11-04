@@ -25,6 +25,11 @@ production code never imports from here.
   each speaker's description, and ends with how long each means took to find
   each speaker. For a machine that finds too few speakers. Console output only;
   see `make discover-probe` (`PROBE_ARGS=-for=20s` changes the time).
+- `musicservices/` — asks one speaker for the music services the system
+  offers (MusicServices `ListAvailableServices`) and lists them with their
+  authentication type and endpoint. Marks the ones that stream here: no account
+  needed, or an account seen in the favourites or the queue. Needs
+  real speakers; see `make music-services` (`MUSIC_ARGS=-ip=<address>`).
 - `coverart/` — evaluates `github.com/blacktop/go-termimg` and
   `github.com/BourgeoisBear/rasterm` for rendering album art in the terminal.
   Runs against fixture images in `data/`, no live speaker calls.
