@@ -172,7 +172,7 @@ func (q queueContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "/":
 		return q.openFilter(), nil
 	case "c":
-		q = q.jumpToPlaying()
+		q = q.seekPlaying()
 	case "x", "delete":
 		return q.remove()
 	case "N":
@@ -1135,21 +1135,44 @@ func (q queueContent) bump(edge bumpEdge) queueContent {
 	return q
 }
 
-// jumpToPlaying moves the cursor to the track now playing. Pausing or muting
-// the speaker does not change which track that is, only stopping the queue
-// itself does, so this answers "playing" the same way in every one of those
-// states.
+// jumpToPlaying moves the cursor to the track now playing and lands the
+// window on it. Pausing or muting does not change which track that is; only
+// stopping the queue does.
 func (q queueContent) jumpToPlaying() queueContent {
-	if q.playing <= 0 {
+	row, ok := q.playingRow()
+	if !ok {
 		return q
+	}
+	q.cursor = row
+	q.listView = q.listView.land()
+	return q
+}
+
+// seekPlaying is what c does: it moves the cursor to the track now playing,
+// and leaves the window where it is when that track is already on screen.
+func (q queueContent) seekPlaying() queueContent {
+	row, ok := q.playingRow()
+	if !ok {
+		return q
+	}
+	if first, last := q.window(); row >= first && row < last {
+		q.cursor = row
+		return q
+	}
+	return q.jumpToPlaying()
+}
+
+// playingRow is the row of the track now playing, if the list holds it.
+func (q queueContent) playingRow() (int, bool) {
+	if q.playing <= 0 {
+		return 0, false
 	}
 	for i, item := range q.items {
 		if item.Position == q.playing {
-			q.cursor = i
-			return q.follow()
+			return i, true
 		}
 	}
-	return q
+	return 0, false
 }
 
 func (q queueContent) View() tea.View {

@@ -89,6 +89,73 @@ func TestQueueNav_CJumpsToWhatIsPlaying(t *testing.T) {
 	}
 }
 
+// Case: c far down a long queue. The playing track lands two rows below the
+// top, so the rest of the window shows the tracks to come.
+func TestQueueNav_CLeavesRoomForWhatComesNext(t *testing.T) {
+	q := navQueue(60, 0)
+	q.playing = 31
+
+	moved := moveQueue(q, "c")
+	if moved.cursor != 30 || moved.offset != 28 {
+		t.Fatalf("c landed on row %d with the window at %d, want row 30 at 28", moved.cursor, moved.offset)
+	}
+}
+
+// Case: c on the first tracks and the last ones. The window cannot go above
+// the first row or below the last, so the landing clamps without empty rows.
+func TestQueueNav_CClampsAtEachEnd(t *testing.T) {
+	for _, tc := range []struct{ playing, offset int }{{1, 0}, {2, 0}, {58, 50}, {60, 50}} {
+		q := navQueue(60, 30)
+		q.playing = tc.playing
+
+		if moved := moveQueue(q, "c"); moved.offset != tc.offset {
+			t.Fatalf("c on the track at %d put the window at %d, want %d", tc.playing, moved.offset, tc.offset)
+		}
+	}
+}
+
+// Case: c in a short window. Two rows above would push the track to the
+// bottom or off it, so fewer are kept: one when three tracks show, none
+// when two or one do.
+func TestQueueNav_CKeepsLessAboveInAShortWindow(t *testing.T) {
+	for _, tc := range []struct{ rows, above int }{{5, 1}, {4, 0}, {3, 0}} {
+		q := navQueue(60, 0)
+		q.rows, q.playing = tc.rows, 31
+
+		if moved := moveQueue(q, "c"); moved.cursor-moved.offset != tc.above {
+			t.Fatalf("%d rows kept %d above the track, want %d", tc.rows, moved.cursor-moved.offset, tc.above)
+		}
+	}
+}
+
+// Case: c with the playing track already on screen. Only the cursor moves;
+// the window stays, so nothing on screen jumps.
+func TestQueueNav_CKeepsTheWindowWhenTheTrackShows(t *testing.T) {
+	q := navQueue(60, 40) // the window shows rows 31 to 40
+	q.playing = 39
+
+	moved := moveQueue(q, "c")
+	if moved.cursor != 38 || moved.offset != q.offset {
+		t.Fatalf("c landed on row %d with the window at %d, want row 38 with the window still at %d",
+			moved.cursor, moved.offset, q.offset)
+	}
+}
+
+// Case: moving on from where c landed. Only the landing changed: the cursor
+// still walks the window before the window scrolls.
+func TestQueueNav_MovingAfterCScrollsTheLeast(t *testing.T) {
+	q := navQueue(60, 0)
+	q.playing = 31
+	q = moveQueue(q, "c")
+
+	if moved := moveQueue(q, "down"); moved.offset != q.offset {
+		t.Fatalf("down from the landing scrolled the window from %d to %d", q.offset, moved.offset)
+	}
+	if moved := moveQueue(moveQueue(moveQueue(q, "up"), "up"), "up"); moved.offset != q.offset-1 {
+		t.Fatalf("three rows up put the window at %d, want %d", moved.offset, q.offset-1)
+	}
+}
+
 // Case: nothing plays from the queue -- a station, say -- so c has no row to
 // aim at and must leave the cursor exactly where it was.
 func TestQueueNav_CDoesNothingWithNoTrackPlaying(t *testing.T) {

@@ -211,10 +211,9 @@ func (m appModel) openQueue() (tea.Model, tea.Cmd) {
 		loading: !state.QueueKnown,
 	}
 
-	// Opening lands on the playing track, as if the reader had pressed c right
-	// after -- a no-op here if the queue is not known yet, since jumpToPlaying
-	// finds nothing in an empty list. applyQueueLoaded does the same once that
-	// first read arrives.
+	// Opening lands on the playing track -- a no-op if the queue is not known
+	// yet, since jumpToPlaying finds nothing in an empty list. applyQueueLoaded
+	// does the same once that first read arrives.
 	m.queue.Content = content.jumpToPlaying()
 
 	// Nothing to fetch in the ordinary case: the queue was read at startup and
@@ -501,8 +500,8 @@ func (m appModel) applyQueueLoaded(msg queueLoadedMsg) (tea.Model, tea.Cmd) {
 	// said where it put it, the cursor goes back onto it for a committed
 	// shift; play next leaves the cursor alone and only flashes the track.
 	// Neither applies to a first load: nothing was pending before the queue
-	// even existed on screen, so that instead lands on what is playing, as if
-	// the reader had pressed c right after opening.
+	// even existed on screen, so that instead lands on what is playing, as
+	// opening does.
 	switch {
 	case awaiting && content.settlingFollow:
 		content = content.followSettled()

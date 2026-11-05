@@ -28,6 +28,9 @@ func TestQueueOpen_LandsOnThePlayingTrackWhenAlreadyKnown(t *testing.T) {
 	if content.cursor != 9 {
 		t.Fatalf("opening landed on row %d, want row 9 for the track at position 10", content.cursor)
 	}
+	if want := content.land().offset; content.offset != want {
+		t.Fatalf("opening put the window at %d, want %d to leave room for what comes next", content.offset, want)
+	}
 	if fetches(cmd) {
 		t.Fatal("the queue was already known; opening should not have asked to read it again")
 	}

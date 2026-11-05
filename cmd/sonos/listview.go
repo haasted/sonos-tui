@@ -52,6 +52,10 @@ const (
 	// worth showing. Clipped any shorter, it is dropped instead.
 	headingShortest  = 6
 	headingSeparator = " · "
+
+	// landingContext is how many rows a landing keeps above the row it lands
+	// on. The rest of the window shows what comes after that row.
+	landingContext = 2
 )
 
 // listCursorGlyph marks the row the reader is on. The cursor moves, and so
@@ -210,6 +214,15 @@ func (l listView[T]) follow() listView[T] {
 		l.offset = l.cursor - l.visibleRows() + 1
 	}
 	l.offset = max(min(l.offset, l.maxOffset()), 0)
+	return l
+}
+
+// land scrolls the cursor row to landingContext rows below the top of the
+// window, fewer in a short window. At the end of the list the window stops at
+// the last row instead, so no row stays empty.
+func (l listView[T]) land() listView[T] {
+	above := min(landingContext, (l.visibleRows()-1)/2)
+	l.offset = max(min(l.cursor-above, l.maxOffset()), 0)
 	return l
 }
 
