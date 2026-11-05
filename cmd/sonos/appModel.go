@@ -495,6 +495,8 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.applyFavouriteKindChosen(msg)
 	case favouriteActionMsg:
 		return m.applyFavouriteAction(msg)
+	case favouriteMarkMsg:
+		return m.applyFavouriteMark(msg)
 	case queueLoadedMsg:
 		return m.applyQueueLoaded(msg)
 	case queueRemoveMsg:

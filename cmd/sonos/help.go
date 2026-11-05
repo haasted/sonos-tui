@@ -97,6 +97,7 @@ var queueHelp = helpTable{
 			{"n", "play next"},
 			{"N", "send to the bottom"},
 			{"enter", "play from here"},
+			{"a", "mark track as a favourite"},
 			{"/", "filter the list"},
 			{"s  →", "select / deselect"},
 			{"S", "select none"},

@@ -58,7 +58,8 @@ CREATE TABLE setting (
 ) STRICT;
 `,
 	// 2. TEMPORARY: sample favourites, to try the favourites modal before
-	// favourites can be marked. Remove once marking exists.
+	// albums, playlists and stations can be marked. Tracks are marked in the
+	// queue. Remove once the others can be marked too.
 	`
 INSERT INTO favourite (kind, title, artist, album, uri, metadata, service, account, item_id, added_at) VALUES
     ('playlist', 'Awesome singles', '', '',
@@ -73,10 +74,6 @@ INSERT INTO favourite (kind, title, artist, album, uri, metadata, service, accou
      'x-rincon-cpcontainer:00040000album%3a1888147421?sid=204&flags=0&sn=2',
      '<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"><item id="00040000album%3a1888147421" parentID="-1" restricted="true"><dc:title>Ordensduks i Ingenmandsland</dc:title><upnp:class>object.container.album.musicAlbum</upnp:class><desc id="cdudn" nameSpace="urn:schemas-rinconnetworks-com:metadata-1-0/">SA_RINCON52231_X_#Svc52231-0-Token</desc></item></DIDL-Lite>',
      204, 2, 'album:1888147421', '2026-11-04T12:02:00Z'),
-    ('track', 'Paint The Town Red', 'Doja Cat', 'Paint The Town Red - Single',
-     'x-sonos-http:librarytrack%3ai.2P0D02rt16oe6.mp4?sid=204&flags=73768&sn=2',
-     '<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"><item id="10032020librarytrack%3ai.2P0D02rt16oe6" parentID="-1" restricted="true"><dc:title>Paint The Town Red</dc:title><upnp:class>object.item.audioItem.musicTrack</upnp:class><dc:creator>Doja Cat</dc:creator><upnp:album>Paint The Town Red - Single</upnp:album><desc id="cdudn" nameSpace="urn:schemas-rinconnetworks-com:metadata-1-0/">SA_RINCON52231_X_#Svc52231-0-Token</desc></item></DIDL-Lite>',
-     204, 2, 'librarytrack:i.2P0D02rt16oe6.mp4', '2026-11-04T12:03:00Z'),
     ('station', 'DR P1', '', '',
      'x-sonosapi-hls:urn%3adr%3aradio%3achannel%3a5fa156d1da351264f87b462d?sid=290&flags=8232&sn=3',
      '<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"><item id="10092028urn%3adr%3aradio%3achannel%3a5fa156d1da351264f87b462d" parentID="10fe2064live%3amain" restricted="true"><dc:title>DR P1</dc:title><upnp:class>object.item.audioItem.audioBroadcast.#channel</upnp:class><desc id="cdudn" nameSpace="urn:schemas-rinconnetworks-com:metadata-1-0/">SA_RINCON74247_</desc></item></DIDL-Lite>',

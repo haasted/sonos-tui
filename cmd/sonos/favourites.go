@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/haasted/sonos-sandbox/internal/sonos"
 	"github.com/haasted/sonos-sandbox/internal/store"
 	"github.com/haasted/sonos-sandbox/internal/ui/theme"
 )
@@ -46,6 +47,9 @@ type (
 	// favouriteKindChosenMsg says the reader switched media type, so the
 	// choice can be remembered for the next time the modal opens.
 	favouriteKindChosenMsg struct{ kind store.FavouriteKind }
+
+	// favouriteMarkMsg asks for a track to be stored as a favourite.
+	favouriteMarkMsg struct{ track sonos.TrackMetadata }
 
 	// favouriteActionMsg asks for a favourite to start on the speaker in view.
 	favouriteActionMsg struct {

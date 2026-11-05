@@ -25,6 +25,15 @@ var errNoStore = errors.New("no database")
 // place of the queue, and cannot be put into it.
 const favouriteStationNotQueued = "a station cannot be queued"
 
+// What marking a track as a favourite answers. The reader can see the track
+// under the cursor, so the notices do not name it.
+const (
+	favouriteMarked     = "added as a favourite"
+	favouriteMarkedNot  = "already a favourite"
+	favouriteNoService  = "not from a music service, cannot be marked"
+	favouriteMarkFailed = "could not mark as a favourite"
+)
+
 // openFavourites opens the favourites modal and reads what it lists. Every
 // open reads again: it is a local file, and a list read earlier may be stale.
 func (m appModel) openFavourites() (tea.Model, tea.Cmd) {
@@ -115,6 +124,57 @@ func (m appModel) applyFavouriteAction(msg favouriteActionMsg) (tea.Model, tea.C
 		*slot.pulse, *slot.hint = nextGen(), nextGen()
 	}
 	return m, startFavourite(speaker, playable, msg.action, station)
+}
+
+// applyFavouriteMark stores the track the queue asked for as a favourite, in
+// the background, and says whether it was added or was there already.
+func (m appModel) applyFavouriteMark(msg favouriteMarkMsg) (tea.Model, tea.Cmd) {
+	db, ctx, track := m.db, m.ctx, msg.track
+	return m, func() tea.Msg {
+		slog := slog.With("track", track.Title)
+
+		fav, err := trackFavourite(track, time.Now())
+		if err != nil {
+			slog.Warn("marking a favourite", "err", err)
+			return panes.NoticeMsg{Level: panes.NoticeInfo, Text: favouriteNoService}
+		}
+		if db == nil {
+			return panes.NoticeMsg{Level: panes.NoticeError, Text: favouriteMarkFailed + ": " + errNoStore.Error()}
+		}
+
+		added, err := db.Favourites().Add(ctx, fav)
+		switch {
+		case err != nil:
+			slog.Warn("marking a favourite failed", "err", err)
+			return panes.NoticeMsg{Level: panes.NoticeError, Text: favouriteMarkFailed}
+		case added:
+			return panes.NoticeMsg{Level: panes.NoticeInfo, Text: favouriteMarked, Confirmation: true}
+		default:
+			return panes.NoticeMsg{Level: panes.NoticeInfo, Text: favouriteMarkedNot, Confirmation: true}
+		}
+	}
+}
+
+// trackFavourite is the favourite row for a track in the queue. Only a track
+// from a music service has the service, account and id a row needs.
+func trackFavourite(track sonos.TrackMetadata, now time.Time) (store.Favourite, error) {
+	playable, err := sonos.TrackPlayable(track)
+	if err != nil {
+		return store.Favourite{}, err
+	}
+	ref, _ := sonos.ParseServiceURI(track.URI) // TrackPlayable succeeded, so the URI parses
+	return store.Favourite{
+		Kind:     store.FavouriteTrack,
+		Title:    track.Title,
+		Artist:   track.Artist,
+		Album:    track.Album,
+		URI:      playable.URI,
+		Metadata: playable.Metadata,
+		Service:  ref.Service,
+		Account:  ref.Account,
+		ItemID:   ref.ItemID,
+		AddedAt:  now,
+	}, nil
 }
 
 // startFavourite sends a favourite to the speaker that owns playback, and

@@ -187,6 +187,8 @@ func (q queueContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		q = q.invertSelection()
 	case "enter":
 		return q.playFromCursor()
+	case "a":
+		return q, q.markFavourite()
 	case "K", "shift+up":
 		return q.shift(-1)
 	case "J", "shift+down":
@@ -1111,6 +1113,16 @@ func (q queueContent) playFromCursor() (queueContent, tea.Cmd) {
 	position := q.items[q.cursor].Position
 	ask := func() tea.Msg { return queuePlayFromMsg{position: position} }
 	return q, ask
+}
+
+// markFavourite asks for the track under the cursor to be marked as a
+// favourite, or is nil when the list has no track there.
+func (q queueContent) markFavourite() tea.Cmd {
+	if q.cursor >= len(q.items) {
+		return nil
+	}
+	track := q.items[q.cursor].TrackMetadata
+	return func() tea.Msg { return favouriteMarkMsg{track: track} }
 }
 
 // moveBy, moveToEnd, follow and bump are the list's own, kept on the queue so
