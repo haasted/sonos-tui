@@ -75,7 +75,7 @@ func TestHelp_ThePlayerPopupHoldsNoQueueKeys(t *testing.T) {
 
 	// k and j are left out: they are bound in both places, meaning play/pause
 	// and previous track here, and one row up or down inside the list.
-	for _, key := range []string{"pgup", "pgdn", "spc", "^u", "^d", "home", "end", "G", "b"} {
+	for _, key := range []string{"pgup", "pgdn", "spc", "^u", "^d", "home", "end", "G", "F"} {
 		if documented[key] {
 			t.Errorf("the player popup shows %q, which only moves the queue", key)
 		}

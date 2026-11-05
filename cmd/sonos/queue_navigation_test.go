@@ -35,10 +35,18 @@ func TestQueueNav_MovesOneWindow(t *testing.T) {
 			t.Fatalf("%q moved to row %d, not one window of %d", key, got, page)
 		}
 	}
-	for _, key := range []string{"pgup", "b"} {
+	for _, key := range []string{"pgup", "F"} {
 		if got := cursorAfter(navQueue(60, 2*page), key); got != page {
 			t.Fatalf("%q moved to row %d, not one window of %d", key, got, page)
 		}
+	}
+}
+
+// Case: b, page up before F took its place. It must do nothing now, so the
+// queue's keys keep one meaning each.
+func TestQueueNav_BNoLongerPagesUp(t *testing.T) {
+	if got := cursorAfter(navQueue(60, 30), "b"); got != 30 {
+		t.Fatalf("b moved the cursor to row %d; it should do nothing", got)
 	}
 }
 
@@ -183,7 +191,7 @@ func TestQueueNav_StopsAtTheEndRatherThanRunningPast(t *testing.T) {
 // Case: a move at an end, which cannot go anywhere. It lights the edge instead,
 // which is what tells a held key apart from a program that has stopped.
 func TestQueueNav_LightsTheEdgeOnlyWhereNothingMoves(t *testing.T) {
-	for _, key := range []string{"up", "k", "pgup", "b", "ctrl+u", "home", "g"} {
+	for _, key := range []string{"up", "k", "pgup", "F", "ctrl+u", "home", "g"} {
 		if moved := moveQueue(navQueue(60, 0), key); !moved.bumping() {
 			t.Fatalf("%q at the top did not light the edge", key)
 		}

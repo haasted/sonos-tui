@@ -87,7 +87,7 @@ var queueHelp = helpTable{
 	{
 		{"Queue", []helpKey{
 			{"↑ ↓  k j", "move a row"},
-			{"pgup  b", "page up"},
+			{"pgup  F", "page up"},
 			{"pgdn f spc", "page down"},
 			{"^u  ^d", "half a page"},
 			{"home  g", "to the top"},
@@ -114,7 +114,7 @@ var favouritesHelp = helpTable{
 	{
 		{"Favourites", []helpKey{
 			{"↑ ↓  k j", "move a row"},
-			{"pgup  b", "page up"},
+			{"pgup  F", "page up"},
 			{"pgdn f spc", "page down"},
 			{"^u  ^d", "half a page"},
 			{"home  g", "to the top"},

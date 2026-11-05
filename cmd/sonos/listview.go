@@ -105,15 +105,15 @@ type headingPart struct {
 }
 
 // navigate moves the cursor for the keys every list shares, and reports false
-// for any other key. They are the keys charm.land/bubbles binds by default,
-// which are the ones less and vi established.
+// for any other key. Mostly the keys less and vi established; page up is F
+// rather than b, so f and F pair as the lists' other keys do.
 func (l listView[T]) navigate(key string) (listView[T], bool) {
 	switch key {
 	case "up", "k":
 		return l.moveBy(-1), true
 	case "down", "j":
 		return l.moveBy(1), true
-	case "pgup", "b":
+	case "pgup", "F":
 		return l.moveBy(-l.page()), true
 	case "pgdown", "f", "space":
 		return l.moveBy(l.page()), true
