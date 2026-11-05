@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -32,6 +33,12 @@ const (
 	favouriteMarkedNot  = "already a favourite"
 	favouriteNoService  = "not from a music service, cannot be marked"
 	favouriteMarkFailed = "could not mark as a favourite"
+
+	// Marking several tracks says only that they were added. One already a
+	// favourite has moved to the top, which the list shows; a skipped one is
+	// counted, since nothing else shows it.
+	favouriteMarkedSeveral = "added as favourites"
+	favouriteMarkedSkipped = "added as favourites, %d cannot be marked"
 )
 
 // What removing a favourite answers, in the queue's words for a removed track.
@@ -132,33 +139,57 @@ func (m appModel) applyFavouriteAction(msg favouriteActionMsg) (tea.Model, tea.C
 	return m, startFavourite(speaker, playable, msg.action, station)
 }
 
-// applyFavouriteMark stores the track the queue asked for as a favourite, in
-// the background, and says whether it was added or was there already.
+// applyFavouriteMark stores the tracks the queue asked for as favourites, in
+// the background, and says what happened.
 func (m appModel) applyFavouriteMark(msg favouriteMarkMsg) (tea.Model, tea.Cmd) {
-	db, ctx, track := m.db, m.ctx, msg.track
+	db, ctx, tracks := m.db, m.ctx, msg.tracks
 	return m, func() tea.Msg {
-		slog := slog.With("track", track.Title)
-
-		fav, err := trackFavourite(track, time.Now())
-		if err != nil {
-			slog.Warn("marking a favourite", "err", err)
+		favs, skipped := trackFavourites(tracks, time.Now())
+		if len(favs) == 0 {
 			return panes.NoticeMsg{Level: panes.NoticeInfo, Text: favouriteNoService}
 		}
 		if db == nil {
 			return panes.NoticeMsg{Level: panes.NoticeError, Text: favouriteMarkFailed + ": " + errNoStore.Error()}
 		}
 
-		added, err := db.Favourites().Add(ctx, fav)
-		switch {
-		case err != nil:
-			slog.Warn("marking a favourite failed", "err", err)
+		added, err := db.Favourites().Add(ctx, favs...)
+		if err != nil {
+			slog.Warn("marking favourites failed", "tracks", len(favs), "err", err)
 			return panes.NoticeMsg{Level: panes.NoticeError, Text: favouriteMarkFailed}
-		case added:
-			return panes.NoticeMsg{Level: panes.NoticeInfo, Text: favouriteMarked, Confirmation: true}
-		default:
-			return panes.NoticeMsg{Level: panes.NoticeInfo, Text: favouriteMarkedNot, Confirmation: true}
 		}
+		return panes.NoticeMsg{Level: panes.NoticeInfo, Text: markedNotice(len(tracks), added, skipped), Confirmation: true}
 	}
+}
+
+// markedNotice is what marking says. One track says whether it was new; many
+// say only that they were added, and how many could not be.
+func markedNotice(asked, added, skipped int) string {
+	switch {
+	case asked == 1 && added == 1:
+		return favouriteMarked
+	case asked == 1:
+		return favouriteMarkedNot
+	case skipped == 0:
+		return favouriteMarkedSeveral
+	default:
+		return fmt.Sprintf(favouriteMarkedSkipped, skipped)
+	}
+}
+
+// trackFavourites is the favourite rows for tracks, each a microsecond older
+// than the one before, so the list shows them in the order given. Tracks not
+// from a music service are left out and counted.
+func trackFavourites(tracks []sonos.TrackMetadata, now time.Time) (favs []store.Favourite, skipped int) {
+	for i, track := range tracks {
+		fav, err := trackFavourite(track, now.Add(-time.Duration(i)*time.Microsecond))
+		if err != nil {
+			slog.Info("not marking a track", "track", track.Title, "err", err)
+			skipped++
+			continue
+		}
+		favs = append(favs, fav)
+	}
+	return favs, skipped
 }
 
 // applyFavouriteFaded takes the faded favourites off the list, if the modal

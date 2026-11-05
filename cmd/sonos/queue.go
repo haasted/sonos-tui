@@ -188,7 +188,7 @@ func (q queueContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "enter":
 		return q.playFromCursor()
 	case "a":
-		return q, q.markFavourite()
+		return q.markFavourites()
 	case "K", "shift+up":
 		return q.shift(-1)
 	case "J", "shift+down":
@@ -1115,14 +1115,25 @@ func (q queueContent) playFromCursor() (queueContent, tea.Cmd) {
 	return q, ask
 }
 
-// markFavourite asks for the track under the cursor to be marked as a
-// favourite, or is nil when the list has no track there.
-func (q queueContent) markFavourite() tea.Cmd {
-	if q.cursor >= len(q.items) {
-		return nil
+// markFavourites asks for the picked tracks to be marked as favourites, in
+// the order they were picked, as n and N use; with none picked, the track
+// under the cursor. The selection is cleared, as the queue's other keys do.
+func (q queueContent) markFavourites() (queueContent, tea.Cmd) {
+	var tracks []sonos.TrackMetadata
+	if positions := q.pickedInPressOrder(); len(positions) > 0 {
+		for _, position := range positions {
+			if at := slices.IndexFunc(q.items, func(item sonos.QueueItem) bool { return item.Position == position }); at >= 0 {
+				tracks = append(tracks, q.items[at].TrackMetadata)
+			}
+		}
+		q = q.clearSelection()
+	} else if q.cursor < len(q.items) {
+		tracks = []sonos.TrackMetadata{q.items[q.cursor].TrackMetadata}
 	}
-	track := q.items[q.cursor].TrackMetadata
-	return func() tea.Msg { return favouriteMarkMsg{track: track} }
+	if len(tracks) == 0 {
+		return q, nil
+	}
+	return q, func() tea.Msg { return favouriteMarkMsg{tracks: tracks} }
 }
 
 // moveBy, moveToEnd, follow and bump are the list's own, kept on the queue so

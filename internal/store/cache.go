@@ -16,9 +16,10 @@ var cacheTables = []string{
 	"speaker_cache",
 }
 
-// timeFormat is how an instant is written to a TEXT column, chosen so the
-// rows sort and read the same way the sqlite3 CLI prints them.
-const timeFormat = time.RFC3339Nano
+// timeFormat is how an instant is written to a TEXT column: fixed width and
+// always UTC, so the text sorts as the time does. RFC3339Nano drops trailing
+// zeros, and ".12Z" sorts after ".120001Z".
+const timeFormat = "2006-01-02T15:04:05.000000000Z07:00"
 
 // CachedSpeaker is one speaker as the cache last saw it. Plain strings, since
 // this layer holds no Sonos type of its own.
@@ -61,7 +62,7 @@ func (c *Cache) Load(ctx context.Context) (snapshot Snapshot, ok bool, err error
 		return Snapshot{}, false, fmt.Errorf("reading the cached session: %w", err)
 	}
 
-	snapshot.SavedAt, err = time.Parse(timeFormat, savedAt)
+	snapshot.SavedAt, err = parseTime(savedAt)
 	if err != nil {
 		return Snapshot{}, false, fmt.Errorf("reading when the cache was written: %w", err)
 	}
@@ -90,7 +91,7 @@ func (c *Cache) Save(ctx context.Context, snapshot Snapshot) error {
 
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO speaker_cache_session VALUES (1, ?, ?)`,
-		snapshot.SavedAt.Format(timeFormat), snapshot.Subnet); err != nil {
+		formatTime(snapshot.SavedAt), snapshot.Subnet); err != nil {
 		return fmt.Errorf("writing the cached session: %w", err)
 	}
 
@@ -142,3 +143,10 @@ func (c *Cache) speakers(ctx context.Context) ([]CachedSpeaker, error) {
 	}
 	return speakers, rows.Err()
 }
+
+// formatTime writes an instant as timeFormat says.
+func formatTime(t time.Time) string { return t.UTC().Format(timeFormat) }
+
+// parseTime reads an instant written by formatTime. RFC3339 rather than
+// timeFormat: it takes a fraction of any length, so rows written by hand parse.
+func parseTime(s string) (time.Time, error) { return time.Parse(time.RFC3339, s) }

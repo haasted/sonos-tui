@@ -55,8 +55,9 @@ type (
 	// choice can be remembered for the next time the modal opens.
 	favouriteKindChosenMsg struct{ kind store.FavouriteKind }
 
-	// favouriteMarkMsg asks for a track to be stored as a favourite.
-	favouriteMarkMsg struct{ track sonos.TrackMetadata }
+	// favouriteMarkMsg asks for tracks to be stored as favourites. The first
+	// goes to the top of the list, the rest below it in order.
+	favouriteMarkMsg struct{ tracks []sonos.TrackMetadata }
 
 	// favouriteRemoveMsg asks for a favourite to be deleted. The modal fades
 	// it out on its own.

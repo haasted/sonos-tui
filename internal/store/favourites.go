@@ -44,25 +44,38 @@ func (s *Store) Favourites() *Favourites {
 	return &Favourites{db: s.db}
 }
 
-// Add stores fav, and reports false when the same thing is already there.
-// Marking twice is not a fault, so the row already stored is kept as it is.
-func (f *Favourites) Add(ctx context.Context, fav Favourite) (bool, error) {
-	result, err := f.db.ExecContext(ctx, `
-		INSERT INTO favourite
-			(kind, title, artist, album, uri, metadata, service, account, item_id, added_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT (service, account, item_id) DO NOTHING`,
-		fav.Kind, fav.Title, fav.Artist, fav.Album, fav.URI, fav.Metadata,
-		fav.Service, fav.Account, fav.ItemID, fav.AddedAt.Format(timeFormat))
+// Add stores the favourites in one transaction, and reports how many were
+// new. One already stored keeps its row and only takes the new added time,
+// so marking it again brings it to the top of the list.
+func (f *Favourites) Add(ctx context.Context, favs ...Favourite) (int, error) {
+	tx, err := f.db.BeginTx(ctx, nil)
 	if err != nil {
-		return false, fmt.Errorf("adding favourite %q: %w", fav.Title, err)
+		return 0, err
 	}
+	defer tx.Rollback()
 
-	added, err := result.RowsAffected()
-	if err != nil {
-		return false, fmt.Errorf("adding favourite %q: %w", fav.Title, err)
+	added := 0
+	for _, fav := range favs {
+		var stored bool
+		if err := tx.QueryRowContext(ctx, `
+			SELECT EXISTS (SELECT 1 FROM favourite WHERE service = ? AND account = ? AND item_id = ?)`,
+			fav.Service, fav.Account, fav.ItemID).Scan(&stored); err != nil {
+			return 0, fmt.Errorf("looking for favourite %q: %w", fav.Title, err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO favourite
+				(kind, title, artist, album, uri, metadata, service, account, item_id, added_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT (service, account, item_id) DO UPDATE SET added_at = excluded.added_at`,
+			fav.Kind, fav.Title, fav.Artist, fav.Album, fav.URI, fav.Metadata,
+			fav.Service, fav.Account, fav.ItemID, formatTime(fav.AddedAt)); err != nil {
+			return 0, fmt.Errorf("adding favourite %q: %w", fav.Title, err)
+		}
+		if !stored {
+			added++
+		}
 	}
-	return added == 1, nil
+	return added, tx.Commit()
 }
 
 // Remove deletes the favourite with the given id. An id not stored is not a
@@ -92,7 +105,7 @@ func (f *Favourites) List(ctx context.Context) ([]Favourite, error) {
 			&fav.URI, &fav.Metadata, &fav.Service, &fav.Account, &fav.ItemID, &addedAt); err != nil {
 			return nil, fmt.Errorf("reading a favourite: %w", err)
 		}
-		if fav.AddedAt, err = time.Parse(timeFormat, addedAt); err != nil {
+		if fav.AddedAt, err = parseTime(addedAt); err != nil {
 			return nil, fmt.Errorf("reading when %q was added: %w", fav.Title, err)
 		}
 		favourites = append(favourites, fav)

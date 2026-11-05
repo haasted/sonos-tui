@@ -15,7 +15,7 @@ func TestFavourites_AFavouriteSurvivesTheRoundTrip(t *testing.T) {
 
 	added, err := s.Favourites().Add(t.Context(), want)
 	require.NoError(t, err)
-	require.True(t, added)
+	require.Equal(t, 1, added)
 
 	got, err := s.Favourites().List(t.Context())
 	require.NoError(t, err)
@@ -25,8 +25,9 @@ func TestFavourites_AFavouriteSurvivesTheRoundTrip(t *testing.T) {
 	assert.Equal(t, want, got[0])
 }
 
-// Case: the same thing marked twice. One row stays, and the second mark
-// reports that nothing was added.
+// Case: the same thing marked twice. One row stays with what was stored
+// first, the second mark reports nothing added, and the row takes the
+// second mark's time, so it moves to the top.
 func TestFavourites_MarkingTwiceKeepsOneRow(t *testing.T) {
 	s := openWithoutFavourites(t)
 	first := playlistFavourite(time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC))
@@ -39,11 +40,62 @@ func TestFavourites_MarkingTwiceKeepsOneRow(t *testing.T) {
 	added, err := s.Favourites().Add(t.Context(), again)
 	require.NoError(t, err)
 
-	assert.False(t, added)
+	assert.Equal(t, 0, added)
 	got, err := s.Favourites().List(t.Context())
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	assert.Equal(t, "Awesome singles", got[0].Title, "the row already stored must be kept")
+	assert.True(t, again.AddedAt.Equal(got[0].AddedAt), "the second mark did not move the row to the top")
+}
+
+// Case: several favourites in one call, one of them already stored. The new
+// ones are counted, and the list follows the times given.
+func TestFavourites_AddSeveralAtOnce(t *testing.T) {
+	s := openWithoutFavourites(t)
+	at := time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)
+	old := playlistFavourite(at)
+	_, err := s.Favourites().Add(t.Context(), old)
+	require.NoError(t, err)
+
+	second, third := playlistFavourite(at), playlistFavourite(at)
+	second.ItemID, second.Title = "libraryplaylist:p.second", "Second"
+	third.ItemID, third.Title = "libraryplaylist:p.third", "Third"
+	old.AddedAt = at.Add(time.Hour)
+	second.AddedAt = at.Add(time.Hour - time.Microsecond)
+	third.AddedAt = at.Add(time.Hour - 2*time.Microsecond)
+
+	added, err := s.Favourites().Add(t.Context(), old, second, third)
+	require.NoError(t, err)
+	assert.Equal(t, 2, added)
+
+	got, err := s.Favourites().List(t.Context())
+	require.NoError(t, err)
+	var titles []string
+	for _, fav := range got {
+		titles = append(titles, fav.Title)
+	}
+	assert.Equal(t, []string{"Awesome singles", "Second", "Third"}, titles)
+}
+
+// Case: two times whose RFC3339Nano text would sort the wrong way round, one
+// a whole second and one a microsecond after it, and one written in another
+// zone. The list must still be newest first.
+func TestFavourites_TimesSortAsTimesDo(t *testing.T) {
+	s := openWithoutFavourites(t)
+	at := time.Date(2026, 10, 25, 12, 0, 0, 120000000, time.UTC)
+	earlier, later := playlistFavourite(at), playlistFavourite(at.Add(time.Microsecond))
+	later.ItemID, later.Title = "libraryplaylist:p.later", "Later"
+	zoned := playlistFavourite(at.Add(30 * time.Minute).In(time.FixedZone("CET", 3600)))
+	zoned.ItemID, zoned.Title = "libraryplaylist:p.zoned", "Zoned"
+
+	_, err := s.Favourites().Add(t.Context(), earlier, later, zoned)
+	require.NoError(t, err)
+
+	got, err := s.Favourites().List(t.Context())
+	require.NoError(t, err)
+	require.Len(t, got, 3)
+	assert.Equal(t, []string{"Zoned", "Later", "Awesome singles"},
+		[]string{got[0].Title, got[1].Title, got[2].Title})
 }
 
 // Case: several favourites, which must list newest first.
