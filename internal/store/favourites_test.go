@@ -96,6 +96,30 @@ func TestFavourites_ClearingTheCacheKeepsThem(t *testing.T) {
 	assert.Equal(t, 1, countIn(t, s, "favourite"))
 }
 
+// Case: removing one favourite of two, then removing it again. The other
+// stays, and the second removal is not a fault.
+func TestFavourites_RemoveDeletesOneRow(t *testing.T) {
+	s := openWithoutFavourites(t)
+	at := time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)
+	other := playlistFavourite(at)
+	other.ItemID, other.Title = "libraryplaylist:p.other", "Other"
+	for _, fav := range []Favourite{playlistFavourite(at), other} {
+		_, err := s.Favourites().Add(t.Context(), fav)
+		require.NoError(t, err)
+	}
+	stored, err := s.Favourites().List(t.Context())
+	require.NoError(t, err)
+	gone := stored[0].ID
+
+	require.NoError(t, s.Favourites().Remove(t.Context(), gone))
+	require.NoError(t, s.Favourites().Remove(t.Context(), gone))
+
+	left, err := s.Favourites().List(t.Context())
+	require.NoError(t, err)
+	require.Len(t, left, 1)
+	assert.Equal(t, stored[1].ID, left[0].ID)
+}
+
 func playlistFavourite(addedAt time.Time) Favourite {
 	return Favourite{
 		Kind:     FavouritePlaylist,

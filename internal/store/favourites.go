@@ -65,6 +65,15 @@ func (f *Favourites) Add(ctx context.Context, fav Favourite) (bool, error) {
 	return added == 1, nil
 }
 
+// Remove deletes the favourite with the given id. An id not stored is not a
+// fault: the favourite is gone either way.
+func (f *Favourites) Remove(ctx context.Context, id int64) error {
+	if _, err := f.db.ExecContext(ctx, `DELETE FROM favourite WHERE id = ?`, id); err != nil {
+		return fmt.Errorf("removing favourite %d: %w", id, err)
+	}
+	return nil
+}
+
 // List returns every favourite, newest first.
 func (f *Favourites) List(ctx context.Context) ([]Favourite, error) {
 	rows, err := f.db.QueryContext(ctx, `

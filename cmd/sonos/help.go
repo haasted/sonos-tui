@@ -123,6 +123,7 @@ var favouritesHelp = helpTable{
 			{"enter", "play, replacing the queue"},
 			{"n", "play next"},
 			{"N", "add to the end of the queue"},
+			{"x  delete", "remove a favourite"},
 			{"esc", "close"},
 		}},
 	},

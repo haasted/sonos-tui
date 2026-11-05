@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 	"image/color"
+	"slices"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -25,6 +27,11 @@ var favouriteKindNames = map[store.FavouriteKind]string{
 	store.FavouritePlaylist: "Playlists",
 	store.FavouriteStation:  "Stations",
 }
+
+// favouriteRemoveFade is how long a removed favourite stays on the list,
+// dimmed as a track leaving the queue is, before it goes. Short: the delete
+// itself is done at the press, so nothing waits on it.
+const favouriteRemoveFade = 400 * time.Millisecond
 
 // favouriteAction is what a key asks to do with the favourite under the cursor.
 type favouriteAction int
@@ -51,6 +58,14 @@ type (
 	// favouriteMarkMsg asks for a track to be stored as a favourite.
 	favouriteMarkMsg struct{ track sonos.TrackMetadata }
 
+	// favouriteRemoveMsg asks for a favourite to be deleted. The modal fades
+	// it out on its own.
+	favouriteRemoveMsg struct{ favourite store.Favourite }
+
+	// favouriteFadedMsg ends the fade of the favourites removed. It carries
+	// the generation of the last press, so an earlier press's tick is ignored.
+	favouriteFadedMsg struct{ gen int }
+
 	// favouriteActionMsg asks for a favourite to start on the speaker in view.
 	favouriteActionMsg struct {
 		favourite store.Favourite
@@ -63,10 +78,12 @@ type (
 type favouritesContent struct {
 	listView[store.Favourite]
 
-	all     []store.Favourite
-	kind    store.FavouriteKind // the media type on screen; empty with no favourites
-	loading bool
-	err     error
+	all      []store.Favourite
+	kind     store.FavouriteKind // the media type on screen; empty with no favourites
+	going    []int64             // ids removed and still fading on the list
+	goingGen int                 // the generation of the last removal's fade
+	loading  bool
+	err      error
 }
 
 var _ listContent = favouritesContent{}
@@ -104,6 +121,8 @@ func (f favouritesContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return f, f.ask(favouritePlayNext)
 	case "N":
 		return f, f.ask(favouriteAddToQueue)
+	case "x", "delete":
+		return f.remove()
 	}
 	return f, nil
 }
@@ -128,6 +147,13 @@ func (f favouritesContent) loaded(msg favouritesLoadedMsg) favouritesContent {
 // given. At either end it lights that side of the box, as the end of a list
 // lights its top or bottom.
 func (f favouritesContent) switchKind(dir int) (favouritesContent, tea.Cmd) {
+	// A fade still running ends now: the rows would be gone on the way back.
+	if len(f.going) > 0 {
+		var settled tea.Cmd
+		if f, settled = f.settle(); settled != nil {
+			return f, settled // the type emptied, and settling moved off it already
+		}
+	}
 	kinds := f.kinds()
 	at := -1
 	for i, kind := range kinds {
@@ -150,17 +176,121 @@ func (f favouritesContent) switchKind(dir int) (favouritesContent, tea.Cmd) {
 	return f.show(), func() tea.Msg { return favouriteKindChosenMsg{kind: chosen} }
 }
 
+// remove deletes the favourite under the cursor at once, as x does in the
+// queue. The row fades on the list for favouriteRemoveFade, and the cursor
+// moves off it straight away, so a second x takes the next favourite.
+func (f favouritesContent) remove() (favouritesContent, tea.Cmd) {
+	if f.cursor >= len(f.items) || f.isGoing(f.items[f.cursor]) {
+		return f, nil
+	}
+	gone := f.items[f.cursor]
+	f.going = append(slices.Clone(f.going), gone.ID)
+	f.cursor = f.restingRow(f.cursor)
+	f.listView = f.follow()
+
+	f.goingGen = nextGen()
+	gen := f.goingGen
+	return f, tea.Batch(
+		func() tea.Msg { return favouriteRemoveMsg{favourite: gone} },
+		tea.Tick(favouriteRemoveFade, func(time.Time) tea.Msg { return favouriteFadedMsg{gen: gen} }))
+}
+
+// faded takes the removed favourites off the list once the last press's fade
+// is over.
+func (f favouritesContent) faded(gen int) (favouritesContent, tea.Cmd) {
+	if gen != f.goingGen {
+		return f, nil
+	}
+	return f.settle()
+}
+
+// settle takes the removed favourites off the list. The cursor stays on the
+// favourite it was on; the last of a media type moves to another type, and
+// the new type is remembered as ← and → would.
+func (f favouritesContent) settle() (favouritesContent, tea.Cmd) {
+	if len(f.going) == 0 {
+		return f, nil
+	}
+	var on int64 = -1
+	if f.cursor < len(f.items) {
+		on = f.items[f.cursor].ID
+	}
+	f.all = slices.DeleteFunc(slices.Clone(f.all), f.isGoing)
+	f.going, f.goingGen = nil, 0
+
+	if !f.has(f.kind) {
+		f.kind = f.neighbourKind()
+		if f.kind == "" {
+			return f.show(), nil
+		}
+		chosen := f.kind
+		return f.show(), func() tea.Msg { return favouriteKindChosenMsg{kind: chosen} }
+	}
+
+	f.items = f.ofKind()
+	at := slices.IndexFunc(f.items, func(fav store.Favourite) bool { return fav.ID == on })
+	if at < 0 {
+		at = min(f.cursor, f.lastRow())
+	}
+	f.cursor = at
+	f.listView = f.follow()
+	return f, nil
+}
+
+func (f favouritesContent) isGoing(fav store.Favourite) bool {
+	return slices.Contains(f.going, fav.ID)
+}
+
+// restingRow is the nearest row not fading out, looking down first and then
+// up, as in the queue. With every row fading, the cursor stays where it is.
+func (f favouritesContent) restingRow(from int) int {
+	for i := from; i < len(f.items); i++ {
+		if !f.isGoing(f.items[i]) {
+			return i
+		}
+	}
+	for i := min(from, len(f.items)) - 1; i >= 0; i-- {
+		if !f.isGoing(f.items[i]) {
+			return i
+		}
+	}
+	return from
+}
+
+// neighbourKind is the media type to show once the current one has no
+// favourites left: the next with favourites, or the one before when none
+// follows. It is empty when no favourites are left at all.
+func (f favouritesContent) neighbourKind() store.FavouriteKind {
+	at := slices.Index(favouriteKinds, f.kind)
+	for _, kind := range favouriteKinds[at+1:] {
+		if f.has(kind) {
+			return kind
+		}
+	}
+	for i := at - 1; i >= 0; i-- {
+		if f.has(favouriteKinds[i]) {
+			return favouriteKinds[i]
+		}
+	}
+	return ""
+}
+
 // show puts the favourites of the current media type on the list, with the
 // cursor at the top.
 func (f favouritesContent) show() favouritesContent {
+	f.items, f.cursor, f.offset = f.ofKind(), 0, 0
+	return f
+}
+
+// ofKind is the favourites of the current media type, newest first.
+func (f favouritesContent) ofKind() []store.Favourite {
 	var items []store.Favourite
 	for _, fav := range f.all {
 		if fav.Kind == f.kind {
 			items = append(items, fav)
 		}
 	}
-	f.items, f.cursor, f.offset = items, 0, 0
-	return f
+	return items
 }
 
 // kinds are the media types that have favourites, in the order ← and → walk.
@@ -198,7 +328,7 @@ func (f favouritesContent) has(kind store.FavouriteKind) bool {
 // ask is the command a key sends for the favourite under the cursor, or nil
 // when the list has none.
 func (f favouritesContent) ask(action favouriteAction) tea.Cmd {
-	if f.cursor >= len(f.items) {
+	if f.cursor >= len(f.items) || f.isGoing(f.items[f.cursor]) {
 		return nil
 	}
 	fav := f.items[f.cursor]
@@ -223,7 +353,11 @@ func (f favouritesContent) View() tea.View {
 		func(fav store.Favourite) string { return fav.Artist })
 
 	return tea.NewView(f.render(f.headingParts(), f.note(), func(index int, fav store.Favourite, arrow string) string {
-		return f.drawRow(index, fav.Title, fav.Artist, [2]int{title, artist}, queueRowStyle(), arrow, false)
+		style := queueRowStyle()
+		if f.isGoing(fav) {
+			style = style.Foreground(themedGoingColor()).Bold(false)
+		}
+		return f.drawRow(index, fav.Title, fav.Artist, [2]int{title, artist}, style, arrow, false)
 	}))
 }
 

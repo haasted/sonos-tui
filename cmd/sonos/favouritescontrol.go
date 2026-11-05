@@ -34,6 +34,12 @@ const (
 	favouriteMarkFailed = "could not mark as a favourite"
 )
 
+// What removing a favourite answers, in the queue's words for a removed track.
+const (
+	favouriteRemoved      = "removed"
+	favouriteRemoveFailed = "could not remove the favourite"
+)
+
 // openFavourites opens the favourites modal and reads what it lists. Every
 // open reads again: it is a local file, and a list read earlier may be stale.
 func (m appModel) openFavourites() (tea.Model, tea.Cmd) {
@@ -152,6 +158,34 @@ func (m appModel) applyFavouriteMark(msg favouriteMarkMsg) (tea.Model, tea.Cmd) 
 		default:
 			return panes.NoticeMsg{Level: panes.NoticeInfo, Text: favouriteMarkedNot, Confirmation: true}
 		}
+	}
+}
+
+// applyFavouriteFaded takes the faded favourites off the list, if the modal
+// is still open to show them.
+func (m appModel) applyFavouriteFaded(msg favouriteFadedMsg) (tea.Model, tea.Cmd) {
+	content, ok := m.favourites.Content.(favouritesContent)
+	if !ok || !m.favourites.IsOpen() {
+		return m, nil
+	}
+	content, cmd := content.faded(msg.gen)
+	m.favourites.Content = content
+	return m, cmd
+}
+
+// applyFavouriteRemove deletes a removed favourite in the background. A
+// failed delete leaves the row, so it is back on the next open.
+func (m appModel) applyFavouriteRemove(msg favouriteRemoveMsg) (tea.Model, tea.Cmd) {
+	db, ctx, fav := m.db, m.ctx, msg.favourite
+	return m, func() tea.Msg {
+		if db == nil {
+			return panes.NoticeMsg{Level: panes.NoticeError, Text: favouriteRemoveFailed + ": " + errNoStore.Error()}
+		}
+		if err := db.Favourites().Remove(ctx, fav.ID); err != nil {
+			slog.Warn("removing a favourite failed", "favourite", fav.Title, "err", err)
+			return panes.NoticeMsg{Level: panes.NoticeError, Text: favouriteRemoveFailed}
+		}
+		return panes.NoticeMsg{Level: panes.NoticeInfo, Text: favouriteRemoved, Confirmation: true}
 	}
 }
 

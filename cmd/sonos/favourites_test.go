@@ -235,9 +235,9 @@ func loadedFavourites(kind store.FavouriteKind) favouritesContent {
 func sampleFavourites() []store.Favourite {
 	at := time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
 	return []store.Favourite{
-		{Kind: store.FavouriteTrack, Title: "Paint The Town Red", Artist: "Doja Cat", AddedAt: at},
-		{Kind: store.FavouritePlaylist, Title: "Awesome singles", AddedAt: at},
-		{Kind: store.FavouritePlaylist, Title: "Metallica", AddedAt: at},
+		{ID: 1, Kind: store.FavouriteTrack, Title: "Paint The Town Red", Artist: "Doja Cat", AddedAt: at},
+		{ID: 2, Kind: store.FavouritePlaylist, Title: "Awesome singles", AddedAt: at},
+		{ID: 3, Kind: store.FavouritePlaylist, Title: "Metallica", AddedAt: at},
 	}
 }
 
