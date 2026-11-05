@@ -42,7 +42,7 @@ If you are a subagent working on a task that makes code changes, create a worktr
 
 Prefer Makefile targets over raw command-line invocations for building and testing (e.g. `make test` over `go test ./...`). Only fall back to the command line when no target covers what's needed.
 
-Current targets: `build`, `fmt`, `vet`, `test`, `test-verbose`, `test-race`, `test-live`, `run`, `run-nocache`, `tidy`, `adr-html`, `help` — see `Makefile`.
+Current targets: `build`, `fmt`, `vet`, `test`, `test-verbose`, `test-race`, `test-live`, `run`, `run-nocache`, `db`, `tidy`, `adr-html`, `help` — see `Makefile`.
 
 `adr-html` renders each `ADRs/*.md` to a full standalone HTML page (`ADRs/html/<adr-basename>/index.html`) with diagrams rendered as linked SVGs (via `mmdc` + `npx marked`, not inlined, no Docker, no publishing).
 

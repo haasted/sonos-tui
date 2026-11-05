@@ -1,4 +1,4 @@
-.PHONY: build fmt vet test test-verbose test-race test-live run run-logs run-nocache queue-events notify-capture discover-probe music-services uitest worktrees tidy adr-html help
+.PHONY: build fmt vet test test-verbose test-race test-live run run-logs run-nocache db queue-events notify-capture discover-probe music-services uitest worktrees tidy adr-html help
 
 .DEFAULT_GOAL := help
 
@@ -66,6 +66,10 @@ run-logs: ## Run the CLI and print the logs once it exits
 run-nocache: ## Delete speaker cache prior to starting
 	rm -f ~/Library/Application\ Support/sonos-sandbox/sonos.db*
 	go run ./cmd/sonos
+
+db: ## Open the database in lazysql, with the connection in .lazysql.toml
+	@command -v lazysql >/dev/null || { echo "lazysql is not installed (brew install lazysql)"; exit 1; }
+	lazysql -config .lazysql.toml
 
 tidy: ## Tidy go.mod/go.sum
 	@for m in $(MODULES); do (cd $$m && go mod tidy) || exit 1; done
