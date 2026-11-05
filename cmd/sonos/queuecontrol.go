@@ -437,6 +437,18 @@ func playingPosition(state sonos.DeviceState) int {
 	return state.Track
 }
 
+// markPlaying moves the open queue's marker to the track the speaker plays
+// now. The cursor stays: the reader may be working elsewhere in the list.
+func (m appModel) markPlaying(speaker speakerModel) appModel {
+	content, ok := m.queue.Content.(queueContent)
+	if !ok || !m.queue.IsOpen() {
+		return m
+	}
+	content.playing = playingPosition(speaker.shown())
+	m.queue.Content = content
+	return m
+}
+
 // applyQueueLoaded fills the open modal in. Reads arrive for every speaker,
 // most of them for a modal that is closed or showing another room, so a result
 // that does not match what is on screen is dropped rather than drawn under the

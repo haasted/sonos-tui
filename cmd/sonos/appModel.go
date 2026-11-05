@@ -659,6 +659,12 @@ func (m appModel) applyEvent(event sonos.Event) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		// A new track leaves the queue as it is, so no read follows to move
+		// the open queue's marker. The event moves it instead.
+		if event.Kind == sonos.EventAVTransport && i == m.tabs.Active {
+			m = m.markPlaying(speaker)
+		}
+
 		if !own {
 			continue
 		}
