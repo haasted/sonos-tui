@@ -1,0 +1,32 @@
+# Checks that the program is formatted, vetted, tidy and builds. The
+# experiments are a module of their own and are left out on purpose.
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Format
+        run: make fmt-check MODULES=.
+      - name: Vet
+        run: make vet MODULES=.
+      - name: Tidy
+        run: make tidy-check MODULES=.
+      - name: Build
+        run: make build

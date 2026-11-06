@@ -1,0 +1,28 @@
+# Runs the program's tests, then again with the race detector. The live
+# tests need real speakers and stay off: the -live flag is false by default.
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Test
+        run: make test MODULES=.
+      - name: Test with the race detector
+        run: make test-race MODULES=.

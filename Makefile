@@ -1,16 +1,21 @@
-.PHONY: build fmt vet test test-verbose test-race test-live run run-logs run-nocache db queue-events notify-capture discover-probe music-services uitest worktrees tidy adr-html help
+.PHONY: build fmt fmt-check vet tidy-check test test-verbose test-race test-live run run-logs run-nocache db queue-events notify-capture discover-probe music-services uitest worktrees tidy adr-html help
 
 .DEFAULT_GOAL := help
 
 # Every Go module in the repository. The experiments are a module of their own,
 # so ./... from the root does not reach them and each target must say so.
-MODULES := . ./experiments
+# CI passes MODULES=. to check the program alone.
+MODULES ?= . ./experiments
 
 build: ## Build the binary
 	CGO_ENABLED=0 go build ./cmd/sonos
 
 fmt: ## Format all Go files in place (gofmt -w), listing any it touched
 	@for m in $(MODULES); do (cd $$m && gofmt -l -w $$(go list -f '{{.Dir}}' ./... | sort -u)) || exit 1; done
+
+fmt-check: ## List Go files gofmt would change, and fail if there are any
+	@for m in $(MODULES); do (cd $$m && out=$$(gofmt -l $$(go list -f '{{.Dir}}' ./... | sort -u)) && \
+	  if [ -n "$$out" ]; then echo "$$out"; exit 1; fi) || exit 1; done
 
 vet: ## Run go vet
 	@for m in $(MODULES); do (cd $$m && go vet ./...) || exit 1; done
@@ -70,6 +75,9 @@ run-nocache: ## Delete speaker cache prior to starting
 db: ## Open the database in lazysql, with the connection in .lazysql.toml
 	@command -v lazysql >/dev/null || { echo "lazysql is not installed (brew install lazysql)"; exit 1; }
 	lazysql -config .lazysql.toml
+
+tidy-check: ## Fail if go.mod/go.sum are not tidy, showing what tidy would change
+	@for m in $(MODULES); do (cd $$m && go mod tidy -diff) || exit 1; done
 
 tidy: ## Tidy go.mod/go.sum
 	@for m in $(MODULES); do (cd $$m && go mod tidy) || exit 1; done

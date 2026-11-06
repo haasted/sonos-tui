@@ -1,0 +1,12 @@
+# Weekly pull requests for new versions of the program's Go modules and of
+# the actions the workflows use. The experiments module is left out.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
