@@ -159,6 +159,18 @@ func TestQueryMDNS_PassesOnEverythingWhenTheLibraryEnds(t *testing.T) {
 	assert.Len(t, entries, 2)
 }
 
+// Case: when a run counts as blocked. Only when every search failed to send:
+// one sent is enough for a speaker to have answered, and a run that started
+// no search at all has nothing to say about blocking.
+func TestDiscoveryReport_BlockedOnlyWhenNoSearchWasSent(t *testing.T) {
+	failed := errors.New("no route to host")
+
+	assert.True(t, DiscoveryReport{Searches: 2, Unsent: []error{failed, failed}}.Blocked())
+	assert.False(t, DiscoveryReport{Searches: 2, Unsent: []error{failed}}.Blocked())
+	assert.False(t, DiscoveryReport{Searches: 2}.Blocked())
+	assert.False(t, DiscoveryReport{}.Blocked())
+}
+
 // Case: an mDNS answer on a network where SSDP gets none, as behind the VPN.
 // Discover must still deliver the speaker.
 func TestDiscover_FindsASpeakerByMDNSAlone(t *testing.T) {

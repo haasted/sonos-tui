@@ -217,19 +217,23 @@ func discoverSpeakers(ctx context.Context, program *tea.Program) {
 	ctx, cancel := context.WithTimeout(ctx, discoverTimeout)
 	defer cancel()
 
-	ch, err := sonos.Discover(ctx)
+	start := time.Now()
+	discovery, err := sonos.StartDiscovery(ctx)
 	if err != nil {
 		slog.Error("discovery failed", "err", err)
-		program.Send(discoveryDoneMsg{})
+		program.Send(discoveryDoneMsg{err: err, took: time.Since(start)})
 		return
 	}
 
 	found := 0
-	for speaker := range ch {
+	for speaker := range discovery.Speakers {
 		found++
 		program.Send(speakerFoundMsg{speaker: speaker})
 	}
-	program.Send(discoveryDoneMsg{found: found})
+	report := discovery.Report()
+	slog.Info("discovery done", "found", found, "interfaces", report.Interfaces,
+		"searches", report.Searches, "unsent", len(report.Unsent))
+	program.Send(discoveryDoneMsg{found: found, report: report, took: time.Since(start)})
 }
 
 // loadSpeaker builds a speaker's tab: its name, its state, then its events.

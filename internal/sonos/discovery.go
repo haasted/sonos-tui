@@ -148,14 +148,45 @@ type searchInterface struct {
 	iface *net.Interface
 }
 
-// Discover searches for Sonos speakers by SSDP and by mDNS, on every IPv4
-// interface that can multicast, all at once. It streams each speaker once,
-// the first time any search finds it, and closes the channel when ctx ends.
+// ErrNoNetwork is what discovery answers when no interface can search: none
+// is up, able to multicast and holding an IPv4 address.
+var ErrNoNetwork = errors.New("sonos: no network interface to search on")
+
+// Discovery is one run of discovery: the speakers it finds as they answer,
+// and, once Speakers has closed, a report of how the searches went.
+type Discovery struct {
+	Speakers <-chan Speaker
+
+	mu     sync.Mutex
+	report DiscoveryReport
+}
+
+// DiscoveryReport says what discovery tried, so a run that found nothing can
+// tell a search that never left this computer from one nobody answered.
+type DiscoveryReport struct {
+	Interfaces []string // the interfaces searched on
+	Searches   int      // the searches started, SSDP and mDNS on each interface
+	Unsent     []error  // why each search that could not be sent failed
+}
+
+// Discover searches for Sonos speakers as StartDiscovery does, for a caller
+// that needs only the speakers.
+func Discover(ctx context.Context) (<-chan Speaker, error) {
+	discovery, err := StartDiscovery(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return discovery.Speakers, nil
+}
+
+// StartDiscovery searches for Sonos speakers by SSDP and by mDNS, on every
+// IPv4 interface that can multicast, all at once. It streams each speaker
+// once, the first time any search finds it, and closes Speakers when ctx ends.
 //
 // ctx must carry a deadline: a speaker may never answer, so an undeadlined
-// search would never end. One search failing to start is logged, not fatal:
-// mDNS alone finds every speaker on a network that drops SSDP's answers.
-func Discover(ctx context.Context) (<-chan Speaker, error) {
+// search would never end. One search failing is logged and reported, not
+// fatal: mDNS alone finds every speaker on a network that drops SSDP's answers.
+func StartDiscovery(ctx context.Context) (*Discovery, error) {
 	if _, ok := ctx.Deadline(); !ok {
 		return nil, errors.New("sonos: Discover requires a context with a deadline")
 	}
@@ -164,8 +195,14 @@ func Discover(ctx context.Context) (<-chan Speaker, error) {
 		return nil, err
 	}
 	if len(ifaces) == 0 {
-		return nil, errors.New("sonos: no network interface to search on")
+		return nil, ErrNoNetwork
 	}
+
+	discovery := &Discovery{}
+	for _, iface := range ifaces {
+		discovery.report.Interfaces = append(discovery.report.Interfaces, iface.name)
+	}
+	discovery.report.Searches = 2 * len(ifaces)
 
 	sightings := make(chan sighting, discoverChanBuffer)
 	var searches sync.WaitGroup
@@ -173,11 +210,11 @@ func Discover(ctx context.Context) (<-chan Speaker, error) {
 		searches.Add(2)
 		go func() {
 			defer searches.Done()
-			searchSSDP(ctx, iface, sightings)
+			discovery.unsent(searchSSDP(ctx, iface, sightings))
 		}()
 		go func() {
 			defer searches.Done()
-			searchMDNS(ctx, iface, sightings)
+			discovery.unsent(searchMDNS(ctx, iface, sightings))
 		}()
 	}
 	go func() {
@@ -186,8 +223,33 @@ func Discover(ctx context.Context) (<-chan Speaker, error) {
 	}()
 
 	found := make(chan Speaker, discoverChanBuffer)
+	discovery.Speakers = found
 	go firstSightings(ctx, sightings, found)
-	return found, nil
+	return discovery, nil
+}
+
+// Report says how the searches went. Read it once Speakers has closed: until
+// then, searches still running have not reported.
+func (d *Discovery) Report() DiscoveryReport {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.report
+}
+
+// Blocked reports that every search failed to leave this computer, as when a
+// VPN or a missing macOS permission stops it.
+func (r DiscoveryReport) Blocked() bool {
+	return r.Searches > 0 && len(r.Unsent) == r.Searches
+}
+
+// unsent records why a search could not be sent; nil records nothing.
+func (d *Discovery) unsent(err error) {
+	if err == nil {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.report.Unsent = append(d.report.Unsent, err)
 }
 
 // firstSightings passes on the first sighting of each speaker and drops the
@@ -217,30 +279,30 @@ func firstSightings(ctx context.Context, in <-chan sighting, out chan<- Speaker)
 }
 
 // searchSSDP sends one M-SEARCH from iface and reports every Sonos answer
-// until ctx ends.
-func searchSSDP(ctx context.Context, iface searchInterface, out chan<- sighting) {
+// until ctx ends. It returns why the search could not be sent, if it was not.
+func searchSSDP(ctx context.Context, iface searchInterface, out chan<- sighting) error {
 	via := "ssdp " + iface.name
 	deadline, _ := ctx.Deadline()
 
 	conn, err := net.ListenPacket("udp4", iface.ip.String()+":0")
 	if err != nil {
 		slog.Warn("ssdp search could not start", "via", via, "err", err)
-		return
+		return err
 	}
 	defer conn.Close()
 
 	dest, err := net.ResolveUDPAddr("udp4", ssdpAddr)
 	if err != nil {
 		slog.Warn("ssdp search could not start", "via", via, "err", err)
-		return
+		return err
 	}
 	if _, err := conn.WriteTo([]byte(ssdpRequest), dest); err != nil {
 		slog.Warn("ssdp search could not be sent", "via", via, "err", err)
-		return
+		return err
 	}
 	if err := conn.SetReadDeadline(deadline); err != nil {
 		slog.Warn("ssdp search could not start", "via", via, "err", err)
-		return
+		return err
 	}
 
 	// net.PacketConn has no context-aware read, so a watcher closes the conn
@@ -259,7 +321,7 @@ func searchSSDP(ctx context.Context, iface searchInterface, out chan<- sighting)
 	for {
 		n, addr, err := conn.ReadFrom(buf)
 		if err != nil {
-			return // the deadline, or closed
+			return nil // the deadline, or closed
 		}
 		response := string(buf[:n])
 		location := extractHeader(response, "LOCATION")

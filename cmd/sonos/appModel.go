@@ -43,7 +43,8 @@ type appModel struct {
 	width         int
 	height        int
 	discoveryDone bool
-	fromCache     bool // tabs were seeded from the cache this run
+	discovery     discoveryDoneMsg // how discovery went, for the screen shown when it found nothing
+	fromCache     bool             // tabs were seeded from the cache this run
 	cached        []sonos.Speaker
 	cachedStates  map[string]cachedState // by RINCON id, for every cached speaker
 	found         map[string]bool        // RINCON ids a search has found this run
@@ -470,7 +471,7 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case sonos.Event:
 		return m.applyEvent(msg)
 	case discoveryDoneMsg:
-		m.discoveryDone = true
+		m.discoveryDone, m.discovery = true, msg
 		return m.dropUnanswered()
 	case groupChangeMsg:
 		return m.applyGroupChange(msg)
@@ -718,7 +719,7 @@ func (m appModel) View() tea.View {
 	var content string
 	switch {
 	case len(m.tabs.Items) == 0 && m.discoveryDone:
-		content = "No Sonos speakers found on the local network."
+		content = noSpeakersText(m.discovery)
 	case len(m.tabs.Items) == 0:
 		content = "Discovering Sonos speakers..."
 	default:

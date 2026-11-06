@@ -90,8 +90,8 @@ func mdnsLogger() *log.Logger {
 }
 
 // searchMDNS asks for Sonos speakers on iface until ctx ends, and reports
-// every answer that is one.
-func searchMDNS(ctx context.Context, iface searchInterface, out chan<- sighting) {
+// every answer that is one. It returns why the search failed, if it did.
+func searchMDNS(ctx context.Context, iface searchInterface, out chan<- sighting) error {
 	via := "mdns " + iface.name
 	entries := make(chan *mdns.ServiceEntry, mdnsEntryBuffer)
 	done := make(chan struct{})
@@ -109,7 +109,9 @@ func searchMDNS(ctx context.Context, iface searchInterface, out chan<- sighting)
 	<-done
 	if err != nil && ctx.Err() == nil {
 		slog.Warn("mdns search failed", "via", via, "err", err)
+		return err
 	}
+	return nil
 }
 
 // speakerFromMDNS reads a speaker out of an mDNS answer, or reports false for

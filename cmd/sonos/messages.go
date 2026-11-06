@@ -1,6 +1,8 @@
 package main
 
 import (
+	"time"
+
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/haasted/sonos-sandbox/internal/sonos"
@@ -45,6 +47,11 @@ type cachedCheckedMsg struct {
 	err error // why it did not answer, or that the address is another speaker's
 }
 
+// discoveryDoneMsg ends discovery, saying what it found and how it went, so
+// a run that found nothing can say why it might have.
 type discoveryDoneMsg struct {
-	found int
+	found  int
+	report sonos.DiscoveryReport
+	err    error         // why discovery could not run at all
+	took   time.Duration // how long it searched
 }

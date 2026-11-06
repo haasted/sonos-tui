@@ -53,10 +53,12 @@ func playerStates(t *testing.T) map[string]string {
 
 	empty := newAppModel(context.Background(), nil, nil, "")
 	discovered, _ := empty.Update(discoveryDoneMsg{})
+	blocked, _ := empty.Update(blockedDiscovery())
 
 	return map[string]string{
 		"discovering": empty.View().Content,
 		"none found":  discovered.(appModel).View().Content,
+		"blocked":     blocked.(appModel).View().Content,
 		"cached tabs": newAppModel(context.Background(), nil, cachedSpeakers(), "").View().Content,
 		"playing":     loadedModel(t).View().Content,
 	}
