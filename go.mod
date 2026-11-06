@@ -6,7 +6,7 @@ require (
 	charm.land/bubbles/v2 v2.2.1
 	charm.land/lipgloss/v2 v2.0.6
 	github.com/hashicorp/mdns v1.0.7
-	github.com/lmittmann/tint v1.2.0
+	github.com/lmittmann/tint v1.2.1
 	github.com/lucasb-eyer/go-colorful v1.4.1
 	github.com/stretchr/testify v1.12.1
 	modernc.org/sqlite v1.61.1
