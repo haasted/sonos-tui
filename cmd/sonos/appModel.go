@@ -447,6 +447,8 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.openQueue()
 		case "f":
 			return m.openFavourites()
+		case "a":
+			return m.markNowPlaying()
 		}
 	case speakerFoundMsg:
 		return m.applyFound(msg.speaker)

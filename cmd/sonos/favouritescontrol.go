@@ -41,6 +41,10 @@ const (
 	favouriteMarkedSkipped = "added as favourites, %d cannot be marked"
 )
 
+// favouriteNothingToMark answers a on the player when what plays is not
+// something a favourite can hold, such as line-in.
+const favouriteNothingToMark = "nothing here can be marked as a favourite"
+
 // What removing a favourite answers, in the queue's words for a removed track.
 const (
 	favouriteRemoved      = "removed"
@@ -266,6 +270,56 @@ func trackFavourite(track sonos.TrackMetadata, now time.Time) (store.Favourite, 
 		ItemID:   ref.ItemID,
 		AddedAt:  now,
 	}, nil
+}
+
+// markNowPlaying marks what the speaker in view plays now. A station is
+// marked at once; a track from the queue gets the queue's chooser, so its
+// playlist or album can be marked from here too.
+func (m appModel) markNowPlaying() (tea.Model, tea.Cmd) {
+	speaker, ok := m.activeSpeaker()
+	if !ok {
+		return m, nil
+	}
+	state := speaker.shown()
+	switch state.Source.Kind() {
+	case sonos.SourceBroadcast, sonos.SourceStation:
+		fav, ok := stationFavourite(state.Source, time.Now())
+		if !ok {
+			return m, notify(panes.NoticeInfo, favouriteNothingToMark)
+		}
+		return m, storeFavourites(m.ctx, m.db, []store.Favourite{fav}, 1, 0)
+	case sonos.SourceTrack:
+		if state.Current.URI == "" {
+			return m, notify(panes.NoticeInfo, favouriteNothingToMark)
+		}
+		// The queue's playlist or album is offered only while the queue
+		// plays: a track started on its own did not come from it.
+		var source sonos.QueueSource
+		if state.Source.IsQueue() {
+			source = state.QueueSource
+		}
+		return m.applyFavouriteChoose(favouriteChooseMsg{track: state.Current, source: source})
+	}
+	return m, notify(panes.NoticeInfo, favouriteNothingToMark)
+}
+
+// stationFavourite is the favourite row for a playing station, stored as the
+// speaker sent it, or false for one without the service and id a row needs.
+func stationFavourite(source sonos.SourceInfo, now time.Time) (store.Favourite, bool) {
+	ref, ok := sonos.ParseServiceURI(source.URI)
+	if !ok || source.Metadata == "" {
+		return store.Favourite{}, false
+	}
+	return store.Favourite{
+		Kind:     store.FavouriteStation,
+		Title:    source.Name,
+		URI:      source.URI,
+		Metadata: sonos.StripArtwork(source.Metadata),
+		Service:  ref.Service,
+		Account:  ref.Account,
+		ItemID:   ref.ItemID,
+		AddedAt:  now,
+	}, true
 }
 
 // sourceFavourite is the favourite row for the playlist or album a queue was

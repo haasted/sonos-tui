@@ -51,6 +51,20 @@ func TestQueueSource_KeepsWhatPlayingItAgainNeeds(t *testing.T) {
 	assert.Contains(t, album.QueueSource.URI, "00040000album%3a")
 }
 
+// Case: a station as something to play again. Its source keeps the DIDL the
+// speaker sent, since a station cannot be rebuilt from its id; a queue is a
+// queue, and a station is not.
+func TestSourceInfo_KeepsAStationsDIDL(t *testing.T) {
+	station, err := sonos.ParseAVTransportEvent(fixture(t, "avtransport_broadcast_radio.xml"))
+	require.NoError(t, err)
+	queue, err := sonos.ParseAVTransportEvent(fixture(t, "avtransport_queue_playlist.xml"))
+	require.NoError(t, err)
+
+	assert.Contains(t, station.Source.Metadata, "<dc:title>DR P1</dc:title>")
+	assert.False(t, station.Source.IsQueue())
+	assert.True(t, queue.Source.IsQueue())
+}
+
 // Case: a container that is neither a playlist nor an album has no kind.
 func TestQueueSource_AnotherContainerHasNoKind(t *testing.T) {
 	_, ok := sonos.QueueSource{Class: "object.container.playlistContainer.sameArtist"}.Kind()

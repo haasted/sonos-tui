@@ -56,6 +56,10 @@ type AVTransportEvent struct {
 type SourceInfo struct {
 	URI  string // AVTransportURI, e.g. "x-sonosapi-hls:..." or "x-rincon-queue:..."
 	Name string // dc:title of AVTransportURIMetaData; empty for a plain queue
+
+	// Metadata is AVTransportURIMetaData as the speaker sent it: what a
+	// station has to be started with again, since it cannot be rebuilt.
+	Metadata string
 }
 
 // Kind classifies a source by its URI scheme. Verified against captured
@@ -77,6 +81,10 @@ func (s SourceInfo) Kind() SourceKind {
 	}
 	return SourceUnknown
 }
+
+// IsQueue reports a speaker playing its own queue, as against a track,
+// station or stream started on its own.
+func (s SourceInfo) IsQueue() bool { return strings.HasPrefix(s.URI, queueURIScheme) }
 
 // SourceKind is the family a source belongs to.
 type SourceKind int
@@ -244,8 +252,9 @@ func ParseAVTransportEvent(body []byte) (AVTransportEvent, error) {
 	// arriving means the event is talking about it.
 	if instance.AVTransportURI != nil || instance.AVTransportURIMetaData != nil {
 		event.Source = SourceInfo{
-			URI:  instance.AVTransportURI.text(),
-			Name: parseDIDLTrack(instance.AVTransportURIMetaData.text()).Title,
+			URI:      instance.AVTransportURI.text(),
+			Name:     parseDIDLTrack(instance.AVTransportURIMetaData.text()).Title,
+			Metadata: instance.AVTransportURIMetaData.text(),
 		}
 		event.HasSource = true
 	}

@@ -56,6 +56,7 @@ var playerHelp = helpTable{
 			{"enter", "show the queue"},
 			{"g", "group with"},
 			{"f", "favourites"},
+			{"a", "mark as a favourite"},
 		}},
 		{"Sound", []helpKey{
 			{"↑  ↓", "volume"},
