@@ -233,9 +233,10 @@ radio frequently carries **no per-track metadata at all**, just the station
 name and `CurrentTrackDuration` of `0:00:00`.
 
 **The queue has no name.** `x-rincon-queue:` carries no `dc:title`. The
-playlist a queue was populated *from* lives in `EnqueuedTransportURIMetaData`,
-which is **not** among the 25 fields of the SUBSCRIBE snapshot — it appears
-only when the queue source changes while already subscribed.
+playlist a queue was populated *from* lives in `EnqueuedTransportURIMetaData`.
+It *is* in the SUBSCRIBE snapshot once something has been loaded: see "What
+the queue was started from", below. (An earlier reading here said it was not;
+the 2026-11-06 capture showed it was.)
 
 **Captured bodies are double-escaped**: `LastChange` once, the DIDL inside it
 again. Two unescape passes to read one by eye; `parseDIDLTrack` already handles
@@ -275,6 +276,46 @@ individually played track uses. `sid` identifies the service (204 here, against
 be told apart. `flags` varies between items in the same queue, and what it means
 is not established.
 
+
+### What the queue was started from: `r:EnqueuedTransportURI`
+
+Verified 2026-11-06 on one speaker (Ovenpå), with `make notify-capture` on
+`/MediaRenderer/AVTransport/Event` while the queue was edited step by step.
+
+AVTransport carries a pair, `r:EnqueuedTransportURI` and
+`r:EnqueuedTransportURIMetaData`, naming what was last loaded *in place of*
+the queue's contents. It is the speaker's only word on where a queue came from.
+
+| Action | The pair afterwards |
+|---|---|
+| SUBSCRIBE while a playlist plays | in the snapshot (37 fields): that playlist |
+| replace the queue with playlist A | briefly empty while the queue clears, then A |
+| append an album to the end | still A |
+| play next with a whole playlist | still A |
+| move tracks, remove a track | still A |
+| play a radio station | the **station** (`x-sonosapi-hls:`, class `audioBroadcast`) |
+| a playlist started from the phone app | that playlist, in the same form as from this program |
+| SUBSCRIBE again, nothing changed | in the snapshot: the last playlist |
+
+**Only a replace changes it.** After an append and a play next, the queue held
+171 tracks from three sources and the pair still named the first playlist. It
+means "what this queue was started from", not "what it holds". Nothing in the
+events says whether the queue was added to since, so a client cannot tell a
+pure playlist queue from a mixed one.
+
+**A station takes it over** while the queue, untouched, still holds the old
+tracks (see the section above). So the pair names a station even when the
+queue modal shows playlist tracks. What it says on returning to the queue
+without loading anything was not captured.
+
+**It survives a restart of the program.** The SUBSCRIBE snapshot carries it,
+so it is known from the first event, not only after the next change.
+
+**It is ready to store as a favourite.** For a service playlist the URI is the
+`x-rincon-cpcontainer:` form and the metadata is DIDL with the container's item
+id (`00060000libraryplaylist%3ap.…`) and the service's desc
+(`SA_RINCON52231_X_#Svc52231-0-Token`): exactly what playing it again needs. A
+station's metadata, by contrast, had item id `-1`.
 
 ## ContentDirectory tells you the queue changed, and nothing more
 

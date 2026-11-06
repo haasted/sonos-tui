@@ -142,9 +142,14 @@ func (m appModel) applyFavouriteAction(msg favouriteActionMsg) (tea.Model, tea.C
 // applyFavouriteMark stores the tracks the queue asked for as favourites, in
 // the background, and says what happened.
 func (m appModel) applyFavouriteMark(msg favouriteMarkMsg) (tea.Model, tea.Cmd) {
-	db, ctx, tracks := m.db, m.ctx, msg.tracks
-	return m, func() tea.Msg {
-		favs, skipped := trackFavourites(tracks, time.Now())
+	favs, skipped := trackFavourites(msg.tracks, time.Now())
+	return m, storeFavourites(m.ctx, m.db, favs, len(msg.tracks), skipped)
+}
+
+// storeFavourites stores favs in the background, and answers with the notice
+// for asked marks, skipped of which could not be.
+func storeFavourites(ctx context.Context, db *store.Store, favs []store.Favourite, asked, skipped int) tea.Cmd {
+	return func() tea.Msg {
 		if len(favs) == 0 {
 			return panes.NoticeMsg{Level: panes.NoticeInfo, Text: favouriteNoService}
 		}
@@ -154,11 +159,32 @@ func (m appModel) applyFavouriteMark(msg favouriteMarkMsg) (tea.Model, tea.Cmd) 
 
 		added, err := db.Favourites().Add(ctx, favs...)
 		if err != nil {
-			slog.Warn("marking favourites failed", "tracks", len(favs), "err", err)
+			slog.Warn("marking favourites failed", "favourites", len(favs), "err", err)
 			return panes.NoticeMsg{Level: panes.NoticeError, Text: favouriteMarkFailed}
 		}
-		return panes.NoticeMsg{Level: panes.NoticeInfo, Text: markedNotice(len(tracks), added, skipped), Confirmation: true}
+		return panes.NoticeMsg{Level: panes.NoticeInfo, Text: markedNotice(asked, added, skipped), Confirmation: true}
 	}
+}
+
+// applyFavouriteChoose offers the track and the queue's playlist or album to
+// mark. Only what can be marked is offered, and one choice needs no chooser.
+func (m appModel) applyFavouriteChoose(msg favouriteChooseMsg) (tea.Model, tea.Cmd) {
+	rows := markRowsFor(msg.track, msg.source, time.Now())
+	switch len(rows) {
+	case 0:
+		return m, storeFavourites(m.ctx, m.db, nil, 1, 1)
+	case 1:
+		return m, storeFavourites(m.ctx, m.db, []store.Favourite{rows[0].fav}, 1, 0)
+	}
+	m.marking.Content = markContent{rows: rows}
+	m.marking = m.marking.Open()
+	return m, nil
+}
+
+// applyFavouriteChosen closes the chooser and stores what was chosen.
+func (m appModel) applyFavouriteChosen(msg favouriteChosenMsg) (tea.Model, tea.Cmd) {
+	m.marking = m.marking.Close()
+	return m, storeFavourites(m.ctx, m.db, []store.Favourite{msg.fav}, 1, 0)
 }
 
 // markedNotice is what marking says. One track says whether it was new; many
@@ -240,6 +266,37 @@ func trackFavourite(track sonos.TrackMetadata, now time.Time) (store.Favourite, 
 		ItemID:   ref.ItemID,
 		AddedAt:  now,
 	}, nil
+}
+
+// sourceFavourite is the favourite row for the playlist or album a queue was
+// started from, or false for one that cannot be marked: not a playlist or an
+// album, or not from a music service.
+func sourceFavourite(source sonos.QueueSource, now time.Time) (store.Favourite, bool) {
+	kind, known := source.Kind()
+	ref, parsed := sonos.ParseServiceURI(source.URI)
+	if !known || !parsed {
+		return store.Favourite{}, false
+	}
+	fav := store.Favourite{
+		Kind:     store.FavouritePlaylist,
+		Title:    source.Title,
+		URI:      source.URI,
+		Metadata: sonos.StripArtwork(source.Metadata),
+		Service:  ref.Service,
+		Account:  ref.Account,
+		ItemID:   ref.ItemID,
+		AddedAt:  now,
+	}
+	if kind == sonos.ContainerAlbum {
+		fav.Kind, fav.Artist = store.FavouriteAlbum, source.Creator
+	}
+	return fav, true
+}
+
+// markableSource reports whether the queue's playlist or album can be marked.
+func markableSource(source sonos.QueueSource) bool {
+	_, ok := sourceFavourite(source, time.Time{})
+	return ok
 }
 
 // startFavourite sends a favourite to the speaker that owns playback, and

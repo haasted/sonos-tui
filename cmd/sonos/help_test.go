@@ -130,7 +130,8 @@ var helpLayers = map[string]struct {
 // helpLayersWithoutAPopup are files whose bindings no popup documents yet,
 // with the reason, so the gap is logged rather than hidden.
 var helpLayersWithoutAPopup = map[string]string{
-	"grouping.go": "the grouping modal has no table of its own, and takes ? before the player's handler sees it",
+	"grouping.go":    "the grouping modal has no table of its own, and takes ? before the player's handler sees it",
+	"markchooser.go": "the chooser is two rows, moved with the queue's keys and closed with enter or esc",
 }
 
 // helpAliases maps a binding to the text that documents it, where the two

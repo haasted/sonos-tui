@@ -53,6 +53,7 @@ type appModel struct {
 	queue         panes.Modal
 	favourites    panes.Modal
 	grouping      panes.Modal
+	marking       panes.Modal  // asks whether a mark in the queue is for the track or its playlist or album
 	db            *store.Store // the database; nil only in tests
 
 	sized bool // a size has arrived; until then fits refuses nothing
@@ -122,8 +123,14 @@ func newAppModel(ctx context.Context, events *sonos.EventManager, cached []sonos
 	grouping := panes.NewModal(groupContent{})
 	grouping.Mode = panes.ModalHover
 
+	// Hovering over the queue, and in the favourites' colour: it is about
+	// marking one.
+	marking := panes.NewModal(markContent{})
+	marking.Mode = panes.ModalHover
+	marking.Color = favouritesBorderColor()
+
 	m := appModel{ctx: ctx, tabs: tabs, eventManager: events, fromCache: len(cached) > 0,
-		help: help, queue: queue, favourites: favourites, grouping: grouping,
+		help: help, queue: queue, favourites: favourites, grouping: grouping, marking: marking,
 		cachedStates: map[string]cachedState{}, found: map[string]bool{}}
 	for _, speaker := range cached {
 		m = m.insertSpeaker(speakerKey(speaker), speaker.RoomName(), newSpeakerModel(ctx, sonos.NewDevice(speaker)))
@@ -254,7 +261,7 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // closing a modal would leave a copy of it behind, once per cycle.
 func (m appModel) growFrame() appModel {
 	needed := playerHeightRows
-	for _, modal := range []panes.Modal{m.help, m.queue, m.favourites, m.grouping} {
+	for _, modal := range []panes.Modal{m.help, m.queue, m.favourites, m.grouping, m.marking} {
 		if !modal.IsOpen() {
 			continue
 		}
@@ -376,6 +383,7 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.tabs.Width = msg.Width
 		m.help = m.help.SetSize(msg.Width, msg.Height)
 		m.grouping = m.grouping.SetSize(msg.Width, msg.Height)
+		m.marking = m.marking.SetSize(msg.Width, msg.Height)
 		m = m.resizeLists(msg.Width, msg.Height)
 	case tea.KeyMsg:
 		m.hintDone = true // the user has found the keyboard; nothing left to hint
@@ -404,6 +412,13 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			help, cmd := m.help.Update(msg)
 			m.help = help
+			return m, cmd
+		}
+
+		// The chooser hovers over the open queue, so it takes the keys first.
+		if m.marking.IsOpen() {
+			marking, cmd := m.marking.Update(msg)
+			m.marking = marking
 			return m, cmd
 		}
 
@@ -500,6 +515,10 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.applyFavouriteFaded(msg)
 	case favouriteRemoveMsg:
 		return m.applyFavouriteRemove(msg)
+	case favouriteChooseMsg:
+		return m.applyFavouriteChoose(msg)
+	case favouriteChosenMsg:
+		return m.applyFavouriteChosen(msg)
 	case favouriteMarkMsg:
 		return m.applyFavouriteMark(msg)
 	case queueLoadedMsg:
@@ -737,7 +756,7 @@ func (m appModel) View() tea.View {
 	}
 	// Help draws over a list, not under it. The two can be open together:
 	// "?" inside the queue explains the queue.
-	view := tea.NewView(m.help.ViewOver(m.grouping.ViewOver(framed)))
+	view := tea.NewView(m.help.ViewOver(m.marking.ViewOver(m.grouping.ViewOver(framed))))
 	if m.listTakesTheWheel() {
 		view.MouseMode = tea.MouseModeCellMotion
 	}

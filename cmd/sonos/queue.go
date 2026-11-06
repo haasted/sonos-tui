@@ -57,7 +57,7 @@ type queueContent struct {
 	listView[sonos.QueueItem]
 
 	room   string
-	source string // the playlist or album the queue was loaded from, if known
+	source sonos.QueueSource // the playlist or album the queue was started from, if known
 
 	// filter is what the reader has typed, and filtering says the box is open
 	// and taking their keys. Open with nothing typed still shows everything,
@@ -1117,7 +1117,8 @@ func (q queueContent) playFromCursor() (queueContent, tea.Cmd) {
 
 // markFavourites asks for the picked tracks to be marked as favourites, in
 // the order they were picked, as n and N use; with none picked, the track
-// under the cursor. The selection is cleared, as the queue's other keys do.
+// under the cursor, or a choice between it and the queue's playlist or album.
+// The selection is cleared, as the queue's other keys do.
 func (q queueContent) markFavourites() (queueContent, tea.Cmd) {
 	var tracks []sonos.TrackMetadata
 	if positions := q.pickedInPressOrder(); len(positions) > 0 {
@@ -1128,7 +1129,14 @@ func (q queueContent) markFavourites() (queueContent, tea.Cmd) {
 		}
 		q = q.clearSelection()
 	} else if q.cursor < len(q.items) {
-		tracks = []sonos.TrackMetadata{q.items[q.cursor].TrackMetadata}
+		// The playlist or album the queue started from can be marked too,
+		// and a chooser asks which; with nothing else to offer, no chooser.
+		track := q.items[q.cursor].TrackMetadata
+		if markableSource(q.source) {
+			source := q.source
+			return q, func() tea.Msg { return favouriteChooseMsg{track: track, source: source} }
+		}
+		tracks = []sonos.TrackMetadata{track}
 	}
 	if len(tracks) == 0 {
 		return q, nil
@@ -1255,8 +1263,8 @@ func (q queueContent) headingParts() []headingPart {
 
 	// What the queue was loaded from, while nothing temporary -- a search or a
 	// selection -- needs the heading. It gives way first when space runs out.
-	if q.source != "" && !q.filtering && q.filter == "" && picked <= selectionCountFloor {
-		parts = append(parts, headingPart{text: headingSeparator + q.source, style: queueRoomStyle(), shrink: true})
+	if q.source.Title != "" && !q.filtering && q.filter == "" && picked <= selectionCountFloor {
+		parts = append(parts, headingPart{text: headingSeparator + q.source.Title, style: queueRoomStyle(), shrink: true})
 	}
 	return fitHeading(parts, q.width)
 }

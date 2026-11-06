@@ -42,7 +42,7 @@ type AVTransportEvent struct {
 	// queue. A station or a single track started instead is not one.
 	HasQueueSource bool
 
-	QueueSource string // title of the playlist or album last loaded into the queue
+	QueueSource QueueSource // the playlist or album last loaded into the queue
 
 	// Source is what is loaded on the speaker, as opposed to the track
 	// currently coming out of it: a queue, a radio station, a line-in. Its
@@ -104,8 +104,8 @@ func (e AVTransportEvent) LogValue() slog.Value {
 	if e.Next.Title != "" {
 		attrs = append(attrs, slog.String("nextTitle", e.Next.Title))
 	}
-	if e.QueueSource != "" {
-		attrs = append(attrs, slog.String("queue", e.QueueSource))
+	if e.QueueSource.Title != "" {
+		attrs = append(attrs, slog.String("queue", e.QueueSource.Title))
 	}
 	return slog.GroupValue(attrs...)
 }
@@ -203,6 +203,7 @@ func ParseAVTransportEvent(body []byte) (AVTransportEvent, error) {
 			CurrentTrackMetaData         *val `xml:"CurrentTrackMetaData"`
 			NextTrackURI                 val  `xml:"NextTrackURI"`
 			NextTrackMetaData            val  `xml:"NextTrackMetaData"`
+			EnqueuedTransportURI         val  `xml:"EnqueuedTransportURI"`
 			EnqueuedTransportURIMetaData val  `xml:"EnqueuedTransportURIMetaData"`
 			AVTransportURI               *val `xml:"AVTransportURI"`
 			AVTransportURIMetaData       *val `xml:"AVTransportURIMetaData"`
@@ -227,8 +228,12 @@ func ParseAVTransportEvent(body []byte) (AVTransportEvent, error) {
 	// The speaker reports whatever was last started, which is a station while
 	// radio plays. Only a container -- a playlist, an album -- names the queue.
 	enqueued := instance.EnqueuedTransportURIMetaData.Val
-	if title := parseDIDLTrack(enqueued).Title; title != "" && strings.HasPrefix(didlClass(enqueued), "object.container") {
-		event.QueueSource, event.HasQueueSource = title, true
+	if didl := parseDIDLTrack(enqueued); didl.Title != "" && strings.HasPrefix(didlClass(enqueued), "object.container") {
+		event.QueueSource = QueueSource{
+			Title: didl.Title, Creator: didl.Artist, Class: didlClass(enqueued),
+			URI: instance.EnqueuedTransportURI.Val, Metadata: enqueued,
+		}
+		event.HasQueueSource = true
 	}
 
 	if instance.TransportState != nil {

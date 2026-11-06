@@ -18,7 +18,7 @@ func TestQueueSource_APlaylistNamesTheQueue(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.True(t, event.HasQueueSource)
-	assert.Equal(t, "Awesome singles", event.QueueSource)
+	assert.Equal(t, "Awesome singles", event.QueueSource.Title)
 }
 
 // Case: a queue loaded from an album. A container too, so it names the queue.
@@ -27,7 +27,34 @@ func TestQueueSource_AnAlbumNamesTheQueue(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.True(t, event.HasQueueSource)
-	assert.Equal(t, "Ordensduks i Ingenmandsland", event.QueueSource)
+	assert.Equal(t, "Ordensduks i Ingenmandsland", event.QueueSource.Title)
+}
+
+// Case: the source as something to play again. The event carries the
+// container's URI and its DIDL with the service's desc, which is all a
+// favourite needs, and the class says whether it is a playlist or an album.
+func TestQueueSource_KeepsWhatPlayingItAgainNeeds(t *testing.T) {
+	playlist, err := sonos.ParseAVTransportEvent(fixture(t, "avtransport_queue_playlist.xml"))
+	require.NoError(t, err)
+	album, err := sonos.ParseAVTransportEvent(fixture(t, "avtransport_queue_album.xml"))
+	require.NoError(t, err)
+
+	assert.Equal(t, "x-rincon-cpcontainer:00060000libraryplaylist%3ap.V7VYpk7FYWLeW?sid=204&flags=0&sn=2", playlist.QueueSource.URI)
+	assert.Contains(t, playlist.QueueSource.Metadata, "SA_RINCON52231_X_#Svc52231-0-Token")
+	kind, ok := playlist.QueueSource.Kind()
+	assert.True(t, ok)
+	assert.Equal(t, sonos.ContainerPlaylist, kind)
+
+	kind, ok = album.QueueSource.Kind()
+	assert.True(t, ok)
+	assert.Equal(t, sonos.ContainerAlbum, kind)
+	assert.Contains(t, album.QueueSource.URI, "00040000album%3a")
+}
+
+// Case: a container that is neither a playlist nor an album has no kind.
+func TestQueueSource_AnotherContainerHasNoKind(t *testing.T) {
+	_, ok := sonos.QueueSource{Class: "object.container.playlistContainer.sameArtist"}.Kind()
+	assert.False(t, ok)
 }
 
 // Case: live radio. The speaker reports the station as what was last
@@ -36,7 +63,7 @@ func TestQueueSource_AStationDoesNotNameTheQueue(t *testing.T) {
 	event, err := sonos.ParseAVTransportEvent(fixture(t, "avtransport_broadcast_radio.xml"))
 	require.NoError(t, err)
 
-	assert.False(t, event.HasQueueSource, "a station was taken for the queue's name: %q", event.QueueSource)
+	assert.False(t, event.HasQueueSource, "a station was taken for the queue's name: %q", event.QueueSource.Title)
 }
 
 // Case: a station started after a playlist was loaded. The queue still holds
@@ -47,7 +74,7 @@ func TestQueueSource_SurvivesAStationStartedAfterIt(t *testing.T) {
 	applyEvent(t, device, fixture(t, "avtransport_queue_playlist.xml"))
 	applyEvent(t, device, fixture(t, "avtransport_broadcast_radio.xml"))
 
-	assert.Equal(t, "Awesome singles", device.State().QueueSource)
+	assert.Equal(t, "Awesome singles", device.State().QueueSource.Title)
 }
 
 // Case: a second playlist loaded over the first. The newer name wins.
@@ -57,7 +84,7 @@ func TestQueueSource_AnotherPlaylistReplacesIt(t *testing.T) {
 	applyEvent(t, device, fixture(t, "avtransport_queue_playlist.xml"))
 	applyEvent(t, device, fixture(t, "avtransport_queue_album.xml"))
 
-	assert.Equal(t, "Ordensduks i Ingenmandsland", device.State().QueueSource)
+	assert.Equal(t, "Ordensduks i Ingenmandsland", device.State().QueueSource.Title)
 }
 
 // replayDevice handles real captures, which carry no position: the handler

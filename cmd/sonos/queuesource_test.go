@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"charm.land/lipgloss/v2"
+
+	"github.com/haasted/sonos-sandbox/internal/sonos"
 )
 
 // Case: a queue loaded from a playlist, with room to spare. The heading says
@@ -61,7 +63,7 @@ func TestQueueSource_TooLittleRoomDropsTheName(t *testing.T) {
 	heading := headingOf(q)
 
 	without := q
-	without.source = ""
+	without.source = sonos.QueueSource{}
 	if heading != headingOf(without) {
 		t.Fatalf("heading is %q, want it as if there were no name: %q", heading, headingOf(without))
 	}
@@ -89,7 +91,7 @@ func TestQueueSource_ACapturedPlaylistReachesTheHeading(t *testing.T) {
 
 func sourcedQueue(source string) queueContent {
 	q := navQueue(40, 0)
-	q.source = source
+	q.source = sonos.QueueSource{Title: source}
 	return q
 }
 
@@ -119,6 +121,6 @@ func headingOf(q queueContent) string {
 
 // baseWidth is how wide the heading is without a name in it.
 func baseWidth(q queueContent) int {
-	q.source = ""
+	q.source = sonos.QueueSource{}
 	return lipgloss.Width(headingOf(q))
 }

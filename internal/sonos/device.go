@@ -60,7 +60,7 @@ type DeviceState struct {
 	// QueueSource names the playlist or album last loaded into the queue, kept
 	// while a station plays so the queue keeps its name. Approximate: an edit
 	// to the queue since may have left it describing what the queue was.
-	QueueSource string
+	QueueSource QueueSource
 
 	// QueueUpdateID is the speaker's own version number for its queue. It
 	// rises whenever the queue changes, so a copy read at a lower id is
