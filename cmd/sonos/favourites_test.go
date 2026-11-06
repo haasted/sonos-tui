@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/haasted/sonos-sandbox/internal/sonos"
 	"github.com/haasted/sonos-sandbox/internal/store"
 	"github.com/haasted/sonos-sandbox/internal/ui/panes"
 )
@@ -164,7 +165,9 @@ func TestFavourites_KeysAskForTheFavouriteUnderTheCursor(t *testing.T) {
 	model, _ := f.Update(keyMsgFor("down"))
 	f = model.(favouritesContent)
 
-	for key, want := range map[string]favouriteAction{"enter": favouritePlay, "n": favouritePlayNext, "N": favouriteAddToQueue} {
+	for key, want := range map[string]favouriteAction{
+		"enter": favouritePlay, "shift+enter": favouritePlayShuffled, "n": favouritePlayNext, "N": favouriteAddToQueue,
+	} {
 		_, cmd := f.Update(keyMsgFor(key))
 		require.NotNil(t, cmd, key)
 		msg := cmd().(favouriteActionMsg)
@@ -198,6 +201,45 @@ func TestFavourites_AStationCannotBeQueued(t *testing.T) {
 	require.True(t, ok, "expected a notice")
 	assert.Equal(t, favouriteStationNotQueued, notice.Text)
 	assert.True(t, model.(appModel).favourites.IsOpen())
+}
+
+// Case: shift+enter on a track or a station. Neither has anything to shuffle,
+// so the reader is told, nothing is sent, and the modal stays open.
+func TestFavourites_OnlyAnAlbumOrPlaylistShuffles(t *testing.T) {
+	m := pressKey(sizedModel(t), "f")
+
+	for _, kind := range []store.FavouriteKind{store.FavouriteTrack, store.FavouriteStation} {
+		model, cmd := m.Update(favouriteActionMsg{favourite: store.Favourite{Kind: kind, Title: "x"}, action: favouritePlayShuffled})
+
+		require.NotNil(t, cmd, kind)
+		assert.Equal(t, favouriteNotShuffled, cmd().(panes.NoticeMsg).Text, kind)
+		assert.True(t, model.(appModel).favourites.IsOpen(), kind)
+	}
+}
+
+// Case: shift+enter on a playlist. It closes the modal, as enter does.
+func TestFavourites_ShiftEnterClosesTheModal(t *testing.T) {
+	m := pressKey(sizedModel(t), "f")
+
+	model, cmd := m.Update(favouriteActionMsg{favourite: sampleFavourites()[1], action: favouritePlayShuffled})
+
+	assert.NotNil(t, cmd)
+	assert.False(t, model.(appModel).favourites.IsOpen())
+}
+
+// Case: a playlist started shuffled. The speaker is told to shuffle and is not
+// sent to track 1, which only an in-order start asks for.
+func TestFavourites_AShuffledStartTellsTheSpeakerToShuffle(t *testing.T) {
+	device, heard := recordingDevice(t)
+	device.Speaker.USN = "uuid:RINCON_TEST01400::urn:schemas-upnp-org:device:ZonePlayer:1" // selecting the queue needs the id
+	speaker := speakerModel{ctx: t.Context(), device: device}
+	playable := sonos.Playable{URI: "x-rincon-cpcontainer:00060000libraryplaylist%3ap.X?sid=204&flags=0&sn=2", Metadata: "<DIDL-Lite/>", Title: "X"}
+
+	startFavourite(speaker, playable, favouritePlayShuffled, false)()
+
+	actions := strings.Join(heard(), " ")
+	assert.Contains(t, actions, "#SetPlayMode")
+	assert.NotContains(t, actions, "#Seek", "a shuffled start was sent to track 1")
 }
 
 // Case: enter on a favourite. It closes the modal, as enter does in the queue.

@@ -143,7 +143,7 @@ var helpAliases = map[string]string{
 	"up": "↑", "down": "↓",
 	"right": "→", "left": "←", "shift+tab": "⇧tab",
 	"pgdown": "pgdn", "space": "spc", "ctrl+u": "^u", "ctrl+d": "^d",
-	"shift+up": "⇧↑", "shift+down": "⇧↓",
+	"shift+up": "⇧↑", "shift+down": "⇧↓", "shift+enter": "⇧enter",
 }
 
 // helpOmissions are bindings deliberately left out, with the reason. Anything

@@ -26,6 +26,10 @@ var errNoStore = errors.New("no database")
 // place of the queue, and cannot be put into it.
 const favouriteStationNotQueued = "a station cannot be queued"
 
+// favouriteNotShuffled answers shift+enter on a track or a station: one
+// track, or a stream, has nothing to shuffle.
+const favouriteNotShuffled = "only an album or a playlist can be shuffled"
+
 // What marking a track as a favourite answers. The reader can see the track
 // under the cursor, so the notices do not name it.
 const (
@@ -134,8 +138,8 @@ func (m appModel) applyFavouriteKindChosen(msg favouriteKindChosenMsg) (tea.Mode
 }
 
 // applyFavouriteAction starts a favourite on the speaker in view, and so on
-// its group. enter closes the modal, as it does in the queue; n and N leave
-// it open, so several can be added in a row.
+// its group. enter and shift+enter close the modal, as enter does in the
+// queue; n and N leave it open, so several can be added in a row.
 func (m appModel) applyFavouriteAction(msg favouriteActionMsg) (tea.Model, tea.Cmd) {
 	speaker, ok := m.activeSpeaker()
 	if !ok {
@@ -143,12 +147,16 @@ func (m appModel) applyFavouriteAction(msg favouriteActionMsg) (tea.Model, tea.C
 	}
 	fav := msg.favourite
 	station := fav.Kind == store.FavouriteStation
-	if station && msg.action != favouritePlay {
+	container := fav.Kind == store.FavouriteAlbum || fav.Kind == store.FavouritePlaylist
+	switch {
+	case msg.action == favouritePlayShuffled && !container:
+		return m, notify(panes.NoticeInfo, favouriteNotShuffled)
+	case station && msg.action != favouritePlay:
 		return m, notify(panes.NoticeInfo, favouriteStationNotQueued)
 	}
 
 	playable := sonos.Playable{URI: fav.URI, Metadata: fav.Metadata, Title: fav.Title}
-	if msg.action == favouritePlay {
+	if msg.action == favouritePlay || msg.action == favouritePlayShuffled {
 		m.favourites = m.favourites.Close()
 		slot := m.favouritesSlot()
 		*slot.pulse, *slot.hint = nextGen(), nextGen()
@@ -433,6 +441,8 @@ func startFavourite(speaker speakerModel, playable sonos.Playable, action favour
 			err, said = device.PlayStation(speaker.ctx, playable), "playing "+playable.Title
 		case action == favouritePlay:
 			err, said = device.ReplaceQueue(speaker.ctx, playable, sonos.PlayModeNormal), "playing "+playable.Title
+		case action == favouritePlayShuffled:
+			err, said = device.ReplaceQueue(speaker.ctx, playable, sonos.PlayModeShuffleNoRepeat), "playing "+playable.Title+" shuffled"
 		case action == favouritePlayNext:
 			err, said = device.PlayNext(speaker.ctx, playable), playable.Title+" plays next"
 		default:

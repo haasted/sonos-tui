@@ -48,9 +48,10 @@ const favouriteRemoveFade = 400 * time.Millisecond
 type favouriteAction int
 
 const (
-	favouritePlay       favouriteAction = iota // replace the queue and play; a station just plays
-	favouritePlayNext                          // put it after the playing track
-	favouriteAddToQueue                        // put it at the end of the queue
+	favouritePlay         favouriteAction = iota // replace the queue and play; a station just plays
+	favouritePlayNext                            // put it after the playing track
+	favouriteAddToQueue                          // put it at the end of the queue
+	favouritePlayShuffled                        // replace the queue and play it shuffled; an album or playlist only
 )
 
 type (
@@ -144,6 +145,8 @@ func (f favouritesContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return f.switchKind(1)
 	case "enter":
 		return f, f.ask(favouritePlay)
+	case "shift+enter":
+		return f, f.ask(favouritePlayShuffled)
 	case "n":
 		return f, f.ask(favouritePlayNext)
 	case "N":

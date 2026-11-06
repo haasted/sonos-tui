@@ -117,6 +117,7 @@ var favouritesHelp = helpTable{
 			{"end  G", "to the end"},
 			{"←  →", "tracks, albums, playlists, stations"},
 			{"enter", "play, replacing the queue"},
+			{"⇧enter", "play shuffled, replacing the queue"},
 			{"n", "play next"},
 			{"N", "add to the end of the queue"},
 			{"x  delete", "remove a favourite"},
