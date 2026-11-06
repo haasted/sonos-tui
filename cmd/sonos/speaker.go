@@ -186,10 +186,6 @@ func (m speakerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
-		// TODO: TEMPORARY. Remove with trial.go.
-		if cmd, ok := m.trialKey(keyMsg.String()); ok {
-			return m, cmd
-		}
 		switch keyMsg.String() {
 		case "p", "P", "k", "K":
 			return m, m.togglePlayback()
