@@ -28,6 +28,10 @@ var favouriteKindNames = map[store.FavouriteKind]string{
 	store.FavouriteStation:  "Stations",
 }
 
+// favouritesCountFloor is the longest list the heading leaves uncounted:
+// up to this many rows, the reader sees how many there are at a glance.
+const favouritesCountFloor = 7
+
 // favouriteRemoveFade is how long a removed favourite stays on the list,
 // dimmed as a track leaving the queue is, before it goes. Short: the delete
 // itself is done at the press, so nothing waits on it.
@@ -371,54 +375,57 @@ func (f favouritesContent) heading() string {
 	return text
 }
 
-// headingParts names the modal, the media type in view, and how much of it
-// is showing. ‹ and › mark the sides ← and → can still go to, each on its own.
+// headingParts names the modal and, beside it, how much of the list there
+// is, when that is worth saying. The media type in view sits at the right
+// edge with ‹ and › either side, each subdued where ← or → cannot go.
 func (f favouritesContent) headingParts() []headingPart {
-	parts := []headingPart{{text: "Favourites", style: favouritesHeadingStyle()}}
-	if f.kind != "" {
-		left, name, right := f.kindLabel()
-		parts = append(parts,
-			headingPart{text: headingSeparator, style: favouritesHeadingStyle()},
-			headingPart{text: left, style: favouritesArrowStyle()},
-			headingPart{text: name, style: favouritesHeadingStyle()},
-			headingPart{text: right, style: favouritesArrowStyle()})
+	left := []headingPart{{text: "Favourites", style: favouritesHeadingStyle()}}
+	if count := f.countLabel(); count != "" {
+		left = append(left, headingPart{text: headingSeparator + count, style: favouritesHeadingStyle()})
 	}
+	if f.kind == "" {
+		return fitHeading(left, f.width)
+	}
+
+	before, after := f.neighbours()
+	right := []headingPart{
+		{text: "‹", style: favouritesArrowStyle(before)},
+		{text: " " + favouriteKindNames[f.kind] + " ", style: favouritesHeadingStyle()},
+		{text: "›", style: favouritesArrowStyle(after)},
+	}
+	// The count goes first when the box is too narrow for all of it: the
+	// type is what ← and → change, so it stays in view longest.
+	if headingWidth(left)+headingWidth(right) >= f.width && len(left) > 1 {
+		left = left[:1]
+	}
+	gap := max(f.width-headingWidth(left)-headingWidth(right), 1)
+	parts := append(left, headingPart{text: strings.Repeat(" ", gap)})
+	return fitHeading(append(parts, right...), f.width)
+}
+
+// countLabel is how much of the list there is: which part is on screen when
+// it overflows, how many there are past favouritesCountFloor, and nothing
+// for a list short enough to count at a glance.
+func (f favouritesContent) countLabel() string {
 	switch {
 	case f.note() != "":
+		return ""
 	case f.overflows():
-		parts = append(parts, headingPart{text: headingSeparator + f.rangeLabel(), style: favouritesHeadingStyle()})
+		return f.rangeLabel()
+	case len(f.items) > favouritesCountFloor:
+		return fmt.Sprintf("%d", len(f.items))
 	default:
-		parts = append(parts, headingPart{text: fmt.Sprintf("%s%d", headingSeparator, len(f.items)), style: favouritesHeadingStyle()})
+		return ""
 	}
-	return fitHeading(parts, f.width)
 }
 
-// kindLabel is the media type and the arrows either side, always the same
-// width so the heading stays still as ← and → switch: an arrow that does not
-// apply leaves its space, and the name is centred in the longest one's width.
-func (f favouritesContent) kindLabel() (left, name, right string) {
-	before, after := f.neighbours()
-	left, right = "  ", "  "
-	if before {
-		left = "‹ "
+// headingWidth is the display width of heading parts laid side by side.
+func headingWidth(parts []headingPart) int {
+	width := 0
+	for _, part := range parts {
+		width += lipgloss.Width(part.text)
 	}
-	if after {
-		right = " ›"
-	}
-
-	name = favouriteKindNames[f.kind]
-	spare := widestKindName() - lipgloss.Width(name)
-	name = strings.Repeat(" ", spare/2) + name + strings.Repeat(" ", spare-spare/2)
-	return left, name, right
-}
-
-// widestKindName is the display width of the longest media type name.
-func widestKindName() int {
-	widest := 0
-	for _, name := range favouriteKindNames {
-		widest = max(widest, lipgloss.Width(name))
-	}
-	return widest
+	return width
 }
 
 // note is the whole body when there are no rows to draw, and empty otherwise.
@@ -446,7 +453,11 @@ func favouritesHeadingStyle() lipgloss.Style {
 }
 
 // favouritesArrowStyle sets ‹ and › apart from the name between them: white
-// on a dark ground, near-black on a light one, as the queue's scroll arrows.
-func favouritesArrowStyle() lipgloss.Style {
+// on a dark ground, near-black on a light one, as the queue's scroll arrows,
+// and subdued as they rest where there is nowhere to go.
+func favouritesArrowStyle(usable bool) lipgloss.Style {
+	if !usable {
+		return lipgloss.NewStyle().Foreground(themedArrowRest())
+	}
 	return lipgloss.NewStyle().Bold(true).Foreground(themedArrowLit())
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -75,40 +76,52 @@ func TestFavourites_ANoticeShowsInTheModal(t *testing.T) {
 	assert.True(t, m.favourites.NoticeShowing(), "the notice did not reach the modal")
 }
 
-// Case: the heading. It names the type, marks with ‹ and › only the sides ←
-// and → can still go to, and counts what is shown.
-func TestFavourites_TheHeadingNamesTheType(t *testing.T) {
-	assert.Equal(t, "Favourites ·    Tracks   › · 1", loadedFavourites(store.FavouriteTrack).heading(),
-		"the first type offered a way back")
-	assert.Equal(t, "Favourites · ‹ Playlists   · 2", loadedFavourites(store.FavouritePlaylist).heading(),
-		"the last type offered a way on")
+// Case: the heading of a short list. It names the modal on the left and the
+// type at the right edge, with both arrows, and counts nothing: a few rows
+// can be counted at a glance.
+func TestFavourites_TheHeadingNamesTheTypeAtTheRight(t *testing.T) {
+	heading := loadedFavourites(store.FavouritePlaylist).heading()
 
-	single := favouritesContent{listView: listView[store.Favourite]{rows: 12, width: 60}}.loaded(
-		favouritesLoadedMsg{favourites: sampleFavourites()[1:3], kind: store.FavouritePlaylist})
-	assert.Equal(t, "Favourites ·   Playlists   · 2", single.heading(), "‹ › promised a switch with one type")
+	assert.Equal(t, "Favourites", heading[:len("Favourites")])
+	assert.True(t, strings.HasSuffix(heading, "‹ Playlists ›"), "the type is not at the right edge: %q", heading)
+	assert.Equal(t, 60, lipgloss.Width(heading), "the heading does not reach the right edge")
+	assert.NotContains(t, heading, headingSeparator, "a short list was counted")
 }
 
-// Case: the arrows either side of the type. They must stand apart from the
-// name in a colour of their own, while the name keeps the heading's colour.
-func TestFavourites_TheArrowsHaveTheirOwnColour(t *testing.T) {
-	parts := loadedFavourites(store.FavouritePlaylist).headingParts()
+// Case: a list longer than favouritesCountFloor. The count sits beside the
+// modal's name, after the separator; one row fewer shows neither.
+func TestFavourites_ALongerListIsCounted(t *testing.T) {
+	assert.True(t, strings.HasPrefix(stationsHeading(favouritesCountFloor+1), "Favourites · 8 "))
+	assert.False(t, strings.Contains(stationsHeading(favouritesCountFloor), headingSeparator),
+		"a list of %d was counted", favouritesCountFloor)
+}
 
-	var arrow, name headingPart
+// Case: a list longer than the box. The heading says which part is showing,
+// whatever the floor, since that is not something seen at a glance.
+func TestFavourites_AnOverflowingListSaysWhichPartShows(t *testing.T) {
+	f := favouritesContent{listView: listView[store.Favourite]{rows: 4, width: 60}}.loaded(
+		favouritesLoadedMsg{favourites: stations(5), kind: store.FavouriteStation})
+
+	assert.True(t, strings.HasPrefix(f.heading(), "Favourites · 1-2 of 5 "), f.heading())
+}
+
+// Case: the arrows either side of the type. Both are always drawn; one
+// pointing where ← or → can go is lit, one pointing nowhere is subdued. The
+// name keeps the heading's colour.
+func TestFavourites_AnArrowWithNowhereToGoIsSubdued(t *testing.T) {
+	parts := loadedFavourites(store.FavouritePlaylist).headingParts() // the last type with favourites
+
+	styles := map[string]headingPart{}
 	for _, part := range parts {
-		switch strings.TrimSpace(part.text) {
-		case "‹":
-			arrow = part
-		case "Playlists":
-			name = part
-		}
+		styles[strings.TrimSpace(part.text)] = part
 	}
-	assert.Equal(t, themedArrowLit(), arrow.style.GetForeground(), "‹ is not in the arrow colour")
-	assert.Equal(t, favouritesBorderColor(), name.style.GetForeground(), "the name lost the heading colour")
+	assert.Equal(t, themedArrowLit(), styles["‹"].style.GetForeground(), "‹ leads back to tracks and is not lit")
+	assert.Equal(t, themedArrowRest(), styles["›"].style.GetForeground(), "› leads nowhere and is not subdued")
+	assert.Equal(t, favouritesBorderColor(), styles["Playlists"].style.GetForeground(), "the name lost the heading colour")
 }
 
-// Case: switching between types whose names differ in length, with arrows
-// coming and going. The label must keep one width, so the count after it
-// never moves.
+// Case: every type, in a box of one width. The heading fills the box on
+// every one, so the type's right edge never moves as ← and → switch.
 func TestFavourites_TheHeadingKeepsOneWidthAcrossTypes(t *testing.T) {
 	all := []store.Favourite{
 		{Kind: store.FavouriteTrack, Title: "a"}, {Kind: store.FavouriteAlbum, Title: "b"},
@@ -121,6 +134,18 @@ func TestFavourites_TheHeadingKeepsOneWidthAcrossTypes(t *testing.T) {
 		widths[lipgloss.Width(f.heading())] = true
 	}
 	assert.Len(t, widths, 1, "the heading changed width between types")
+}
+
+// Case: a box too narrow for the name, the count and the type. The count
+// goes first; the type, which ← and → change, stays.
+func TestFavourites_ANarrowBoxDropsTheCountFirst(t *testing.T) {
+	f := favouritesContent{listView: listView[store.Favourite]{rows: 20, width: 24}}.loaded(
+		favouritesLoadedMsg{favourites: stations(favouritesCountFloor + 1), kind: store.FavouriteStation})
+
+	heading := f.heading()
+	assert.NotContains(t, heading, headingSeparator, "the count stayed in a narrow box")
+	assert.True(t, strings.HasSuffix(heading, "‹ Stations ›"), "the type was dropped: %q", heading)
+	assert.Equal(t, 24, lipgloss.Width(heading))
 }
 
 // Case: no favourites at all. The body says so, and the heading names no type.
@@ -210,6 +235,21 @@ func TestFavourites_ReadsAndRemembersThroughTheDatabase(t *testing.T) {
 	kind, err := db.Settings().Get(t.Context(), store.SettingFavouritesKind, "")
 	require.NoError(t, err)
 	assert.Equal(t, string(store.FavouriteStation), kind)
+}
+
+// stationsHeading is the heading of a list of n stations with room to spare.
+func stationsHeading(n int) string {
+	return favouritesContent{listView: listView[store.Favourite]{rows: 20, width: 60}}.loaded(
+		favouritesLoadedMsg{favourites: stations(n), kind: store.FavouriteStation}).heading()
+}
+
+// stations is n station favourites, each of its own.
+func stations(n int) []store.Favourite {
+	favs := make([]store.Favourite, n)
+	for i := range favs {
+		favs[i] = store.Favourite{ID: int64(i + 1), Kind: store.FavouriteStation, Title: fmt.Sprintf("Station %d", i+1)}
+	}
+	return favs
 }
 
 // loadedFavourites is the modal filled with sampleFavourites, on kind.
