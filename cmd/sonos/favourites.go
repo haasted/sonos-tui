@@ -28,6 +28,13 @@ var favouriteKindNames = map[store.FavouriteKind]string{
 	store.FavouriteStation:  "Stations",
 }
 
+// favouritesFilter matches a favourite by title or artist, as the queue does
+// a track, and keeps the cursor on a favourite by its row id.
+var favouritesFilter = listFilter[store.Favourite]{
+	match: func(fav store.Favourite, text string) bool { return anyContains(text, fav.Title, fav.Artist) },
+	same:  func(a, b store.Favourite) bool { return a.ID == b.ID },
+}
+
 // favouritesCountFloor is the longest list the heading leaves uncounted:
 // up to this many rows, the reader sees how many there are at a glance.
 const favouritesCountFloor = 7
@@ -79,34 +86,49 @@ type (
 )
 
 // favouritesContent lists the favourites of one media type inside a modal.
-// all holds every favourite; the list shows those of kind.
+// everyKind holds every favourite; the list shows those of kind.
 type favouritesContent struct {
 	listView[store.Favourite]
 
-	all      []store.Favourite
-	kind     store.FavouriteKind // the media type on screen; empty with no favourites
-	going    []int64             // ids removed and still fading on the list
-	goingGen int                 // the generation of the last removal's fade
-	loading  bool
-	err      error
+	everyKind []store.Favourite
+	kind      store.FavouriteKind // the media type on screen; empty with no favourites
+	going     []int64             // ids removed and still fading on the list
+	goingGen  int                 // the generation of the last removal's fade
+	loading   bool
+	err       error
 }
 
 var _ listContent = favouritesContent{}
 
 func (favouritesContent) Init() tea.Cmd { return nil }
 
-// Update moves through the list, switches media type with ← and →, and asks
-// for the favourite under the cursor to be played.
+// Update moves through the list, switches media type with ← and →, filters
+// with /, and asks for the favourite under the cursor to be played.
 func (f favouritesContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if wheel, ok := msg.(tea.MouseWheelMsg); ok {
 		var delta int
-		if f.listView, delta = f.wheelStep(wheel); delta != 0 {
-			f.listView = f.wheelMove(delta)
+		if f.listView, delta = f.wheelStep(wheel); delta == 0 {
+			return f, nil
 		}
+		// While the box has the keys, the wheel steps out of it as down does.
+		if f.filtering {
+			if delta > 0 {
+				f.listView = f.filterKey(favouritesFilter, "down")
+			}
+			return f, nil
+		}
+		f.listView = f.wheelMove(delta)
 		return f, nil
 	}
 	key, ok := msg.(tea.KeyMsg)
 	if !ok {
+		return f, nil
+	}
+
+	// The filter box has the keys while it is open, as in the queue, except
+	// ← and →: they type nothing, so they switch type with the box still open.
+	if f.filtering && key.String() != "left" && key.String() != "right" {
+		f.listView = f.filterKey(favouritesFilter, key.String())
 		return f, nil
 	}
 
@@ -128,6 +150,10 @@ func (f favouritesContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return f, f.ask(favouriteAddToQueue)
 	case "x", "delete":
 		return f.remove()
+	case "/":
+		f.listView = f.openFilter(favouritesFilter)
+	case "esc":
+		f.listView = f.closeFilter(favouritesFilter)
 	}
 	return f, nil
 }
@@ -135,7 +161,7 @@ func (f favouritesContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // loaded fills the modal with the favourites read, on the media type shown
 // last, or on the first that has favourites when that one has none now.
 func (f favouritesContent) loaded(msg favouritesLoadedMsg) favouritesContent {
-	f.loading, f.err, f.all = false, msg.err, msg.favourites
+	f.loading, f.err, f.everyKind = false, msg.err, msg.favourites
 	kinds := f.kinds()
 	switch {
 	case len(kinds) == 0:
@@ -220,7 +246,7 @@ func (f favouritesContent) settle() (favouritesContent, tea.Cmd) {
 	if f.cursor < len(f.items) {
 		on = f.items[f.cursor].ID
 	}
-	f.all = slices.DeleteFunc(slices.Clone(f.all), f.isGoing)
+	f.everyKind = slices.DeleteFunc(slices.Clone(f.everyKind), f.isGoing)
 	f.going, f.goingGen = nil, 0
 
 	if !f.has(f.kind) {
@@ -232,7 +258,8 @@ func (f favouritesContent) settle() (favouritesContent, tea.Cmd) {
 		return f.show(), func() tea.Msg { return favouriteKindChosenMsg{kind: chosen} }
 	}
 
-	f.items = f.ofKind()
+	f.items, f.all = f.ofKind(), nil
+	f.listView = f.narrow(favouritesFilter)
 	at := slices.IndexFunc(f.items, func(fav store.Favourite) bool { return fav.ID == on })
 	if at < 0 {
 		at = min(f.cursor, f.lastRow())
@@ -283,14 +310,15 @@ func (f favouritesContent) neighbourKind() store.FavouriteKind {
 // show puts the favourites of the current media type on the list, with the
 // cursor at the top.
 func (f favouritesContent) show() favouritesContent {
-	f.items, f.cursor, f.offset = f.ofKind(), 0, 0
+	f.items, f.all, f.cursor, f.offset = f.ofKind(), nil, 0, 0
+	f.listView = f.narrow(favouritesFilter)
 	return f
 }
 
 // ofKind is the favourites of the current media type, newest first.
 func (f favouritesContent) ofKind() []store.Favourite {
 	var items []store.Favourite
-	for _, fav := range f.all {
+	for _, fav := range f.everyKind {
 		if fav.Kind == f.kind {
 			items = append(items, fav)
 		}
@@ -322,7 +350,7 @@ func (f favouritesContent) neighbours() (before, after bool) {
 }
 
 func (f favouritesContent) has(kind store.FavouriteKind) bool {
-	for _, fav := range f.all {
+	for _, fav := range f.everyKind {
 		if fav.Kind == kind {
 			return true
 		}
@@ -380,6 +408,14 @@ func (f favouritesContent) heading() string {
 // edge with ‹ and › either side, each subdued where ← or → cannot go.
 func (f favouritesContent) headingParts() []headingPart {
 	left := []headingPart{{text: "Favourites", style: favouritesHeadingStyle()}}
+	// The filter box sits beside the name, as in the queue: / is the prompt,
+	// drawn quieter than what is typed after it.
+	if f.filtering {
+		left = append(left,
+			headingPart{text: headingSeparator, style: favouritesHeadingStyle()},
+			headingPart{text: "/", style: queueFilterPromptStyle()},
+			headingPart{text: f.filter, style: favouritesHeadingStyle()})
+	}
 	if count := f.countLabel(); count != "" {
 		left = append(left, headingPart{text: headingSeparator + count, style: favouritesHeadingStyle()})
 	}
@@ -410,6 +446,8 @@ func (f favouritesContent) countLabel() string {
 	switch {
 	case f.note() != "":
 		return ""
+	case f.filter != "":
+		return f.matchLabel()
 	case f.overflows():
 		return f.rangeLabel()
 	case len(f.items) > favouritesCountFloor:
@@ -435,7 +473,7 @@ func (f favouritesContent) note() string {
 		return "Reading the favourites…"
 	case f.err != nil:
 		return "Could not read the favourites: " + f.err.Error()
-	case len(f.all) == 0:
+	case len(f.everyKind) == 0:
 		return "No favourites yet."
 	default:
 		return ""
