@@ -142,7 +142,7 @@ func TestMarkChooser_OneChoiceIsMarkedAtOnce(t *testing.T) {
 }
 
 // playlistSource is an Apple Music playlist a queue was started from, as the
-// speaker reports it, artwork and all. None of the sample favourites is it.
+// speaker reports it, artwork and all.
 func playlistSource() sonos.QueueSource {
 	return sonos.QueueSource{
 		Title: "Kill 'Em All playlist",

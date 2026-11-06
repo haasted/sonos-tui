@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/haasted/sonos-sandbox/internal/sonos"
 	"github.com/haasted/sonos-sandbox/internal/store"
 	"github.com/haasted/sonos-sandbox/internal/ui/panes"
 )
@@ -190,6 +189,10 @@ func TestFavourites_EnterClosesTheModal(t *testing.T) {
 // favourites and the type shown last, and a switch is written back.
 func TestFavourites_ReadsAndRemembersThroughTheDatabase(t *testing.T) {
 	db := openTestStore(t)
+	album := stationFavouriteRow()
+	album.Kind, album.ItemID = store.FavouriteAlbum, "album:1888147421"
+	_, err := db.Favourites().Add(t.Context(), stationFavouriteRow(), album)
+	require.NoError(t, err)
 	require.NoError(t, db.Settings().Set(t.Context(), store.SettingFavouritesKind, string(store.FavouriteAlbum)))
 
 	m := sizedModel(t)
@@ -207,21 +210,6 @@ func TestFavourites_ReadsAndRemembersThroughTheDatabase(t *testing.T) {
 	kind, err := db.Settings().Get(t.Context(), store.SettingFavouritesKind, "")
 	require.NoError(t, err)
 	assert.Equal(t, string(store.FavouriteStation), kind)
-}
-
-// Case: the sample favourites a migration seeds. Their service, account and
-// id columns must be what the URI says, as marking will store them.
-func TestFavourites_TheSampleRowsMatchTheirURIs(t *testing.T) {
-	favourites, err := openTestStore(t).Favourites().List(t.Context())
-	require.NoError(t, err)
-	require.NotEmpty(t, favourites, "the sample favourites are missing")
-
-	for _, fav := range favourites {
-		ref, ok := sonos.ParseServiceURI(fav.URI)
-		require.True(t, ok, fav.Title)
-		assert.Equal(t, sonos.ServiceRef{Service: fav.Service, Account: fav.Account, ItemID: fav.ItemID}, ref, fav.Title)
-		assert.True(t, strings.HasPrefix(fav.Metadata, "<DIDL-Lite"), fav.Title)
-	}
 }
 
 // loadedFavourites is the modal filled with sampleFavourites, on kind.
@@ -247,6 +235,14 @@ func favouriteTitles(f favouritesContent) []string {
 		out = append(out, fav.Title)
 	}
 	return out
+}
+
+// stationFavouriteRow is a station favourite to seed a test database with.
+func stationFavouriteRow() store.Favourite {
+	return store.Favourite{
+		Kind: store.FavouriteStation, Title: "DR P1", URI: "x-sonosapi-hls:urn%3adr%3aradio%3achannel%3ap1?sid=290&flags=8232&sn=3",
+		Metadata: "<DIDL-Lite/>", Service: 290, Account: 3, ItemID: "urn:dr:radio:channel:p1", AddedAt: time.Now(),
+	}
 }
 
 func openTestStore(t *testing.T) *store.Store {

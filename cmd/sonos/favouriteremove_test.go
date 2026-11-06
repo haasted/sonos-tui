@@ -122,6 +122,8 @@ func TestFavouriteRemove_NoneLeftSaysSo(t *testing.T) {
 // says "removed", as for a track in the queue.
 func TestFavouriteRemove_DeletesTheRowAndSaysSo(t *testing.T) {
 	db := openTestStore(t)
+	_, err := db.Favourites().Add(t.Context(), stationFavouriteRow())
+	require.NoError(t, err)
 	stored, err := db.Favourites().List(t.Context())
 	require.NoError(t, err)
 	require.NotEmpty(t, stored)

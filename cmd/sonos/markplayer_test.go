@@ -30,13 +30,16 @@ func TestMarkPlayer_AStationIsMarkedAtOnce(t *testing.T) {
 	assert.Equal(t, "radio:ra.1594201819", favourites[0].ItemID)
 }
 
-// Case: a on a live broadcast that is a favourite already. It is found by
-// its service and id, though the speaker's DIDL for it differs, and moved up.
-func TestMarkPlayer_AKnownBroadcastIsAlreadyAFavourite(t *testing.T) {
+// Case: a pressed twice on a live broadcast, from a real capture. The second
+// press finds it by its service and id, and says it is a favourite already.
+func TestMarkPlayer_ABroadcastMarkedTwiceIsAlreadyAFavourite(t *testing.T) {
 	m, _ := playerPlaying(t, "avtransport_broadcast_radio.xml")
 
 	_, cmd := m.Update(keyMsgFor("a"))
+	require.NotNil(t, cmd)
+	assert.Equal(t, favouriteMarked, cmd().(panes.NoticeMsg).Text)
 
+	_, cmd = m.Update(keyMsgFor("a"))
 	require.NotNil(t, cmd)
 	assert.Equal(t, favouriteMarkedNot, cmd().(panes.NoticeMsg).Text)
 }

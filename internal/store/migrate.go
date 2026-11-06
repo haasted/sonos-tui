@@ -57,28 +57,6 @@ CREATE TABLE setting (
     value TEXT NOT NULL
 ) STRICT;
 `,
-	// 2. TEMPORARY: sample favourites, to try the favourites modal before
-	// albums, playlists and stations can be marked. Tracks are marked in the
-	// queue. Remove once the others can be marked too.
-	`
-INSERT INTO favourite (kind, title, artist, album, uri, metadata, service, account, item_id, added_at) VALUES
-    ('playlist', 'Awesome singles', '', '',
-     'x-rincon-cpcontainer:00060000libraryplaylist%3ap.V7VYpk7FYWLeW?sid=204&flags=0&sn=2',
-     '<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"><item id="00060000libraryplaylist%3ap.V7VYpk7FYWLeW" parentID="-1" restricted="true"><dc:title>Awesome singles</dc:title><upnp:class>object.container.playlistContainer</upnp:class><desc id="cdudn" nameSpace="urn:schemas-rinconnetworks-com:metadata-1-0/">SA_RINCON52231_X_#Svc52231-0-Token</desc></item></DIDL-Lite>',
-     204, 2, 'libraryplaylist:p.V7VYpk7FYWLeW', '2026-11-04T12:00:00.000000000Z'),
-    ('playlist', 'Metallica', '', '',
-     'x-rincon-cpcontainer:00060000libraryplaylist%3ap.ZOAXddOUZE1LE?sid=204&flags=0&sn=2',
-     '<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"><item id="00060000libraryplaylist%3ap.ZOAXddOUZE1LE" parentID="-1" restricted="true"><dc:title>Metallica</dc:title><upnp:class>object.container.playlistContainer</upnp:class><desc id="cdudn" nameSpace="urn:schemas-rinconnetworks-com:metadata-1-0/">SA_RINCON52231_X_#Svc52231-0-Token</desc></item></DIDL-Lite>',
-     204, 2, 'libraryplaylist:p.ZOAXddOUZE1LE', '2026-11-04T12:01:00.000000000Z'),
-    ('album', 'Ordensduks i Ingenmandsland', 'Claus Hempler', '',
-     'x-rincon-cpcontainer:00040000album%3a1888147421?sid=204&flags=0&sn=2',
-     '<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"><item id="00040000album%3a1888147421" parentID="-1" restricted="true"><dc:title>Ordensduks i Ingenmandsland</dc:title><upnp:class>object.container.album.musicAlbum</upnp:class><desc id="cdudn" nameSpace="urn:schemas-rinconnetworks-com:metadata-1-0/">SA_RINCON52231_X_#Svc52231-0-Token</desc></item></DIDL-Lite>',
-     204, 2, 'album:1888147421', '2026-11-04T12:02:00.000000000Z'),
-    ('station', 'DR P1', '', '',
-     'x-sonosapi-hls:urn%3adr%3aradio%3achannel%3a5fa156d1da351264f87b462d?sid=290&flags=8232&sn=3',
-     '<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"><item id="10092028urn%3adr%3aradio%3achannel%3a5fa156d1da351264f87b462d" parentID="10fe2064live%3amain" restricted="true"><dc:title>DR P1</dc:title><upnp:class>object.item.audioItem.audioBroadcast.#channel</upnp:class><desc id="cdudn" nameSpace="urn:schemas-rinconnetworks-com:metadata-1-0/">SA_RINCON74247_</desc></item></DIDL-Lite>',
-     290, 3, 'urn:dr:radio:channel:5fa156d1da351264f87b462d', '2026-11-04T12:04:00.000000000Z');
-`,
 }
 
 // migrate brings the database up to the last of steps. An empty file and a
