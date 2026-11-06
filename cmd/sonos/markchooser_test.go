@@ -92,7 +92,7 @@ func TestMarkChooser_ChoosingThePlaylistStoresIt(t *testing.T) {
 	db := openTestStore(t)
 	m := pressKey(sizedModel(t), "enter")
 	m.db = db
-	m = deliver(m, favouriteChooseMsg{track: serviceTrack(), source: playlistSource()})
+	m = choose(t, m, favouriteChooseMsg{track: serviceTrack(), source: playlistSource()})
 	require.True(t, m.marking.IsOpen(), "the chooser did not open")
 	assert.Equal(t, 0, m.marking.Content.(markContent).cursor, "the chooser did not start on the track")
 
@@ -117,7 +117,7 @@ func TestMarkChooser_ChoosingThePlaylistStoresIt(t *testing.T) {
 // reach the queue again, not before.
 func TestMarkChooser_EscClosesWithNothingMarked(t *testing.T) {
 	m := pressKey(sizedModel(t), "enter")
-	m = deliver(m, favouriteChooseMsg{track: serviceTrack(), source: playlistSource()})
+	m = choose(t, m, favouriteChooseMsg{track: serviceTrack(), source: playlistSource()})
 
 	model, cmd := m.Update(keyMsgFor("esc"))
 	m = model.(appModel)
@@ -139,6 +139,60 @@ func TestMarkChooser_OneChoiceIsMarkedAtOnce(t *testing.T) {
 	assert.False(t, model.(appModel).marking.IsOpen(), "a chooser opened with one choice")
 	require.NotNil(t, cmd)
 	assert.Equal(t, favouriteMarked, cmd().(panes.NoticeMsg).Text)
+}
+
+// Case: the playlist a favourite already, the track not. a marks the track
+// at once, with no chooser, and the notice says the track was added.
+func TestMarkChooser_OneStoredMarksTheOtherAtOnce(t *testing.T) {
+	db := openTestStore(t)
+	playlist, _ := sourceFavourite(playlistSource(), time.Now())
+	_, err := db.Favourites().Add(t.Context(), playlist)
+	require.NoError(t, err)
+	m := pressKey(sizedModel(t), "enter")
+	m.db = db
+
+	model, cmd := m.Update(favouriteChooseMsg{track: serviceTrack(), source: playlistSource()})
+	require.NotNil(t, cmd)
+	model, cmd = model.(appModel).Update(cmd())
+
+	assert.False(t, model.(appModel).marking.IsOpen(), "the chooser opened with one choice left")
+	require.NotNil(t, cmd)
+	assert.Equal(t, "added the track as a favourite", cmd().(panes.NoticeMsg).Text)
+	favourites, err := db.Favourites().List(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, "Seek & Destroy", favourites[0].Title)
+}
+
+// Case: track and playlist both favourites already. No chooser; both are
+// marked again, so both move to the top, and the notice says so.
+func TestMarkChooser_BothStoredSaySoAndMoveUp(t *testing.T) {
+	db := openTestStore(t)
+	playlist, _ := sourceFavourite(playlistSource(), time.Now().Add(-time.Hour))
+	track, err := trackFavourite(serviceTrack(), time.Now().Add(-time.Hour))
+	require.NoError(t, err)
+	_, err = db.Favourites().Add(t.Context(), playlist, track, stationFavouriteRow())
+	require.NoError(t, err)
+	m := pressKey(sizedModel(t), "enter")
+	m.db = db
+
+	model, cmd := m.Update(favouriteChooseMsg{track: serviceTrack(), source: playlistSource()})
+	model, cmd = model.(appModel).Update(cmd())
+
+	assert.False(t, model.(appModel).marking.IsOpen())
+	require.NotNil(t, cmd)
+	assert.Equal(t, "track and playlist are already favourites", cmd().(panes.NoticeMsg).Text)
+	favourites, err := db.Favourites().List(t.Context())
+	require.NoError(t, err)
+	assert.NotEqual(t, "DR P1", favourites[0].Title, "marking both again did not move them to the top")
+}
+
+// choose sends a request for the chooser and delivers the answer of the
+// check that runs first, as the program would.
+func choose(t *testing.T, m appModel, msg favouriteChooseMsg) appModel {
+	t.Helper()
+	model, cmd := m.Update(msg)
+	require.NotNil(t, cmd)
+	return deliver(model.(appModel), cmd())
 }
 
 // playlistSource is an Apple Music playlist a queue was started from, as the

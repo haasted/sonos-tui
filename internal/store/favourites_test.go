@@ -172,6 +172,22 @@ func TestFavourites_RemoveDeletesOneRow(t *testing.T) {
 	assert.Equal(t, stored[1].ID, left[0].ID)
 }
 
+// Case: asking which favourites are stored. One stored and one not answer
+// true and false, in the order asked.
+func TestFavourites_StoredSaysWhichAreThere(t *testing.T) {
+	s := openTemp(t)
+	stored := playlistFavourite(time.Now())
+	_, err := s.Favourites().Add(t.Context(), stored)
+	require.NoError(t, err)
+	other := playlistFavourite(time.Now())
+	other.ItemID = "libraryplaylist:p.other"
+
+	got, err := s.Favourites().Stored(t.Context(), other, stored)
+
+	require.NoError(t, err)
+	assert.Equal(t, []bool{false, true}, got)
+}
+
 func playlistFavourite(addedAt time.Time) Favourite {
 	return Favourite{
 		Kind:     FavouritePlaylist,

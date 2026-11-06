@@ -38,8 +38,21 @@ const (
 	// favourite has moved to the top, which the list shows; a skipped one is
 	// counted, since nothing else shows it.
 	favouriteMarkedSeveral = "added as favourites"
+
+	// With the track or the queue's playlist a favourite already, a marks
+	// the other without asking, so the notice names what was added.
+	favouriteOtherMarked   = "added the %s as a favourite"
+	favouritesBothStored   = "%s and %s are already favourites"
 	favouriteMarkedSkipped = "added as favourites, %d cannot be marked"
 )
+
+// favouriteNouns is what a notice calls each kind of favourite.
+var favouriteNouns = map[store.FavouriteKind]string{
+	store.FavouriteTrack:    "track",
+	store.FavouriteAlbum:    "album",
+	store.FavouritePlaylist: "playlist",
+	store.FavouriteStation:  "station",
+}
 
 // favouriteNothingToMark answers a on the player when what plays is not
 // something a favourite can hold, such as line-in.
@@ -153,6 +166,12 @@ func (m appModel) applyFavouriteMark(msg favouriteMarkMsg) (tea.Model, tea.Cmd) 
 // storeFavourites stores favs in the background, and answers with the notice
 // for asked marks, skipped of which could not be.
 func storeFavourites(ctx context.Context, db *store.Store, favs []store.Favourite, asked, skipped int) tea.Cmd {
+	return storeSaying(ctx, db, favs, func(added int) string { return markedNotice(asked, added, skipped) })
+}
+
+// storeSaying stores favs in the background, and answers with what say makes
+// of how many were new.
+func storeSaying(ctx context.Context, db *store.Store, favs []store.Favourite, say func(added int) string) tea.Cmd {
 	return func() tea.Msg {
 		if len(favs) == 0 {
 			return panes.NoticeMsg{Level: panes.NoticeInfo, Text: favouriteNoService}
@@ -166,12 +185,13 @@ func storeFavourites(ctx context.Context, db *store.Store, favs []store.Favourit
 			slog.Warn("marking favourites failed", "favourites", len(favs), "err", err)
 			return panes.NoticeMsg{Level: panes.NoticeError, Text: favouriteMarkFailed}
 		}
-		return panes.NoticeMsg{Level: panes.NoticeInfo, Text: markedNotice(asked, added, skipped), Confirmation: true}
+		return panes.NoticeMsg{Level: panes.NoticeInfo, Text: say(added), Confirmation: true}
 	}
 }
 
 // applyFavouriteChoose offers the track and the queue's playlist or album to
 // mark. Only what can be marked is offered, and one choice needs no chooser.
+// With two, it first finds out which are favourites already.
 func (m appModel) applyFavouriteChoose(msg favouriteChooseMsg) (tea.Model, tea.Cmd) {
 	rows := markRowsFor(msg.track, msg.source, time.Now())
 	switch len(rows) {
@@ -180,9 +200,57 @@ func (m appModel) applyFavouriteChoose(msg favouriteChooseMsg) (tea.Model, tea.C
 	case 1:
 		return m, storeFavourites(m.ctx, m.db, []store.Favourite{rows[0].fav}, 1, 0)
 	}
-	m.marking.Content = markContent{rows: rows}
-	m.marking = m.marking.Open()
-	return m, nil
+	return m, checkStored(m.ctx, m.db, rows)
+}
+
+// checkStored finds out in the background which rows are favourites already.
+// Not knowing counts as none: the chooser then asks, as it would anyway.
+func checkStored(ctx context.Context, db *store.Store, rows []markRow) tea.Cmd {
+	return func() tea.Msg {
+		stored := make([]bool, len(rows))
+		if db != nil {
+			favs := make([]store.Favourite, len(rows))
+			for i, row := range rows {
+				favs[i] = row.fav
+			}
+			found, err := db.Favourites().Stored(ctx, favs...)
+			if err != nil {
+				slog.Warn("looking for favourites", "err", err)
+			} else {
+				stored = found
+			}
+		}
+		return favouriteStoredMsg{rows: rows, stored: stored}
+	}
+}
+
+// applyFavouriteStored opens the chooser only when neither row is a
+// favourite. With one stored, the other is marked at once and named; with
+// both, both are marked again, which moves them to the top.
+func (m appModel) applyFavouriteStored(msg favouriteStoredMsg) (tea.Model, tea.Cmd) {
+	var fresh []markRow
+	for i, row := range msg.rows {
+		if !msg.stored[i] {
+			fresh = append(fresh, row)
+		}
+	}
+
+	switch len(fresh) {
+	case 0:
+		favs := make([]store.Favourite, len(msg.rows))
+		nouns := make([]string, len(msg.rows))
+		for i, row := range msg.rows {
+			favs[i], nouns[i] = row.fav, favouriteNouns[row.fav.Kind]
+		}
+		text := fmt.Sprintf(favouritesBothStored, nouns[0], nouns[1])
+		return m, storeSaying(m.ctx, m.db, favs, func(int) string { return text })
+	case len(msg.rows):
+		m.marking.Content = markContent{rows: msg.rows}
+		m.marking = m.marking.Open()
+		return m, nil
+	}
+	text := fmt.Sprintf(favouriteOtherMarked, favouriteNouns[fresh[0].fav.Kind])
+	return m, storeSaying(m.ctx, m.db, []store.Favourite{fresh[0].fav}, func(int) string { return text })
 }
 
 // applyFavouriteChosen closes the chooser and stores what was chosen.

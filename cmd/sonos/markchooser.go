@@ -26,6 +26,13 @@ type (
 
 	// favouriteChosenMsg is the reader's choice, ready to store.
 	favouriteChosenMsg struct{ fav store.Favourite }
+
+	// favouriteStoredMsg says which of the chooser's rows are favourites
+	// already, so the chooser opens only when it has something to ask.
+	favouriteStoredMsg struct {
+		rows   []markRow
+		stored []bool
+	}
 )
 
 // markRow is one thing the chooser offers to mark.

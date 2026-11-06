@@ -78,6 +78,20 @@ func (f *Favourites) Add(ctx context.Context, favs ...Favourite) (int, error) {
 	return added, tx.Commit()
 }
 
+// Stored reports, for each of favs, whether a favourite of the same service,
+// account and id is stored already.
+func (f *Favourites) Stored(ctx context.Context, favs ...Favourite) ([]bool, error) {
+	stored := make([]bool, len(favs))
+	for i, fav := range favs {
+		if err := f.db.QueryRowContext(ctx, `
+			SELECT EXISTS (SELECT 1 FROM favourite WHERE service = ? AND account = ? AND item_id = ?)`,
+			fav.Service, fav.Account, fav.ItemID).Scan(&stored[i]); err != nil {
+			return nil, fmt.Errorf("looking for favourite %q: %w", fav.Title, err)
+		}
+	}
+	return stored, nil
+}
+
 // Remove deletes the favourite with the given id. An id not stored is not a
 // fault: the favourite is gone either way.
 func (f *Favourites) Remove(ctx context.Context, id int64) error {

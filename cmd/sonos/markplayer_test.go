@@ -49,8 +49,9 @@ func TestMarkPlayer_ABroadcastMarkedTwiceIsAlreadyAFavourite(t *testing.T) {
 func TestMarkPlayer_AQueueTrackOpensTheChooser(t *testing.T) {
 	m, _ := playerPlaying(t, "avtransport_queue_playlist.xml")
 
-	model, _ := m.Update(keyMsgFor("a"))
-	m = model.(appModel)
+	model, cmd := m.Update(keyMsgFor("a"))
+	require.NotNil(t, cmd)
+	m = deliver(model.(appModel), cmd())
 
 	require.True(t, m.marking.IsOpen(), "the chooser did not open")
 	assert.Equal(t, []string{"Track: Don't Dream It's Over", "Playlist: Awesome singles"},
