@@ -99,7 +99,12 @@ func TestDiscover_RequiresDeadline(t *testing.T) {
 }
 
 // TestDiscover_EarlyCancellation confirms canceling ctx interrupts the blocking read well before its deadline.
+// Live only: it searches the real network, and where a firewall drops the
+// queries it passes without testing anything.
 func TestDiscover_EarlyCancellation(t *testing.T) {
+	if !*live {
+		t.Skip("skipping live test; run with -live to include it")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 

@@ -114,6 +114,51 @@ func TestUsableInterfaces_KeepsOnlyWhatCanReachSpeakers(t *testing.T) {
 	assert.Equal(t, "192.168.68.65", got[0].ip.String())
 }
 
+// Case: discovery cancelled early, with a library that, as hashicorp/mdns
+// does, keeps its query running until its own timeout. The query must still
+// return with ctx, and pass on what was found before it.
+func TestQueryMDNS_ReturnsWhenCancelled(t *testing.T) {
+	restore := mdnsQuery
+	t.Cleanup(func() { mdnsQuery = restore })
+	mdnsQuery = func(_ context.Context, params *mdns.QueryParam) error {
+		params.Entries <- &mdns.ServiceEntry{Name: "first"}
+		time.Sleep(params.Timeout) // deaf to ctx, as the real one is
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	entries := make(chan *mdns.ServiceEntry, mdnsEntryBuffer)
+	time.AfterFunc(100*time.Millisecond, cancel)
+
+	start := time.Now()
+	err := queryMDNS(ctx, nil, entries)
+
+	assert.Less(t, time.Since(start), time.Second, "the query waited out the library's timeout")
+	assert.ErrorIs(t, err, context.Canceled)
+	require.Len(t, entries, 1)
+	assert.Equal(t, "first", (<-entries).Name)
+}
+
+// Case: the library ending on its own. Every answer it sent must arrive, and
+// its error be returned.
+func TestQueryMDNS_PassesOnEverythingWhenTheLibraryEnds(t *testing.T) {
+	restore := mdnsQuery
+	t.Cleanup(func() { mdnsQuery = restore })
+	failed := errors.New("no route to host")
+	mdnsQuery = func(_ context.Context, params *mdns.QueryParam) error {
+		params.Entries <- &mdns.ServiceEntry{Name: "first"}
+		params.Entries <- &mdns.ServiceEntry{Name: "second"}
+		return failed
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	entries := make(chan *mdns.ServiceEntry, mdnsEntryBuffer)
+
+	assert.ErrorIs(t, queryMDNS(ctx, nil, entries), failed)
+	assert.Len(t, entries, 2)
+}
+
 // Case: an mDNS answer on a network where SSDP gets none, as behind the VPN.
 // Discover must still deliver the speaker.
 func TestDiscover_FindsASpeakerByMDNSAlone(t *testing.T) {

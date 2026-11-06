@@ -34,20 +34,52 @@ const mdnsEntryBuffer = 256
 // same form as the USN an SSDP answer carries.
 const zonePlayerURN = "::urn:schemas-upnp-org:device:ZonePlayer:1"
 
+// mdnsQuery runs the mDNS library's search. Tests replace it with a fake,
+// so they can check queryMDNS without a network.
+var mdnsQuery = mdns.QueryContext
+
 // queryMDNS asks for Sonos speakers on one interface until ctx ends, sending
 // every answer to entries. A variable so a test can answer instead of the
 // network.
 var queryMDNS = func(ctx context.Context, iface *net.Interface, entries chan<- *mdns.ServiceEntry) error {
 	deadline, _ := ctx.Deadline()
-	return mdns.QueryContext(ctx, &mdns.QueryParam{
-		Service:     mdnsService,
-		Domain:      "local",
-		Timeout:     time.Until(deadline),
-		Interface:   iface,
-		Entries:     entries,
-		DisableIPv6: true, // the rest of discovery is IPv4 only
-		Logger:      mdnsLogger(),
-	})
+	found := make(chan *mdns.ServiceEntry, mdnsEntryBuffer)
+	result := make(chan error, 1)
+	go func() {
+		result <- mdnsQuery(ctx, &mdns.QueryParam{
+			Service:     mdnsService,
+			Domain:      "local",
+			Timeout:     time.Until(deadline),
+			Interface:   iface,
+			Entries:     found,
+			DisableIPv6: true, // the rest of discovery is IPv4 only
+			Logger:      mdnsLogger(),
+		})
+	}()
+
+	// The library ignores cancellation and runs until its timeout. So we do
+	// not wait for it: we pass on its answers and stop as soon as ctx ends.
+	for {
+		select {
+		case entry := <-found:
+			select {
+			case entries <- entry:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		case err := <-result:
+			for {
+				select {
+				case entry := <-found:
+					entries <- entry
+				default:
+					return err
+				}
+			}
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 }
 
 // mdnsLogger sends the library's messages, all of them errors, to the
