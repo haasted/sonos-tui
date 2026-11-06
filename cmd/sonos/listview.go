@@ -95,6 +95,16 @@ type listView[T any] struct {
 	wheelDir    int       // which way that gesture is going: -1 up, 1 down
 	wheelBumped bool      // the current swipe has lit an end already
 	swipe       swipeTracker
+
+	// filter is what the reader has typed, and filtering says the box is open
+	// and taking their keys. Open with nothing typed still shows everything,
+	// so the two are not one field.
+	filter    string
+	filtering bool
+
+	// all is the whole list while a filter narrows items to part of it, and
+	// nil otherwise. Read it through everything(), never directly.
+	all []T
 }
 
 // headingPart is one run of a heading, drawn in its own style.

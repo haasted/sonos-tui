@@ -59,20 +59,9 @@ type queueContent struct {
 	room   string
 	source sonos.QueueSource // the playlist or album the queue was started from, if known
 
-	// filter is what the reader has typed, and filtering says the box is open
-	// and taking their keys. Open with nothing typed still shows everything,
-	// so the two are not one field.
-	filter    string
-	filtering bool
-
-	// all is the whole queue while a filter narrows items to part of it, and
-	// nil otherwise -- with no filter, items already IS everything. Read it
-	// through everything(), never directly.
-	//
-	// Anything that decides a track's identity has to read the whole queue:
-	// nth counts the copies of a URI above a track, and counted against a
-	// filtered list it would change with whatever the reader typed.
-	all     []sonos.QueueItem
+	// The filter lives on listView. Anything that decides a track's identity
+	// reads the whole queue through everything(): nth counts the copies of a
+	// URI above a track, and against a filtered list it would change.
 	playing int
 	err     error
 	loading bool
@@ -481,128 +470,52 @@ func (q queueContent) withSelection(change func([]selectedTrack) []selectedTrack
 // title and the artist both, and case-insensitively: a reader typing "nick"
 // is naming an artist as readily as a song.
 func matchesFilter(item sonos.QueueItem, filter string) bool {
-	if filter == "" {
-		return true
-	}
-	want := strings.ToLower(filter)
-	return strings.Contains(strings.ToLower(item.Title), want) ||
-		strings.Contains(strings.ToLower(item.Artist), want)
+	return anyContains(filter, item.Title, item.Artist)
 }
 
-// applyFilter narrows items to the tracks that answer the filter, keeping the
-// whole queue in all so nothing that decides identity loses sight of it.
-//
-// The cursor keeps the track it was on where that track is still shown, and
-// otherwise goes to the top: a cursor left on a row number would land on a
-// different track every keystroke.
+// queueFilter matches a track by title or artist, and keeps the cursor on a
+// track by its URI.
+var queueFilter = listFilter[sonos.QueueItem]{
+	match: matchesFilter,
+	same:  func(a, b sonos.QueueItem) bool { return a.URI == b.URI },
+}
+
+// applyFilter, narrow, filterKey, openFilter, closeFilter and typeFilter are
+// the list's own filter with the queue's rule, kept on the queue so a chain
+// of queue methods stays one type.
 func (q queueContent) applyFilter() queueContent {
-	var on string
-	if q.cursor < len(q.items) {
-		on = q.items[q.cursor].URI
-	}
-
-	q = q.narrow()
-
-	q.cursor = 0
-	for i, item := range q.items {
-		if item.URI == on {
-			q.cursor = i
-			break
-		}
-	}
-	return q.follow()
+	q.listView = q.listView.applyFilter(queueFilter)
+	return q
 }
 
-// narrow is applyFilter without the cursor keeping, for a queue arriving from
-// the speaker: the cursor there is settled afterwards by whatever the read
-// was answering, and a row remembered from the list before it means nothing.
-//
-// A queue must go through here on the way in. Assigning items straight from
-// the speaker would widen the list behind a filter that is still on screen.
+// narrow must see a queue arriving from the speaker: assigning items straight
+// from it would widen the list behind a filter that is still on screen.
 func (q queueContent) narrow() queueContent {
-	all := q.everything()
-	if q.filter == "" {
-		q.items, q.all = all, nil
-		return q
-	}
-
-	shown := make([]sonos.QueueItem, 0, len(all))
-	for _, item := range all {
-		if matchesFilter(item, q.filter) {
-			shown = append(shown, item)
-		}
-	}
-	q.items, q.all = shown, all
+	q.listView = q.listView.narrow(queueFilter)
 	return q
 }
 
-// ClaimsEsc keeps esc from closing the modal while there is a filter to
-// clear. The reader's first esc undoes the narrowing; a second closes the
-// queue, as it always did.
-func (q queueContent) ClaimsEsc() bool { return q.filtering || q.filter != "" }
-
-// filterKey is one key while the filter box is open. enter and down both
-// leave the box and keep the narrowing, so the keys that act on tracks reach
-// the rows it found: down because the reader's next move after typing is
-// into the list, and reaching for it should be enough.
 func (q queueContent) filterKey(key string) queueContent {
-	switch key {
-	case "esc":
-		return q.closeFilter()
-	case "enter", "down":
-		q.filtering = false
-		return q
-	case "backspace":
-		return q.typeFilter("backspace")
-	}
-	if len([]rune(key)) == 1 {
-		return q.typeFilter(key)
-	}
+	q.listView = q.listView.filterKey(queueFilter, key)
 	return q
 }
 
-// openFilter starts taking the reader's keys as a filter, from nothing. A box
-// that opened holding the last search would narrow the list before the reader
-// had asked for anything, and the term they were shown would be one they had
-// forgotten typing.
 func (q queueContent) openFilter() queueContent {
-	q.filtering, q.filter = true, ""
-	return q.applyFilter()
+	q.listView = q.listView.openFilter(queueFilter)
+	return q
 }
 
-// closeFilter stops filtering and shows the whole queue again. What the
-// reader did while it was narrowed stays done: the selection is held by
-// track, and tracks on their way out by position, neither of which the
-// filter ever touched.
+// closeFilter shows the whole queue again. What the reader did while it was
+// narrowed stays done: the selection is held by track, and tracks on their
+// way out by position, neither of which the filter ever touched.
 func (q queueContent) closeFilter() queueContent {
-	if !q.filtering && q.filter == "" {
-		return q
-	}
-	q.filtering, q.filter = false, ""
-	return q.applyFilter()
+	q.listView = q.listView.closeFilter(queueFilter)
+	return q
 }
 
-// typeFilter adds to what the reader has typed, or takes the last rune back.
 func (q queueContent) typeFilter(key string) queueContent {
-	switch key {
-	case "backspace":
-		if q.filter == "" {
-			return q
-		}
-		runes := []rune(q.filter)
-		q.filter = string(runes[:len(runes)-1])
-	default:
-		q.filter += key
-	}
-	return q.applyFilter()
-}
-
-// everything is the whole queue, filtered or not.
-func (q queueContent) everything() []sonos.QueueItem {
-	if q.all != nil {
-		return q.all
-	}
-	return q.items
+	q.listView = q.listView.typeFilter(queueFilter, key)
+	return q
 }
 
 // eachTrack calls visit for every track in the WHOLE queue with the position
@@ -1267,11 +1180,6 @@ func (q queueContent) headingParts() []headingPart {
 		parts = append(parts, headingPart{text: headingSeparator + q.source.Title, style: queueRoomStyle(), shrink: true})
 	}
 	return fitHeading(parts, q.width)
-}
-
-// matchLabel is how much of the queue is showing.
-func (q queueContent) matchLabel() string {
-	return fmt.Sprintf("%d of %d", len(q.items), len(q.everything()))
 }
 
 // sizeSuffix says how big the queue is, and nothing at all while it is being
