@@ -3,6 +3,7 @@ package panes
 import (
 	"fmt"
 	"image/color"
+	"math/rand/v2"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -35,7 +36,6 @@ const (
 	noticeHold     = 4 * time.Second         // fully lit before it starts to go
 	noticeBrief    = 1200 * time.Millisecond // a confirmation's hold, which is read at a glance
 	noticeFade     = 900 * time.Millisecond  // eased fade of the text to nothing
-	noticeReturn   = 250 * time.Millisecond  // the rule it hid fading back in afterwards
 	noticeInterval = 40 * time.Millisecond   // repaint rate while fading
 	noticeFramed   = 16 * time.Millisecond   // repaint rate while a notice is opening or collapsing
 	noticeLead     = 4                       // shortest run of rule left either side of the label
@@ -107,10 +107,11 @@ func noticeTick(gen int, every time.Duration) tea.Cmd {
 	})
 }
 
-// interval is how often this notice needs repainting: an entrance moves per
-// frame, where a plain fade is only a colour easing over most of a second.
+// interval is how often this notice needs repainting: an entrance, and a
+// rule growing back, move per frame, where a plain fade is only a colour
+// easing over most of a second.
 func (n notice) interval() time.Duration {
-	if n.entrance == NoticeAppear {
+	if _, back := n.returning(); n.entrance == NoticeAppear && !back {
 		return noticeInterval
 	}
 	return noticeFramed
@@ -124,6 +125,22 @@ type notice struct {
 	confirmation bool
 	shownAt      time.Time   // zero when nothing is showing
 	rule         color.Color // the line it parts; nil for the tab bar's divider
+
+	// back is how the rule returns once a plain notice's text has gone, and
+	// seed the order a dissolve fills in and the side a sweep starts from.
+	back flashsweep.ReturnStyle
+	seed int64
+}
+
+// newNotice is the notice msg asks for, parting rule (nil for the tab bar's
+// divider). How its rule returns is picked at random, so it varies.
+func newNotice(msg NoticeMsg, rule color.Color) notice {
+	return notice{
+		text: msg.Text, level: msg.Level, entrance: msg.Entrance, confirmation: msg.Confirmation,
+		shownAt: time.Now(), rule: rule,
+		back: flashsweep.ReturnStyles[rand.IntN(len(flashsweep.ReturnStyles))],
+		seed: rand.Int64(),
+	}
 }
 
 // ruleColor is the colour of the line the notice parts and closes back into.
@@ -179,11 +196,17 @@ func (n notice) returning() (float64, bool) {
 		return 0, false
 	}
 	since := time.Since(n.shownAt) - n.hold() - noticeFade
-	if since < 0 || since >= noticeReturn {
+	if since < 0 || since >= n.returnDuration() {
 		return 0, false
 	}
-	t := float64(since) / float64(noticeReturn)
+	t := float64(since) / float64(n.returnDuration())
 	return t * t * (3 - 2*t), true
+}
+
+// returnDuration is how long the rule takes to come back: longer for a
+// longer notice, since there is more of it to return.
+func (n notice) returnDuration() time.Duration {
+	return flashsweep.ReturnDuration(lipgloss.Width(n.label()))
 }
 
 // done reports that nothing of the notice is left on the rule.
@@ -193,7 +216,7 @@ func (n notice) done() bool {
 	}
 	end := n.openDuration() + n.hold() + noticeFade
 	if n.entrance == NoticeAppear {
-		end += noticeReturn
+		end += n.returnDuration()
 	}
 	return time.Since(n.shownAt) >= end
 }
@@ -262,8 +285,15 @@ func (n notice) render(run string) string {
 func (n notice) body(label string, strength float64) string {
 	if n.entrance == NoticeAppear {
 		if back, ok := n.returning(); ok {
-			rule := strings.Repeat(string(noticeRule), lipgloss.Width(label))
-			return lipgloss.NewStyle().Foreground(blendToward(backdrop(), n.ruleColor(), back)).Render(rule)
+			r := flashsweep.RuleReturn{
+				Style:    n.back,
+				Rule:     noticeRule,
+				Color:    flashsweep.FromColor(n.ruleColor()),
+				Backdrop: flashsweep.FromColor(backdrop()),
+				Flash:    flashsweep.FromColor(noticeColor(n.level)), // the glint echoes the notice
+				Seed:     n.seed,
+			}
+			return r.Draw(lipgloss.Width(label), float32(back))
 		}
 		return noticeStyle(n.level, strength).Render(label)
 	}

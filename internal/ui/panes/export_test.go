@@ -1,6 +1,7 @@
 package panes
 
 import (
+	"github.com/haasted/sonos-sandbox/internal/ui/flashsweep"
 	"image/color"
 	"time"
 )
@@ -73,10 +74,17 @@ func ModalSweepCorner(m Modal) (int, bool) { return m.sweep.at, m.sweep.clockwis
 // ModalBox renders just the box, without compositing it over anything.
 func ModalBox(m Modal) string { return m.box() }
 
-const (
-	NoticeFade   = noticeFade
-	NoticeReturn = noticeReturn
-)
+const NoticeFade = noticeFade
+
+// NoticeReturnOf is how long the current notice's rule takes to come back.
+func NoticeReturnOf(t Tabs) time.Duration { return t.notice.returnDuration() }
+
+// SetNoticeReturn fixes how the current notice's rule comes back, which is
+// otherwise picked at random.
+func SetNoticeReturn(t Tabs, style flashsweep.ReturnStyle) Tabs {
+	t.notice.back = style
+	return t
+}
 
 // SetNoticeElapsed rewinds the current notice so it reads as `elapsed` old.
 func SetNoticeElapsed(t Tabs, elapsed time.Duration) Tabs {

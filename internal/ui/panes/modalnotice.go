@@ -11,8 +11,7 @@ import (
 // draws one into its divider. The caller drives the frames, as it does the
 // border's other lights.
 func (m Modal) Notify(msg NoticeMsg) Modal {
-	m.notice = notice{text: msg.Text, level: msg.Level, entrance: msg.Entrance,
-		confirmation: msg.Confirmation, shownAt: time.Now(), rule: m.borderColor()}
+	m.notice = newNotice(msg, m.borderColor())
 	return m
 }
 

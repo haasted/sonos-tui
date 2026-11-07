@@ -254,8 +254,7 @@ func (t Tabs) Update(msg tea.Msg) (Tabs, tea.Cmd) {
 		if t.notice.blocks(msg) {
 			return t, nil
 		}
-		t.notice = notice{text: msg.Text, level: msg.Level, entrance: msg.Entrance,
-			confirmation: msg.Confirmation, shownAt: time.Now()}
+		t.notice = newNotice(msg, nil)
 		t.noticeGen = nextNoticeGen()
 		return t, noticeTick(t.noticeGen, t.notice.interval())
 
