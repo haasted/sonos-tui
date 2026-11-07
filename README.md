@@ -1,7 +1,7 @@
 # sonos-sandbox
 
 A terminal client for Sonos speakers that talks straight to them over your own
-network — no cloud, no account, nothing to log into.
+network — no cloud and no account needed to use it.
 
 Two things it is trying to be. **Fast**: it remembers the speakers it found last
 time, so your rooms are on screen before the network has finished answering, and
@@ -12,6 +12,40 @@ while it is open.
 
 Still a sandbox — it is also where the local Sonos API gets mapped out, and
 `SONOS-NOTES.md` is the field guide that has come out of that.
+
+## Principles
+
+Four rules every feature is held to. When a design has to bend one, that is a
+decision to make out loud, not a side effect.
+
+**Local first, cloud optional.** Everything the speakers can do on their own
+works without signing in to anything: playback, the queue, grouping,
+favourites, history, the local music library, radio that needs no account.
+Features that need Sonos's cloud or a music service's login — searching Apple
+Music, say — are additions you switch on by signing in, in one place, and can
+switch off again. Without them the rest of the program is whole: nothing waits
+for the cloud, and a cloud feature that fails takes only itself down, with a
+notice, never the program.
+
+**Fast and responsive.** A key acts at once. The program shows the result of a
+command before the speaker has confirmed it and corrects itself if the speaker
+disagrees, rather than making you watch a spinner. It remembers what it found
+last time, so your rooms are on screen before the network has answered. Slow
+work — the network, the database — happens in the background, never between a
+keypress and the screen.
+
+**Calm, uncluttered, and still.** The screen shows what you need and no more;
+anything else is a key away. Things do not jump around: a heading keeps its
+width as its contents change, a list keeps your place when it updates, a
+notice borrows the line it sits on rather than pushing the layout down, and an
+animation is brief and settles where it started. Motion is there to tell you
+something happened, not to decorate.
+
+**Keyboard first.** Everything can be done from the keyboard, without reaching
+for the mouse. Keys are short, mirror each other where they can (a key and its
+capital do related things), mean the same thing in every list, and are listed
+under `?` wherever you are. The mouse is welcome where it is natural, like
+scrolling a list, but never required.
 
 ## Layout
 
