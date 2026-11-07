@@ -429,7 +429,7 @@ func (f favouritesContent) headingParts() []headingPart {
 	before, after := f.neighbours()
 	right := []headingPart{
 		{text: "‹", style: favouritesArrowStyle(before)},
-		{text: " " + favouriteKindNames[f.kind] + " ", style: favouritesHeadingStyle()},
+		{text: " " + favouriteKindNames[f.kind] + " ", style: favouritesKindStyle()},
 		{text: "›", style: favouritesArrowStyle(after)},
 	}
 	// The count goes first when the box is too narrow for all of it: the
@@ -491,6 +491,14 @@ func favouritesBorderColor() color.Color {
 
 func favouritesHeadingStyle() lipgloss.Style {
 	return lipgloss.NewStyle().Bold(true).Foreground(favouritesBorderColor())
+}
+
+// favouritesKindStyle draws the media type in the border's rose taken nearly
+// to white, or to its deepest on a light ground, so it stands out from the
+// rose text beside it: it is what ← and → change, and what the list holds.
+func favouritesKindStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Bold(true).
+		Foreground(theme.LightDark(lipgloss.Color("#831843"), lipgloss.Color("#FCE7F3")))
 }
 
 // favouritesArrowStyle sets ‹ and › apart from the name between them: white

@@ -118,7 +118,8 @@ func TestFavourites_AnArrowWithNowhereToGoIsSubdued(t *testing.T) {
 	}
 	assert.Equal(t, themedArrowLit(), styles["‹"].style.GetForeground(), "‹ leads back to tracks and is not lit")
 	assert.Equal(t, themedArrowRest(), styles["›"].style.GetForeground(), "› leads nowhere and is not subdued")
-	assert.Equal(t, favouritesBorderColor(), styles["Playlists"].style.GetForeground(), "the name lost the heading colour")
+	assert.NotEqual(t, favouritesBorderColor(), styles["Playlists"].style.GetForeground(), "the name does not stand out from the heading")
+	assert.Equal(t, lipgloss.NoColor{}, styles["Playlists"].style.GetBackground(), "the name has a background")
 }
 
 // Case: every type, in a box of one width. The heading fills the box on
