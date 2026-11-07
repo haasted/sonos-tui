@@ -428,9 +428,9 @@ func (f favouritesContent) headingParts() []headingPart {
 
 	before, after := f.neighbours()
 	right := []headingPart{
-		{text: "‹", style: favouritesArrowStyle(before)},
+		{text: "‹", style: f.arrowStyle(before, bumpLeft)},
 		{text: " " + favouriteKindNames[f.kind] + " ", style: favouritesKindStyle()},
-		{text: "›", style: favouritesArrowStyle(after)},
+		{text: "›", style: f.arrowStyle(after, bumpRight)},
 	}
 	// The count goes first when the box is too narrow for all of it: the
 	// type is what ← and → change, so it stays in view longest.
@@ -491,6 +491,16 @@ func favouritesBorderColor() color.Color {
 
 func favouritesHeadingStyle() lipgloss.Style {
 	return lipgloss.NewStyle().Bold(true).Foreground(favouritesBorderColor())
+}
+
+// arrowStyle is how an arrow is drawn: lit or subdued as it can be used,
+// and, while a press against its side lights that border, in the same colour
+// and cooling with it, so the arrow answers the press too.
+func (f favouritesContent) arrowStyle(usable bool, side bumpEdge) lipgloss.Style {
+	if heat := f.heat(); f.edge == side && heat >= bumpVisibleAt {
+		return lipgloss.NewStyle().Bold(true).Foreground(bumpColour(heat))
+	}
+	return favouritesArrowStyle(usable)
 }
 
 // favouritesKindStyle draws the media type in the border's rose taken nearly

@@ -122,6 +122,22 @@ func TestFavourites_AnArrowWithNowhereToGoIsSubdued(t *testing.T) {
 	assert.Equal(t, lipgloss.NoColor{}, styles["Playlists"].style.GetBackground(), "the name has a background")
 }
 
+// Case: → on the last type. The subdued › flashes in the border's bump
+// colour, as the right border does, and ‹ stays as it was; once the bump has
+// cooled, › is subdued again.
+func TestFavourites_APressedArrowFlashesWithTheBorder(t *testing.T) {
+	model, _ := loadedFavourites(store.FavouritePlaylist).Update(keyMsgFor("right"))
+	f := model.(favouritesContent)
+
+	styles := arrowStyles(f)
+	assert.NotEqual(t, themedArrowRest(), styles["›"].GetForeground(), "› stayed subdued through the press")
+	assert.True(t, f.lights(panes.ModalRight), "the right border did not light with it")
+	assert.Equal(t, themedArrowLit(), styles["‹"].GetForeground(), "‹ changed though nothing pressed against it")
+
+	f.bumpedAt = time.Now().Add(-2 * bumpDuration)
+	assert.Equal(t, themedArrowRest(), arrowStyles(f)["›"].GetForeground(), "› stayed lit after the bump cooled")
+}
+
 // Case: every type, in a box of one width. The heading fills the box on
 // every one, so the type's right edge never moves as ← and → switch.
 func TestFavourites_TheHeadingKeepsOneWidthAcrossTypes(t *testing.T) {
@@ -278,6 +294,17 @@ func TestFavourites_ReadsAndRemembersThroughTheDatabase(t *testing.T) {
 	kind, err := db.Settings().Get(t.Context(), store.SettingFavouritesKind, "")
 	require.NoError(t, err)
 	assert.Equal(t, string(store.FavouriteStation), kind)
+}
+
+// arrowStyles is the heading's two arrows by glyph.
+func arrowStyles(f favouritesContent) map[string]lipgloss.Style {
+	styles := map[string]lipgloss.Style{}
+	for _, part := range f.headingParts() {
+		if part.text == "‹" || part.text == "›" {
+			styles[part.text] = part.style
+		}
+	}
+	return styles
 }
 
 // stationsHeading is the heading of a list of n stations with room to spare.
