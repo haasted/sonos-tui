@@ -172,6 +172,24 @@ func TestFavourites_RemoveDeletesOneRow(t *testing.T) {
 	assert.Equal(t, stored[1].ID, left[0].ID)
 }
 
+// Case: a removed favourite restored. It is back with its id and added
+// time; restoring it a second time fails, as its id is taken.
+func TestFavourites_RestoreKeepsTheIdAndTime(t *testing.T) {
+	s := openTemp(t)
+	_, err := s.Favourites().Add(t.Context(), playlistFavourite(time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)))
+	require.NoError(t, err)
+	stored, err := s.Favourites().List(t.Context())
+	require.NoError(t, err)
+	require.NoError(t, s.Favourites().Remove(t.Context(), stored[0].ID))
+
+	require.NoError(t, s.Favourites().Restore(t.Context(), stored[0]))
+	assert.Error(t, s.Favourites().Restore(t.Context(), stored[0]))
+
+	back, err := s.Favourites().List(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, stored, back)
+}
+
 // Case: asking which favourites are stored. One stored and one not answer
 // true and false, in the order asked.
 func TestFavourites_StoredSaysWhichAreThere(t *testing.T) {

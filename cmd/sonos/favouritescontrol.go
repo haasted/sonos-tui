@@ -64,8 +64,10 @@ const favouriteNothingToMark = "nothing here can be marked as a favourite"
 
 // What removing a favourite answers, in the queue's words for a removed track.
 const (
-	favouriteRemoved      = "removed"
-	favouriteRemoveFailed = "could not remove the favourite"
+	favouriteRemoved       = "removed"
+	favouriteRemoveFailed  = "could not remove the favourite"
+	favouriteRestored      = "restored"
+	favouriteRestoreFailed = "could not restore the favourite"
 )
 
 // openFavourites opens the favourites modal and reads what it lists. Every
@@ -308,6 +310,31 @@ func (m appModel) applyFavouriteFaded(msg favouriteFadedMsg) (tea.Model, tea.Cmd
 	content, cmd := content.faded(msg.gen)
 	m.favourites.Content = content
 	return m, cmd
+}
+
+// applyFavouriteArrived ends the fade of a favourite put back, if the modal
+// is still open to show it.
+func (m appModel) applyFavouriteArrived(msg favouriteArrivedMsg) (tea.Model, tea.Cmd) {
+	if content, ok := m.favourites.Content.(favouritesContent); ok && m.favourites.IsOpen() {
+		m.favourites.Content = content.arrived(msg.gen)
+	}
+	return m, nil
+}
+
+// applyFavouriteRestore stores a favourite put back, in the background. A
+// failed store leaves it off the list on the next open.
+func (m appModel) applyFavouriteRestore(msg favouriteRestoreMsg) (tea.Model, tea.Cmd) {
+	db, ctx, fav := m.db, m.ctx, msg.favourite
+	return m, func() tea.Msg {
+		if db == nil {
+			return panes.NoticeMsg{Level: panes.NoticeError, Text: favouriteRestoreFailed + ": " + errNoStore.Error()}
+		}
+		if err := db.Favourites().Restore(ctx, fav); err != nil {
+			slog.Warn("restoring a favourite failed", "favourite", fav.Title, "err", err)
+			return panes.NoticeMsg{Level: panes.NoticeError, Text: favouriteRestoreFailed}
+		}
+		return panes.NoticeMsg{Level: panes.NoticeInfo, Text: favouriteRestored, Confirmation: true}
+	}
 }
 
 // applyFavouriteRemove deletes a removed favourite in the background. A

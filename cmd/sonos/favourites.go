@@ -75,6 +75,14 @@ type (
 	// it out on its own.
 	favouriteRemoveMsg struct{ favourite store.Favourite }
 
+	// favouriteRestoreMsg asks for a removed favourite to be stored again,
+	// with its id and added time, so it is back in its old place.
+	favouriteRestoreMsg struct{ favourite store.Favourite }
+
+	// favouriteArrivedMsg ends the fade of a favourite put back. It carries
+	// the generation of the last press, so an earlier press's tick is ignored.
+	favouriteArrivedMsg struct{ gen int }
+
 	// favouriteFadedMsg ends the fade of the favourites removed. It carries
 	// the generation of the last press, so an earlier press's tick is ignored.
 	favouriteFadedMsg struct{ gen int }
@@ -95,6 +103,9 @@ type favouritesContent struct {
 	kind      store.FavouriteKind // the media type on screen; empty with no favourites
 	going     []int64             // ids removed and still fading on the list
 	goingGen  int                 // the generation of the last removal's fade
+	removed   []store.Favourite   // removed while the modal is open, the last on top
+	coming    int64               // the id put back and still fading in; 0 for none
+	comingGen int                 // the generation of the last put back's fade
 	loading   bool
 	err       error
 }
@@ -153,6 +164,8 @@ func (f favouritesContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return f, f.ask(favouriteAddToQueue)
 	case "x", "delete":
 		return f.remove()
+	case "X":
+		return f.restore()
 	case "/":
 		f.listView = f.openFilter(favouritesFilter)
 	case "esc":
@@ -219,6 +232,7 @@ func (f favouritesContent) remove() (favouritesContent, tea.Cmd) {
 	}
 	gone := f.items[f.cursor]
 	f.going = append(slices.Clone(f.going), gone.ID)
+	f.removed = append(slices.Clone(f.removed), gone)
 	f.cursor = f.restingRow(f.cursor)
 	f.listView = f.follow()
 
@@ -227,6 +241,61 @@ func (f favouritesContent) remove() (favouritesContent, tea.Cmd) {
 	return f, tea.Batch(
 		func() tea.Msg { return favouriteRemoveMsg{favourite: gone} },
 		tea.Tick(favouriteRemoveFade, func(time.Time) tea.Msg { return favouriteFadedMsg{gen: gen} }))
+}
+
+// restore puts back the favourite removed last, on its own media type and in
+// its old place, with the cursor on it. It fades in for favouriteRemoveFade,
+// the fade of a removal run backwards.
+func (f favouritesContent) restore() (favouritesContent, tea.Cmd) {
+	if len(f.removed) == 0 {
+		return f, nil
+	}
+	f, _ = f.settle()
+	back := f.removed[len(f.removed)-1]
+	f.removed = f.removed[:len(f.removed)-1]
+
+	at := slices.IndexFunc(f.everyKind, func(fav store.Favourite) bool { return listedBefore(back, fav) })
+	if at < 0 {
+		at = len(f.everyKind)
+	}
+	f.everyKind = slices.Insert(slices.Clone(f.everyKind), at, back)
+
+	cmds := []tea.Cmd{func() tea.Msg { return favouriteRestoreMsg{favourite: back} }}
+	if f.kind != back.Kind {
+		f.kind = back.Kind
+		chosen := f.kind
+		cmds = append(cmds, func() tea.Msg { return favouriteKindChosenMsg{kind: chosen} })
+	}
+	f = f.show()
+	// A filter that hides the favourite put back is closed, so it is seen.
+	if !slices.ContainsFunc(f.items, func(fav store.Favourite) bool { return fav.ID == back.ID }) {
+		f.listView = f.closeFilter(favouritesFilter)
+	}
+	f.cursor = slices.IndexFunc(f.items, func(fav store.Favourite) bool { return fav.ID == back.ID })
+	f.listView = f.follow()
+
+	f.coming, f.comingGen = back.ID, nextGen()
+	gen := f.comingGen
+	cmds = append(cmds, tea.Tick(favouriteRemoveFade, func(time.Time) tea.Msg { return favouriteArrivedMsg{gen: gen} }))
+	return f, tea.Batch(cmds...)
+}
+
+// arrived ends the fade of the favourite put back, if no later press has
+// started another.
+func (f favouritesContent) arrived(gen int) favouritesContent {
+	if gen == f.comingGen {
+		f.coming, f.comingGen = 0, 0
+	}
+	return f
+}
+
+// listedBefore reports whether a comes before b in the list: newest first,
+// and the higher id first at the same time, as the store lists them.
+func listedBefore(a, b store.Favourite) bool {
+	if !a.AddedAt.Equal(b.AddedAt) {
+		return a.AddedAt.After(b.AddedAt)
+	}
+	return a.ID > b.ID
 }
 
 // faded takes the removed favourites off the list once the last press's fade
@@ -390,7 +459,7 @@ func (f favouritesContent) View() tea.View {
 
 	return tea.NewView(f.render(f.headingParts(), f.note(), func(index int, fav store.Favourite, arrow string) string {
 		style := queueRowStyle()
-		if f.isGoing(fav) {
+		if f.isGoing(fav) || fav.ID == f.coming {
 			style = style.Foreground(themedGoingColor()).Bold(false)
 		}
 		return f.drawRow(index, fav.Title, fav.Artist, [2]int{title, artist}, style, arrow, false)

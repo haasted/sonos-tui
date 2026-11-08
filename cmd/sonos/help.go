@@ -121,6 +121,7 @@ var favouritesHelp = helpTable{
 			{"n", "play next"},
 			{"N", "add to the end of the queue"},
 			{"x  delete", "remove a favourite"},
+			{"X", "restore the last favourite removed"},
 			{"/", "filter the list"},
 			{"esc", "close"},
 		}},

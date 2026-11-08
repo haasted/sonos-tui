@@ -101,6 +101,21 @@ func (f *Favourites) Remove(ctx context.Context, id int64) error {
 	return nil
 }
 
+// Restore stores a removed favourite again, with its id and added time, so
+// it is back in its old place. It fails if another favourite holds its id or
+// its service, account and item id.
+func (f *Favourites) Restore(ctx context.Context, fav Favourite) error {
+	if _, err := f.db.ExecContext(ctx, `
+		INSERT INTO favourite
+			(id, kind, title, artist, album, uri, metadata, service, account, item_id, added_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		fav.ID, fav.Kind, fav.Title, fav.Artist, fav.Album, fav.URI, fav.Metadata,
+		fav.Service, fav.Account, fav.ItemID, formatTime(fav.AddedAt)); err != nil {
+		return fmt.Errorf("restoring favourite %q: %w", fav.Title, err)
+	}
+	return nil
+}
+
 // List returns every favourite, newest first.
 func (f *Favourites) List(ctx context.Context) ([]Favourite, error) {
 	rows, err := f.db.QueryContext(ctx, `
