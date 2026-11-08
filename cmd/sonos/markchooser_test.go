@@ -63,13 +63,33 @@ func TestMarkChooser_OffersTheTrackThenThePlaylistOrAlbum(t *testing.T) {
 	assert.Equal(t, []string{"Track: Seek & Destroy", "Playlist: Kill 'Em All playlist"}, rowLabels(rows))
 	assert.Equal(t, store.FavouritePlaylist, rows[1].fav.Kind)
 
-	album := playlistSource()
-	album.Class, album.Title, album.Creator = "object.container.album.musicAlbum", "Kill 'Em All", "Metallica"
-	album.URI = "x-rincon-cpcontainer:00040000album%3a1440873900?sid=204&flags=0&sn=2"
-	rows = markRowsFor(serviceTrack(), album, time.Now())
+	rows = markRowsFor(serviceTrack(), albumSource("Metallica"), time.Now())
 	assert.Equal(t, []string{"Track: Seek & Destroy", "Album: Kill 'Em All"}, rowLabels(rows))
 	assert.Equal(t, store.FavouriteAlbum, rows[1].fav.Kind)
 	assert.Equal(t, "Metallica", rows[1].fav.Artist)
+}
+
+// Case: a in a queue started from an album the speaker named no artist for.
+// The album gets the artist its queued tracks share.
+func TestMarkChooser_AnAlbumGetsTheArtistOfItsTracks(t *testing.T) {
+	q := navQueue(20, 4)
+	q.source = albumSource("")
+
+	_, cmd := q.Update(keyMsgFor("a"))
+
+	require.NotNil(t, cmd)
+	assert.Equal(t, "An Artist", cmd().(favouriteChooseMsg).source.Creator)
+}
+
+// Case: an album the speaker named an artist for. That artist is kept.
+func TestMarkChooser_AnAlbumKeepsTheArtistTheSpeakerNamed(t *testing.T) {
+	q := navQueue(20, 4)
+	q.source = albumSource("Metallica")
+
+	_, cmd := q.Update(keyMsgFor("a"))
+
+	require.NotNil(t, cmd)
+	assert.Equal(t, "Metallica", cmd().(favouriteChooseMsg).source.Creator)
 }
 
 // Case: the playlist's row as stored. Its service, account and id come from
@@ -209,6 +229,15 @@ func playlistSource() sonos.QueueSource {
 			`<desc id="cdudn" nameSpace="urn:schemas-rinconnetworks-com:metadata-1-0/">SA_RINCON52231_X_#Svc52231-0-Token</desc>` +
 			`<upnp:albumArtURI>https://example.com/art.png</upnp:albumArtURI></item></DIDL-Lite>`,
 	}
+}
+
+// albumSource is an Apple Music album a queue was started from, with the
+// artist the speaker named for it, if any.
+func albumSource(artist string) sonos.QueueSource {
+	album := playlistSource()
+	album.Class, album.Title, album.Creator = "object.container.album.musicAlbum", "Kill 'Em All", artist
+	album.URI = "x-rincon-cpcontainer:00040000album%3a1440873900?sid=204&flags=0&sn=2"
+	return album
 }
 
 func rowLabels(rows []markRow) []string {

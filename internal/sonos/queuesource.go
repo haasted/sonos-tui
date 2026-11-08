@@ -1,5 +1,10 @@
 package sonos
 
+import "slices"
+
+// VariousArtists is the artist of an album whose tracks share no artist.
+const VariousArtists = "Various Artists"
+
 // QueueSource is the playlist or album a speaker's queue was last started
 // from, as the speaker reports it in r:EnqueuedTransportURI and its metadata.
 // Only a replace changes it: an album added to the end later is not named, so
@@ -21,4 +26,31 @@ func (s QueueSource) Kind() (ContainerKind, bool) {
 		}
 	}
 	return "", false
+}
+
+// AlbumArtist is the artist that more than half of an album's tracks share,
+// or VariousArtists when no artist does. Only the tracks from the album are
+// counted, if any are; a queue can hold tracks added after it.
+func AlbumArtist(album string, tracks []TrackMetadata) string {
+	from := slices.DeleteFunc(slices.Clone(tracks), func(t TrackMetadata) bool { return t.Album != album })
+	if len(from) == 0 {
+		from = tracks
+	}
+	counts := map[string]int{}
+	known := 0
+	for _, track := range from {
+		if track.Artist != "" {
+			counts[track.Artist]++
+			known++
+		}
+	}
+	if known == 0 {
+		return ""
+	}
+	for artist, count := range counts {
+		if count*2 > known {
+			return artist
+		}
+	}
+	return VariousArtists
 }

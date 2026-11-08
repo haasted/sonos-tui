@@ -101,6 +101,45 @@ func TestQueueSource_AnotherPlaylistReplacesIt(t *testing.T) {
 	assert.Equal(t, "Ordensduks i Ingenmandsland", device.State().QueueSource.Title)
 }
 
+// Case: a real album, captured from a speaker started by the Sonos app. The
+// app names no artist for it, so one must come from somewhere else.
+func TestQueueSource_TheSonosAppNamesNoArtistForAnAlbum(t *testing.T) {
+	event, err := sonos.ParseAVTransportEvent(fixture(t, "avtransport_queue_album.xml"))
+	require.NoError(t, err)
+
+	assert.Equal(t, "Ordensduks i Ingenmandsland", event.QueueSource.Title)
+	assert.Empty(t, event.QueueSource.Creator)
+}
+
+// Case: the artist an album's tracks share. All alike or more than half
+// alike picks that artist; no such artist is Various Artists.
+func TestAlbumArtist_IsTheArtistMostTracksShare(t *testing.T) {
+	cases := map[string]struct {
+		artists []string
+		want    string
+	}{
+		"all the same":   {[]string{"Mumford & Sons", "Mumford & Sons", "Mumford & Sons"}, "Mumford & Sons"},
+		"more than half": {[]string{"Mumford & Sons", "Mumford & Sons", "Guest"}, "Mumford & Sons"},
+		"exactly half":   {[]string{"A", "A", "B", "C"}, sonos.VariousArtists},
+		"all different":  {[]string{"A", "B", "C"}, sonos.VariousArtists},
+		"blanks ignored": {[]string{"A", "", ""}, "A"},
+		"no artist":      {[]string{"", ""}, ""},
+		"no tracks":      {nil, ""},
+	}
+	for name, c := range cases {
+		assert.Equal(t, c.want, sonos.AlbumArtist("Sigh No More", albumTracks("Sigh No More", c.artists...)), name)
+	}
+}
+
+// Case: tracks added to the queue after the album. Only the album's own
+// tracks count; with none of them in the queue, every track counts.
+func TestAlbumArtist_CountsOnlyTheAlbumsTracks(t *testing.T) {
+	tracks := append(albumTracks("Sigh No More", "Mumford & Sons"), albumTracks("Other", "X", "X", "X")...)
+	assert.Equal(t, "Mumford & Sons", sonos.AlbumArtist("Sigh No More", tracks))
+
+	assert.Equal(t, "X", sonos.AlbumArtist("Not queued", tracks))
+}
+
 // replayDevice handles real captures, which carry no position: the handler
 // asks the speaker for one, and this speaker refuses, as an unreachable one
 // would. The handler logs that and carries on.
@@ -114,4 +153,13 @@ func replayDevice(t *testing.T) *sonos.Device {
 
 	return sonos.NewDeviceWithClient(sonos.Speaker{IP: "192.168.1.10"},
 		&sonos.SonosClient{BaseURL: server.URL, HTTPClient: server.Client()})
+}
+
+// albumTracks is one track from album for each artist given.
+func albumTracks(album string, artists ...string) []sonos.TrackMetadata {
+	tracks := make([]sonos.TrackMetadata, len(artists))
+	for i, artist := range artists {
+		tracks[i] = sonos.TrackMetadata{Title: "Track", Artist: artist, Album: album}
+	}
+	return tracks
 }

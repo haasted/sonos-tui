@@ -1046,7 +1046,7 @@ func (q queueContent) markFavourites() (queueContent, tea.Cmd) {
 		// and a chooser asks which; with nothing else to offer, no chooser.
 		track := q.items[q.cursor].TrackMetadata
 		if markableSource(q.source) {
-			source := q.source
+			source := withAlbumArtist(q.source, q.everything())
 			return q, func() tea.Msg { return favouriteChooseMsg{track: track, source: source} }
 		}
 		tracks = []sonos.TrackMetadata{track}

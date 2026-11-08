@@ -2,7 +2,11 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -58,6 +62,22 @@ func TestMarkPlayer_AQueueTrackOpensTheChooser(t *testing.T) {
 		rowLabels(m.marking.Content.(markContent).rows))
 }
 
+// Case: a on the player while the queue plays an album, from a real capture
+// that names no artist for it. The queue is read, and the album gets the
+// artist most of its tracks share.
+func TestMarkPlayer_AnAlbumGetsTheArtistOfItsTracks(t *testing.T) {
+	device := albumQueueDevice(t, "Ordensduks i Ingenmandsland", "Lars H.U.G.", "Lars H.U.G.", "Guest")
+	m := playerOn(t, device, "avtransport_queue_album.xml")
+
+	model, cmd := m.Update(keyMsgFor("a"))
+	require.NotNil(t, cmd)
+	msg := cmd().(favouriteChooseMsg)
+	m = choose(t, model.(appModel), msg)
+
+	assert.Equal(t, "Lars H.U.G.", msg.source.Creator)
+	assert.Contains(t, rowLabels(m.marking.Content.(markContent).rows), "Album: Ordensduks i Ingenmandsland")
+}
+
 // Case: a on line-in, which no favourite can hold. A notice says so.
 func TestMarkPlayer_LineInCannotBeMarked(t *testing.T) {
 	m, device, _ := withQueueServer(t, 1)
@@ -74,13 +94,48 @@ func TestMarkPlayer_LineInCannotBeMarked(t *testing.T) {
 func playerPlaying(t *testing.T, capture string) (appModel, *store.Store) {
 	t.Helper()
 	m, device, _ := withQueueServer(t, 40)
+	m = playerOn(t, device, capture)
+	return m, m.db
+}
+
+// playerOn is the player on device, after it has sent the captured
+// AVTransport event in testdata, with a database of its own.
+func playerOn(t *testing.T, device *sonos.Device, capture string) appModel {
+	t.Helper()
+	m := sizedModel(t)
+	m.tabs.Active = 0
+	m.tabs.Items[0].Content = newSpeakerModel(context.Background(), device)
 	body, err := os.ReadFile("../../internal/sonos/testdata/" + capture)
 	require.NoError(t, err)
 	require.NoError(t, device.HandleAVTransportEvent(context.Background(), body))
 	<-device.Events()
 
 	m.db = openTestStore(t)
-	return resize(m), m.db
+	return resize(m)
+}
+
+// albumQueueDevice is a speaker whose queue holds one track from album for
+// each artist given.
+func albumQueueDevice(t *testing.T, album string, artists ...string) *sonos.Device {
+	t.Helper()
+	var didl strings.Builder
+	didl.WriteString(`<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/">`)
+	for i, artist := range artists {
+		fmt.Fprintf(&didl, `<item id="Q:0/%d"><dc:title>Track %d</dc:title><dc:creator>%s</dc:creator>`+
+			`<upnp:album>%s</upnp:album></item>`, i+1, i+1, artist, album)
+	}
+	didl.WriteString(`</DIDL-Lite>`)
+	escaped := strings.NewReplacer("<", "&lt;", ">", "&gt;", `"`, "&quot;").Replace(didl.String())
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">`+
+			`<s:Body><u:BrowseResponse xmlns:u="urn:schemas-upnp-org:service:ContentDirectory:1">`+
+			`<Result>%s</Result><NumberReturned>%d</NumberReturned><TotalMatches>%d</TotalMatches>`+
+			`<UpdateID>3</UpdateID></u:BrowseResponse></s:Body></s:Envelope>`, escaped, len(artists), len(artists))
+	}))
+	t.Cleanup(server.Close)
+	return sonos.NewDeviceWithClient(sonos.Speaker{IP: "192.168.1.10"},
+		&sonos.SonosClient{BaseURL: server.URL, HTTPClient: server.Client()})
 }
 
 // playSource has a speaker report that it plays uri.

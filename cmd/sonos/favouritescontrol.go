@@ -374,6 +374,9 @@ func (m appModel) markNowPlaying() (tea.Model, tea.Cmd) {
 		if state.Source.IsQueue() {
 			source = state.QueueSource
 		}
+		if needsAlbumArtist(source) {
+			return m, chooseWithQueueArtist(speaker, state.Current, source)
+		}
 		return m.applyFavouriteChoose(favouriteChooseMsg{track: state.Current, source: source})
 	}
 	return m, notify(panes.NoticeInfo, favouriteNothingToMark)
@@ -421,6 +424,40 @@ func sourceFavourite(source sonos.QueueSource, now time.Time) (store.Favourite, 
 		fav.Kind, fav.Artist = store.FavouriteAlbum, source.Creator
 	}
 	return fav, true
+}
+
+// needsAlbumArtist reports whether the source is an album the speaker named
+// no artist for. The Sonos app leaves the artist out when it starts one.
+func needsAlbumArtist(source sonos.QueueSource) bool {
+	kind, _ := source.Kind()
+	return kind == sonos.ContainerAlbum && source.Creator == ""
+}
+
+// withAlbumArtist gives an album with no artist the one its queued tracks
+// share. Any other source is returned as it is.
+func withAlbumArtist(source sonos.QueueSource, items []sonos.QueueItem) sonos.QueueSource {
+	if needsAlbumArtist(source) {
+		tracks := make([]sonos.TrackMetadata, len(items))
+		for i, item := range items {
+			tracks[i] = item.TrackMetadata
+		}
+		source.Creator = sonos.AlbumArtist(source.Title, tracks)
+	}
+	return source
+}
+
+// chooseWithQueueArtist reads the speaker's queue for the album's artist,
+// then asks what to mark. Without the queue the album has no artist.
+func chooseWithQueueArtist(speaker speakerModel, track sonos.TrackMetadata, source sonos.QueueSource) tea.Cmd {
+	device := speaker.transport()
+	return func() tea.Msg {
+		if queue, err := device.Queue(speaker.ctx); err == nil {
+			source = withAlbumArtist(source, queue.Items)
+		} else {
+			slog.Warn("could not read the queue for the album's artist", "err", err)
+		}
+		return favouriteChooseMsg{track: track, source: source}
+	}
 }
 
 // markableSource reports whether the queue's playlist or album can be marked.
