@@ -10,7 +10,7 @@ If anything in a task or my instructions is ambigious or under-specifed, ask for
 
 ## Architecture
 
-The application's foundational principles are in the "Principles" section of `README.md`: local first and cloud optional, fast and responsive, a calm UI that does not jump around, and keyboard first. Read them before designing a feature and hold every design to them. When a design or a request conflicts with one, say so and ask before going ahead.
+The application's foundational principles are in the "Principles" section of `README.md`: local first and cloud optional, private (local session, no metrics, no surveillance), fast and responsive, a calm UI that does not jump around, and keyboard first. Read them before designing a feature and hold every design to them. When a design or a request conflicts with one, say so and ask before going ahead.
 
 When working on generic functionality or utilities, consider whether it's possible to solve by adding a well-tested and proven dependency.
 

@@ -15,7 +15,7 @@ Still a sandbox — it is also where the local Sonos API gets mapped out, and
 
 ## Principles
 
-Four rules every feature is held to. When a design has to bend one, that is a
+Five rules every feature is held to. When a design has to bend one, that is a
 decision to make out loud, not a side effect.
 
 **Local first, cloud optional.** Everything the speakers can do on their own
@@ -26,6 +26,13 @@ Music, say — are additions you switch on by signing in, in one place, and can
 switch off again. Without them the rest of the program is whole: nothing waits
 for the cloud, and a cloud feature that fails takes only itself down, with a
 notice, never the program.
+
+**Private.** What you play and what you do stays on your machine. A cloud
+session, once you sign in, is kept locally and goes only to the service it
+belongs to; your password is not stored, and no secret is written to a log.
+There are no metrics, no telemetry and no crash reports sent anywhere, and
+nothing watches how you use the program. Your history and favourites are a
+file on your own disk, for you alone.
 
 **Fast and responsive.** A key acts at once. The program shows the result of a
 command before the speaker has confirmed it and corrects itself if the speaker
