@@ -1,4 +1,4 @@
-.PHONY: build fmt fmt-check vet tidy-check test test-verbose test-race test-live run run-logs run-nocache db queue-events notify-capture discover-probe music-services uitest worktrees tidy adr-html help
+.PHONY: build fmt fmt-check vet tidy-check test test-verbose test-race test-live run run-logs run-nocache db queue-events notify-capture discover-probe music-services sonos-web uitest worktrees tidy adr-html help
 
 .DEFAULT_GOAL := help
 
@@ -64,6 +64,9 @@ discover-probe: ## Look for speakers for 10s by SSDP and mDNS on every interface
 
 music-services: ## List the music services one speaker offers (MUSIC_ARGS=-ip=<address>)
 	cd experiments && go run ./musicservices $(MUSIC_ARGS)
+
+sonos-web: ## Sign in to the Sonos web app, asking for the account (WEB_ARGS=-fresh signs in again)
+	cd experiments && go run ./sonosweb $(WEB_ARGS)
 
 run-logs: ## Run the CLI and print the logs once it exits
 	go run ./cmd/sonos -logs

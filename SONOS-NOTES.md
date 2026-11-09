@@ -8,6 +8,7 @@ longer carries; the captures stand, the flag does not. The earliest
 findings here predate that flag and came from the retired `cmd/listening`.
 
 Design *decisions* live in `ADRs/`. This file is for observed facts.
+Findings about the Sonos cloud and the web app are in `SONOS-CLOUD-NOTES.md`.
 
 ## How tracks are identified
 

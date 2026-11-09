@@ -30,6 +30,11 @@ production code never imports from here.
   authentication type and endpoint. Marks the ones that stream here: no account
   needed, or an account seen in the favourites or the queue. Needs
   real speakers; see `make music-services` (`MUSIC_ARGS=-ip=<address>`).
+- `sonosweb/` — signs in to the Sonos web app, play.sonos.com, with Colly
+  (`github.com/gocolly/colly/v2`) as an ordinary browser would, and asks for
+  the account in the terminal. Keeps the session in
+  `~/.config/sonos-sandbox/web-session` (mode 0600) and prints no secret. Needs
+  the internet, not speakers; see `make sonos-web` (`WEB_ARGS=-fresh`).
 - `coverart/` — evaluates `github.com/blacktop/go-termimg` and
   `github.com/BourgeoisBear/rasterm` for rendering album art in the terminal.
   Runs against fixture images in `data/`, no live speaker calls.
