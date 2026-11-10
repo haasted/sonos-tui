@@ -52,6 +52,11 @@ func DefaultPath() (string, error) {
 // Open opens the database at path, creating the file and its directory if
 // they are absent, and brings the schema up to date before returning.
 func Open(ctx context.Context, path string) (*Store, error) {
+	// A relative path in a file: URI reads as a host name, so make it absolute.
+	path, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("locating %s: %w", path, err)
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("creating database directory: %w", err)
 	}

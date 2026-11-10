@@ -62,6 +62,18 @@ func TestOpen_APathWithASpaceOpens(t *testing.T) {
 	assert.FileExists(t, path, "the database must be at the path asked for, not at a prefix of it")
 }
 
+// Case: a relative path, as -db takes from the command line. It opens in
+// the working directory, rather than reading the first part as a host.
+func TestOpen_ARelativePathOpens(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	s, err := Open(t.Context(), filepath.Join("demos", "bin", "sonos.db"))
+	require.NoError(t, err)
+	defer s.Close()
+
+	assert.FileExists(t, filepath.Join("demos", "bin", "sonos.db"))
+}
+
 // Case: the pragmas, on a connection the pool opened later. They are set
 // through the DSN for exactly this reason -- an Exec would have reached the
 // first connection only.
