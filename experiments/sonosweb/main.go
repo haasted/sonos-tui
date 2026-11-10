@@ -92,6 +92,22 @@ type searchOptions struct {
 	count     int    // how many results the search of one service asks for
 }
 
+// resolved fills in the household from the Control API when none is given.
+func (opts searchOptions) resolved() (searchOptions, error) {
+	if opts.household != "" {
+		return opts, nil
+	}
+	households, err := b.households()
+	if err != nil {
+		return opts, err
+	}
+	if len(households) != 1 {
+		return opts, fmt.Errorf("the account has %d households; pass -household", len(households))
+	}
+	opts.household = households[0].ID
+	return opts, nil
+}
+
 // savedCookie is one session cookie as the session file holds it.
 type savedCookie struct {
 	Name    string    `json:"name"`
@@ -107,22 +123,26 @@ func main() {
 	flag.StringVar(&search.services, "services", "52231", "service ids to search, comma separated; 52231 is Apple Music")
 	flag.IntVar(&search.account, "account", 0, "the account (sn= in a service URI) to search one service alone; 0 searches across services")
 	flag.IntVar(&search.count, "count", 50, "how many results to ask for when searching one service alone")
+	interactive := flag.Bool("interactive", false, "ask for search queries in the terminal, one after the other; needs -account")
 	flag.Parse()
 
-	if err := run(*fresh, search); err != nil {
+	if err := run(*fresh, *interactive, search); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
 }
 
-func run(fresh bool, search searchOptions) error {
+func run(fresh, interactive bool, search searchOptions) error {
 	if err := signedIn(fresh); err != nil {
 		return err
 	}
-	if search.query == "" {
-		return nil
+	switch {
+	case interactive:
+		return console(search)
+	case search.query != "":
+		return b.search(search)
 	}
-	return b.search(search)
+	return nil
 }
 
 // b is the one browser of the run, shared by the sign-in and the search.
@@ -278,20 +298,28 @@ func (b *browser) signIn() error {
 }
 
 // search asks the web app to search the services given, and prints the shape of
-// the answer with short values. The whole answer goes to a file outside the
-// repository, to read at leisure.
+// the answer with short values.
 func (b *browser) search(opts searchOptions) error {
-	if opts.household == "" {
-		households, err := b.households()
-		if err != nil {
-			return err
-		}
-		if len(households) != 1 {
-			return fmt.Errorf("the account has %d households; pass -household", len(households))
-		}
-		opts.household = households[0].ID
+	opts, err := opts.resolved()
+	if err != nil {
+		return err
 	}
+	body, err := b.fetchSearch(opts)
+	if err != nil {
+		return err
+	}
+	var answer any
+	if err := json.Unmarshal(body, &answer); err != nil {
+		fmt.Printf("   not JSON: %.300s\n", body)
+		return nil
+	}
+	printShape(answer, "   ", 0)
+	return nil
+}
 
+// fetchSearch sends one search and returns the answer. The whole answer also
+// goes to a file outside the repository, to read at leisure.
+func (b *browser) fetchSearch(opts searchOptions) ([]byte, error) {
 	fmt.Println("\nsearch")
 	base := fmt.Sprintf("%s/api/content/v1/households/%s", webApp, url.PathEscape(opts.household))
 	q := url.Values{"query": {opts.query}, "services": {opts.services}}
@@ -302,20 +330,17 @@ func (b *browser) search(opts searchOptions) error {
 	}
 	r, err := b.send(http.MethodGet, target, nil, http.Header{"Accept": {"application/json"}})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	out := filepath.Join(os.TempDir(), "sonosweb-search.json")
 	if err := os.WriteFile(out, r.Body, 0o600); err != nil {
-		return err
+		return nil, err
 	}
 	fmt.Printf("   status %d, %d bytes, saved to %s\n", r.StatusCode, len(r.Body), out)
-	var answer any
-	if err := json.Unmarshal(r.Body, &answer); err != nil {
-		fmt.Printf("   not JSON: %.300s\n", r.Body)
-		return nil
+	if r.StatusCode >= 400 {
+		return nil, fmt.Errorf("the search answered %d: %.300s", r.StatusCode, r.Body)
 	}
-	printShape(answer, "   ", 0)
-	return nil
+	return r.Body, nil
 }
 
 // households asks Sonos's Control API for the account's households, as the

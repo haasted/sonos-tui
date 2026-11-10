@@ -34,7 +34,8 @@ production code never imports from here.
   (`github.com/gocolly/colly/v2`) as an ordinary browser would, and asks for
   the account in the terminal. Keeps the session in
   `~/.config/sonos-sandbox/web-session` (mode 0600) and prints no secret. Needs
-  the internet, not speakers; see `make sonos-web` (`WEB_ARGS=-fresh`).
+  the internet, not speakers; see `make sonos-web` (`WEB_ARGS=-fresh`), and
+  `make sonos-search` to type one search after another and list the results.
 - `coverart/` — evaluates `github.com/blacktop/go-termimg` and
   `github.com/BourgeoisBear/rasterm` for rendering album art in the terminal.
   Runs against fixture images in `data/`, no live speaker calls.
