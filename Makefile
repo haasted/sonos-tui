@@ -1,4 +1,4 @@
-.PHONY: build fmt fmt-check vet tidy-check test test-verbose test-race test-live run run-logs run-nocache db queue-events notify-capture discover-probe music-services sonos-web uitest worktrees tidy adr-html help
+.PHONY: build fmt fmt-check vet tidy-check test test-verbose test-race test-live run run-logs run-nocache db queue-events notify-capture discover-probe music-services sonos-web demo-client uitest worktrees tidy adr-html help
 
 .DEFAULT_GOAL := help
 
@@ -64,6 +64,10 @@ discover-probe: ## Look for speakers for 10s by SSDP and mDNS on every interface
 
 music-services: ## List the music services one speaker offers (MUSIC_ARGS=-ip=<address>)
 	cd experiments && go run ./musicservices $(MUSIC_ARGS)
+
+demo-client: ## Record demos/client.gif from demos/client.tape with vhs (needs speakers)
+	@command -v vhs >/dev/null || { echo "vhs is not installed: https://github.com/charmbracelet/vhs"; exit 1; }
+	vhs demos/client.tape
 
 sonos-web: ## Sign in to the Sonos web app, asking for the account (WEB_ARGS=-fresh signs in again)
 	cd experiments && go run ./sonosweb $(WEB_ARGS)

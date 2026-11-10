@@ -21,3 +21,8 @@ ADRs/html/
 # Scratch output from the notifycapture harness, whatever -out it was given
 *-captures/
 
+# Recordings made by the demo targets
+demos/*.gif
+
+# macOS Finder metadata
+.DS_Store
