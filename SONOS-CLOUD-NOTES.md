@@ -69,11 +69,13 @@ app's backend call the Sonos cloud.
 the last request. Three runs 12 minutes apart moved it 12 minutes forward.
 A session not used for 10 days ends, and the next use must sign in again.
 
-**The access token inside lasts 24 hours.** Its `expiration` was 24 hours
-after the sign-in, and it did not move when the session was used. The sign-in
-asks for `offline_access`, so the web app's backend probably renews it with a
-refresh token. This is not measured yet: search once more than 24 hours after
-a sign-in, and see if it works and if `expiration` moved.
+**The access token inside lasts 24 hours, and renews itself.** Its
+`expiration` was 24 hours after the sign-in, and it did not move while the
+token was still valid. Measured: the token ran out at 16:32; a search at 21:02
+the same day worked, with no password, and `expiration` moved to 24 hours
+after that search. The web app's backend renews it, probably with the refresh
+token that `offline_access` gives. So only the 10-day session counts: a
+session used at least once in 10 days never needs the password again.
 
 The experiment keeps the cookie in `~/.config/sonos-sandbox/web-session`
 (mode 0600), outside the repository. The cookie is a sign-in to the Sonos
