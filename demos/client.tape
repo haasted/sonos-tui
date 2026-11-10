@@ -4,10 +4,11 @@
 Output demos/client.gif
 
 Set Shell "bash"
-Set FontSize 16
-Set Width 900
-Set Height 560
-Set Padding 16
+# Twice the size it is shown at, so it is sharp on a high-density screen.
+Set FontSize 32
+Set Width 1800
+Set Height 1120
+Set Padding 32
 Set Theme "Catppuccin Mocha"
 Set TypingSpeed 80ms
 
