@@ -207,3 +207,55 @@ search with. The ids in the results are not specific to a household:
 - **Results follow the account's country.** The search uses the linked
   account's Apple Music storefront. Catalogue ids are mostly the same across
   countries, but what is available, and what the search returns, can differ.
+
+## Opening a result
+
+The web app opens a result on a page of its own,
+`/en-us/browse/services/{service}/album/{objectId}?defaults=…&account=2`.
+That page's own data (its `_rsc` request) is only the frame. The items come
+from the content API, version 2:
+
+```
+GET /api/content/v2/households/{household}/services/52231/accounts/2/albums/album%253A1195104858/browse?muse2=true&defaults=…&count=50
+```
+
+- The `objectId` goes into the path escaped twice: `album:1195104858` becomes
+  `album%3A1195104858`, then `album%253A1195104858`.
+- `defaults` is the search result's own `defaults`, sent back unchanged.
+- `muse2=true` and `count` are what the web app sends.
+
+The answer is a page template. For an album, `type` is
+`TEMPLATE_ALBUM_PAGE`, with `title` (the album), `subtitle` (the artist),
+`images`, `actions`, `resource` (the album's id and `defaults`), `sections`
+(empty for the album measured) and `tracks`: `items[]` and `total`.
+
+Each track has `ordinal`, `title`, `subtitle`, `artists[]` (`name`, and an
+`id` such as `srn:content:audio:artist:artist%3A551695#52231:2`),
+`duration` in seconds as text, `isExplicit`, `actions` and `resource` with
+the track's `objectId`. The ids in a page are escaped once (`song%3A1195105201`),
+where a search result's are not.
+
+An artist opens the same way, under `artists`:
+
+```
+GET /api/content/v2/households/{household}/services/52231/accounts/2/artists/artist%253A83964/browse
+```
+
+The answer's `type` is `TEMPLATE_PERSON_PAGE`: `title` (the artist),
+`images`, `actions`, `customActions` and `sections`. `customActions` holds a
+"Start Station" action (`ACTION_PLAY_STATION`) with the artist's station as
+its resource (`radio%3Ara.83964`). For Tom Waits, `sections.items` held one
+section of all his 48 albums (`total` 48), each with `title`, `subtitle`,
+`images`, `actions`, `resource` (an `ALBUM` with its id and `defaults`) and
+`href`. Albums by others that he appears on are in the list too.
+
+**An album's `subtitle` is its official artist line**, even on another
+artist's page: "Massive Attack & Tom Waits" for a joint single, "Gavin Bryars"
+for an album he guests on.
+
+The `href` of a section and of an item points to Sonos's own content API,
+`https://api.ws.sonos.com/content/api/v2/households/{household}/…/browse`,
+with `filterExplicit=false&muse2=true&defaults=…`: the web app's backend
+passes its requests on to it. A section also has a `fastScrollUri`.
+
+Opening a playlist is not measured yet.
