@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -54,12 +56,18 @@ type page struct {
 	} `json:"sections"`
 }
 
-// pageSection is one group on a page, such as an artist's albums.
+// pageSection is one group on a page, such as an artist's albums. It holds a
+// first page of items; FastScrollURI says the whole list can be had.
 type pageSection struct {
-	Title string     `json:"title"`
-	Total int        `json:"total"`
-	Items []pageItem `json:"items"`
+	Title         string     `json:"title"`
+	Total         int        `json:"total"`
+	Items         []pageItem `json:"items"`
+	FastScrollURI string     `json:"fastScrollUri"`
 }
+
+// maxItems is the most entries one list is fetched to, so a huge artist does
+// not turn into a flood of requests or one enormous answer.
+const maxItems = 1000
 
 // pageItem is one entry in a section, which can be opened in its turn.
 type pageItem struct {
@@ -204,17 +212,55 @@ func (b *browser) open(opts searchOptions, r resource) ([]resource, error) {
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("opening answered %d: %.300s", resp.StatusCode, resp.Body)
 	}
-	return printPage(resp.Body)
+	var p page
+	if err := json.Unmarshal(resp.Body, &p); err != nil {
+		return nil, fmt.Errorf("reading the page: %w", err)
+	}
+	if err := b.completeSections(opts, r, &p); err != nil {
+		fmt.Println("  ", err)
+	}
+	return printPage(p, resp.Body)
+}
+
+// completeSections fetches the whole list of a section that came with only a
+// first page, such as an artist with more albums than were sent, up to
+// maxItems. One request: through the web app, any offset but 0 answers an
+// empty page, so a larger count is how the rest is had.
+func (b *browser) completeSections(opts searchOptions, r resource, p *page) error {
+	for i, section := range p.Sections.Items {
+		if section.Total <= len(section.Items) || section.FastScrollURI == "" {
+			continue
+		}
+		count := min(section.Total, maxItems)
+		q := url.Values{"count": {strconv.Itoa(count)}, "offset": {"0"}, "filterExplicit": {"false"}, "muse2": {"true"}}
+		target := fmt.Sprintf("%s/api/content/v2/households/%s/services/%s/accounts/%d/containers/%s/resources?%s",
+			webApp, url.PathEscape(opts.household), opts.services, opts.account,
+			url.PathEscape(url.PathEscape(r.ID.ObjectID)), q.Encode())
+		fmt.Printf("   fetching all %d entries (at most %d)\n", section.Total, maxItems)
+		resp, err := b.send(http.MethodGet, target, nil, http.Header{"Accept": {"application/json"}})
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode >= 400 {
+			return fmt.Errorf("fetching the rest answered %d", resp.StatusCode)
+		}
+		var all struct {
+			Items []pageItem `json:"items"`
+		}
+		if err := json.Unmarshal(resp.Body, &all); err != nil {
+			return fmt.Errorf("reading the rest: %w", err)
+		}
+		if len(all.Items) > len(section.Items) {
+			p.Sections.Items[i].Items = all.Items
+		}
+	}
+	return nil
 }
 
 // printPage lists a page: an album's tracks, or the entries of each section,
 // such as an artist's albums, numbered so they can be opened. A template not
-// known yet is printed as its shape, to learn it from.
-func printPage(body []byte) ([]resource, error) {
-	var p page
-	if err := json.Unmarshal(body, &p); err != nil {
-		return nil, fmt.Errorf("reading the page: %w", err)
-	}
+// known yet is printed as its shape, from body, to learn it from.
+func printPage(p page, body []byte) ([]resource, error) {
 	if !pageTemplates[p.Type] {
 		var answer any
 		_ = json.Unmarshal(body, &answer)
@@ -245,17 +291,56 @@ func printPage(body []byte) ([]resource, error) {
 			continue
 		}
 		fmt.Printf("\n%s (%d)\n", strings.Join(nonEmpty(section.Title, strings.ToUpper(section.Items[0].Resource.Type)+"S"), " "), section.Total)
-		for _, item := range section.Items {
+		items := slices.Clone(section.Items)
+		// Newest first; the API's own order is neither by date nor by name.
+		slices.SortStableFunc(items, func(a, b pageItem) int { return strings.Compare(b.year(), a.year()) })
+		for _, item := range items {
 			entry := item.Resource.asResult(item.Title)
 			entries = append(entries, entry)
-			fmt.Printf("%4d  %s  %s%s%s\n", len(entries), strings.Join(nonEmpty(item.Title, item.Subtitle), " · "),
-				dim, entry.ID.ObjectID, plain)
+			kind, title := item.kind()
+			fmt.Printf("%4d  %-4s  %-6s  %s  %s%s%s\n", len(entries), item.year(), kind,
+				strings.Join(nonEmpty(title, item.Subtitle), " · "), dim, entry.ID.ObjectID, plain)
 		}
 		if section.Total > len(section.Items) {
 			fmt.Printf("   %d of %d\n", len(section.Items), section.Total)
 		}
 	}
 	return entries, nil
+}
+
+// year is the release year from the summary in an entry's defaults, such as
+// "Alternative - 2017", or empty when there is none.
+func (i pageItem) year() string {
+	var d struct {
+		Summary string `json:"summary"`
+	}
+	raw, err := base64.RawStdEncoding.DecodeString(strings.TrimRight(i.Resource.Defaults, "="))
+	if err != nil || json.Unmarshal(raw, &d) != nil {
+		return ""
+	}
+	_, year, found := strings.Cut(d.Summary, " - ")
+	if !found || len(year) != 4 {
+		return ""
+	}
+	return year
+}
+
+// kind says what an album is from its title, and returns the title without
+// the suffix that said so. Apple names singles and EPs with a fixed suffix;
+// a live album is only known by the word in its title.
+func (i pageItem) kind() (string, string) {
+	if i.Resource.Type != "ALBUM" {
+		return "", i.Title
+	}
+	switch {
+	case strings.HasSuffix(i.Title, " - Single"):
+		return "single", strings.TrimSuffix(i.Title, " - Single")
+	case strings.HasSuffix(i.Title, " - EP"):
+		return "EP", strings.TrimSuffix(i.Title, " - EP")
+	case strings.Contains(strings.ToLower(i.Title), "live"):
+		return "live", i.Title
+	}
+	return "album", i.Title
 }
 
 // nonEmpty keeps the parts that have text.
