@@ -12,7 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/haasted/sonos-sandbox/internal/sonos"
+	"github.com/haasted/sonos-tui/internal/sonos"
 )
 
 // Case: every search failed to leave this computer, as behind a VPN. The

@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"charm.land/lipgloss/v2"
-	"github.com/haasted/sonos-sandbox/internal/ui/marquee"
+	"github.com/haasted/sonos-tui/internal/ui/marquee"
 	"github.com/stretchr/testify/assert"
 )
 

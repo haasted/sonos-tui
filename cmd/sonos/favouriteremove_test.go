@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/haasted/sonos-sandbox/internal/store"
-	"github.com/haasted/sonos-sandbox/internal/ui/panes"
+	"github.com/haasted/sonos-tui/internal/store"
+	"github.com/haasted/sonos-tui/internal/ui/panes"
 )
 
 // Case: x on a favourite with more below it. Once the fade is over it is off

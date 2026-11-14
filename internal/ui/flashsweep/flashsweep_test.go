@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/haasted/sonos-sandbox/internal/ui/movy"
+	"github.com/haasted/sonos-tui/internal/ui/movy"
 )
 
 var ansi = regexp.MustCompile("\x1b\\[[0-9;]*m")

@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/haasted/sonos-sandbox/internal/ui/panes"
+	"github.com/haasted/sonos-tui/internal/ui/panes"
 )
 
 // Case: the box the light is drawn on, which must be the box that was there

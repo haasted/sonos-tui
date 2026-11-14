@@ -5,7 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/haasted/sonos-sandbox/internal/sonos"
+	"github.com/haasted/sonos-tui/internal/sonos"
 )
 
 // speakerMsg addresses a message to one speaker's tab. Command results carry

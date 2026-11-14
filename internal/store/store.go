@@ -18,7 +18,7 @@ import (
 // the database in it. Config rather than cache: the file holds the only copy
 // of a playlist, and a cache directory may be reclaimed at any time.
 const (
-	dirName  = "sonos-sandbox"
+	dirName  = "sonos-tui"
 	fileName = "sonos.db"
 )
 

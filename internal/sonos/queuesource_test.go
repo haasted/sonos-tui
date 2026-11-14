@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/haasted/sonos-sandbox/internal/sonos"
+	"github.com/haasted/sonos-tui/internal/sonos"
 )
 
 // Case: a queue loaded from a playlist, captured from a real speaker. The

@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/haasted/sonos-sandbox/internal/store"
+	"github.com/haasted/sonos-tui/internal/store"
 )
 
 // Case: / and some letters. The list narrows to the favourites whose title

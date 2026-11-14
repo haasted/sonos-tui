@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/haasted/sonos-sandbox/internal/sonos"
+	"github.com/haasted/sonos-tui/internal/sonos"
 )
 
 // Case: the flash after play next, in a queue holding one track twice. Only

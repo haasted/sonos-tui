@@ -7,7 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"github.com/haasted/sonos-sandbox/internal/ui/theme"
+	"github.com/haasted/sonos-tui/internal/ui/theme"
 )
 
 // textBlinkEffect is a variant of blinkEffect where the text itself

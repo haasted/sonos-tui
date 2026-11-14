@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/haasted/sonos-sandbox/internal/sonos"
+	"github.com/haasted/sonos-tui/internal/sonos"
 )
 
 // Case: the key, which must offer the room on screen a list of the speakers

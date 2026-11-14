@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/haasted/sonos-sandbox/internal/ui/nowplaying"
+	"github.com/haasted/sonos-tui/internal/ui/nowplaying"
 	"github.com/stretchr/testify/assert"
 )
 

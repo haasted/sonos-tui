@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/haasted/sonos-sandbox/internal/ui/panes"
+	"github.com/haasted/sonos-tui/internal/ui/panes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

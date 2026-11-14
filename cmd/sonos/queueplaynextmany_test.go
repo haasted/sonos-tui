@@ -5,7 +5,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/haasted/sonos-sandbox/internal/sonos"
+	"github.com/haasted/sonos-tui/internal/sonos"
 )
 
 // Case: several picked tracks, which must end up directly after the one

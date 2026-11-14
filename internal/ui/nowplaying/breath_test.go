@@ -9,7 +9,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 
-	"github.com/haasted/sonos-sandbox/internal/ui/flashsweep"
+	"github.com/haasted/sonos-tui/internal/ui/flashsweep"
 )
 
 // Case: a paused speaker, which must run a chain although nothing else in this

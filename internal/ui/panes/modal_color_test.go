@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/haasted/sonos-sandbox/internal/ui/panes"
+	"github.com/haasted/sonos-tui/internal/ui/panes"
 )
 
 // Case: a modal given its own border colour, so two modals can be told apart.

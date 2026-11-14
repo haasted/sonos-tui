@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/haasted/sonos-sandbox/internal/sonos"
+	"github.com/haasted/sonos-tui/internal/sonos"
 )
 
 // Case: a speaker that starts playing, whose tab glyph must follow without any

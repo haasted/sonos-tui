@@ -9,7 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/haasted/sonos-sandbox/internal/ui/theme"
+	"github.com/haasted/sonos-tui/internal/ui/theme"
 )
 
 // ModalMode is how an open modal occupies the screen. Both are supported

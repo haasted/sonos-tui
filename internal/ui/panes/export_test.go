@@ -1,7 +1,7 @@
 package panes
 
 import (
-	"github.com/haasted/sonos-sandbox/internal/ui/flashsweep"
+	"github.com/haasted/sonos-tui/internal/ui/flashsweep"
 	"image/color"
 	"time"
 )

@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/haasted/sonos-sandbox/internal/ui/panes"
+	"github.com/haasted/sonos-tui/internal/ui/panes"
 )
 
 // Case: a notice held open in the modal's bottom border, centred between the

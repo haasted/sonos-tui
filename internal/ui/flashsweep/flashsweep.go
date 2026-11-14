@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/haasted/sonos-sandbox/internal/ui/movy"
+	"github.com/haasted/sonos-tui/internal/ui/movy"
 )
 
 const (

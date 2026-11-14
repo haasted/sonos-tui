@@ -12,10 +12,10 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/haasted/sonos-sandbox/internal/sonos"
-	"github.com/haasted/sonos-sandbox/internal/store"
-	"github.com/haasted/sonos-sandbox/internal/ui/nowplaying"
-	"github.com/haasted/sonos-sandbox/internal/ui/panes"
+	"github.com/haasted/sonos-tui/internal/sonos"
+	"github.com/haasted/sonos-tui/internal/store"
+	"github.com/haasted/sonos-tui/internal/ui/nowplaying"
+	"github.com/haasted/sonos-tui/internal/ui/panes"
 )
 
 // errNoStore is what the modal says when the program runs without its

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/haasted/sonos-sandbox/internal/ui/movy"
+	"github.com/haasted/sonos-tui/internal/ui/movy"
 )
 
 // revealText is a short label with a leading glyph and padding, the shape a

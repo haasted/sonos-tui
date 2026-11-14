@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/haasted/sonos-sandbox/internal/sonos"
+	"github.com/haasted/sonos-tui/internal/sonos"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

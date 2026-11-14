@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/haasted/sonos-sandbox/internal/sonos"
-	"github.com/haasted/sonos-sandbox/internal/store"
+	"github.com/haasted/sonos-tui/internal/sonos"
+	"github.com/haasted/sonos-tui/internal/store"
 )
 
 // Case: a normal save then load, which must survive the round trip with the

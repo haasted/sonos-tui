@@ -2,7 +2,7 @@
 # repository. Read-only by default; set ReadOnly = false to edit rows.
 
 [[database]]
-Name = 'sonos-sandbox'
+Name = 'sonos-tui'
 Provider = 'sqlite3'
-URL = '${env:HOME}/Library/Application Support/sonos-sandbox/sonos.db'
+URL = '${env:HOME}/Library/Application Support/sonos-tui/sonos.db'
 ReadOnly = true

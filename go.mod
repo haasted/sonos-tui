@@ -1,4 +1,4 @@
-module github.com/haasted/sonos-sandbox
+module github.com/haasted/sonos-tui
 
 go 1.26.3
 

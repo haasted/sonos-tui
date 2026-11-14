@@ -6,7 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/haasted/sonos-sandbox/internal/ui/nowplaying"
+	"github.com/haasted/sonos-tui/internal/ui/nowplaying"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

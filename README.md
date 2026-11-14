@@ -1,4 +1,4 @@
-# sonos-sandbox
+# sonos-tui
 
 A terminal client for Sonos speakers that talks straight to them over your own
 network — no cloud and no account needed to use it.

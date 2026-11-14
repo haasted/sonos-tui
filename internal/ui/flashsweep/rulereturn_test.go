@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/haasted/sonos-sandbox/internal/ui/movy"
+	"github.com/haasted/sonos-tui/internal/ui/movy"
 )
 
 // Case: every style at its two ends. At 0 the gap is empty; at 1 every cell

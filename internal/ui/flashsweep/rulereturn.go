@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/haasted/sonos-sandbox/internal/ui/movy"
+	"github.com/haasted/sonos-tui/internal/ui/movy"
 )
 
 // ReturnStyle selects how a rule comes back into the gap a notice left in it.

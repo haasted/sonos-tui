@@ -10,8 +10,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"github.com/haasted/sonos-sandbox/internal/ui/flashsweep"
-	"github.com/haasted/sonos-sandbox/internal/ui/movy"
+	"github.com/haasted/sonos-tui/internal/ui/flashsweep"
+	"github.com/haasted/sonos-tui/internal/ui/movy"
 )
 
 const (

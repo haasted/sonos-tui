@@ -6,8 +6,8 @@ import (
 
 	"charm.land/lipgloss/v2"
 
-	"github.com/haasted/sonos-sandbox/internal/ui/nowplaying"
-	"github.com/haasted/sonos-sandbox/internal/ui/panes"
+	"github.com/haasted/sonos-tui/internal/ui/nowplaying"
+	"github.com/haasted/sonos-tui/internal/ui/panes"
 )
 
 // Case: every state the player passes through on the way up. The inline frame

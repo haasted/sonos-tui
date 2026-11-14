@@ -1,4 +1,4 @@
-module github.com/haasted/sonos-sandbox/experiments
+module github.com/haasted/sonos-tui/experiments
 
 go 1.26.3
 
@@ -10,7 +10,7 @@ require (
 	github.com/blacktop/go-termimg v0.1.26
 	github.com/coder/websocket v1.8.15
 	github.com/gocolly/colly/v2 v2.3.0
-	github.com/haasted/sonos-sandbox v0.0.0
+	github.com/haasted/sonos-tui v0.0.0
 	github.com/hashicorp/mdns v1.0.7
 	github.com/koron/go-ssdp v0.9.1
 	github.com/lucasb-eyer/go-colorful v1.4.1
@@ -77,4 +77,4 @@ require (
 // The evaluations read the parent's internal packages. A require with a replace
 // rather than a go.work: the child then builds for anyone who runs it directly,
 // without a workspace file having to exist.
-replace github.com/haasted/sonos-sandbox => ../
+replace github.com/haasted/sonos-tui => ../

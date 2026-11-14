@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/haasted/sonos-sandbox/internal/ui/flashsweep"
-	"github.com/haasted/sonos-sandbox/internal/ui/panes"
+	"github.com/haasted/sonos-tui/internal/ui/flashsweep"
+	"github.com/haasted/sonos-tui/internal/ui/panes"
 )
 
 // Case: a plain notice whose text has just gone, its rule fading back. The

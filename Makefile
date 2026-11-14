@@ -82,7 +82,7 @@ run-logs: ## Run the CLI and print the logs once it exits
 	go run ./cmd/sonos -logs
 
 run-nocache: ## Delete speaker cache prior to starting
-	rm -f ~/Library/Application\ Support/sonos-sandbox/sonos.db*
+	rm -f ~/Library/Application\ Support/sonos-tui/sonos.db*
 	go run ./cmd/sonos
 
 db: ## Open the database in lazysql, with the connection in .lazysql.toml

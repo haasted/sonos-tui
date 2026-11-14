@@ -53,7 +53,7 @@ func TestOpen_AnExistingFileKeepsWhatItHolds(t *testing.T) {
 // space, which is not legal in a URI and would reach SQLite as a truncated
 // name if the DSN were pasted together rather than escaped.
 func TestOpen_APathWithASpaceOpens(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "Application Support", "sonos-sandbox", "sonos.db")
+	path := filepath.Join(t.TempDir(), "Application Support", "sonos-tui", "sonos.db")
 
 	s, err := Open(t.Context(), path)
 	require.NoError(t, err)

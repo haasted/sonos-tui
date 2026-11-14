@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/haasted/sonos-sandbox/internal/store"
+	"github.com/haasted/sonos-tui/internal/store"
 )
 
 // verifyTimeout bounds each verification call. Deliberately short: the whole

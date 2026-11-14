@@ -10,9 +10,9 @@ import (
 
 	"charm.land/lipgloss/v2"
 
-	"github.com/haasted/sonos-sandbox/internal/ui/flashsweep"
-	"github.com/haasted/sonos-sandbox/internal/ui/movy"
-	"github.com/haasted/sonos-sandbox/internal/ui/theme"
+	"github.com/haasted/sonos-tui/internal/ui/flashsweep"
+	"github.com/haasted/sonos-tui/internal/ui/movy"
+	"github.com/haasted/sonos-tui/internal/ui/theme"
 )
 
 // modalSweepDuration is one run from a corner to the one opposite. Timed

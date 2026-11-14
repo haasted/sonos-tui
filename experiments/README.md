@@ -33,7 +33,7 @@ production code never imports from here.
 - `sonosweb/` — signs in to the Sonos web app, play.sonos.com, with Colly
   (`github.com/gocolly/colly/v2`) as an ordinary browser would, and asks for
   the account in the terminal. Keeps the session in
-  `~/.config/sonos-sandbox/web-session` (mode 0600) and prints no secret. Needs
+  `~/.config/sonos-tui/web-session` (mode 0600) and prints no secret. Needs
   the internet, not speakers; see `make sonos-web` (`WEB_ARGS=-fresh`), and
   `make sonos-search` to type one search after another and list the results.
 - `browse/` — a mock-up of the client's favourites modal, to try out browsing
@@ -54,7 +54,7 @@ reader in the client and now have no entry in its `go.mod` either.
 
 The module reads the parent's `internal/` packages. Go allows this because the
 rule is about the import path, not about the module, and both sit under
-`github.com/haasted/sonos-sandbox/`. A `require` and a `replace ../` carry it,
+`github.com/haasted/sonos-tui/`. A `require` and a `replace ../` carry it,
 rather than a `go.work`: the tree then builds for anyone who runs it directly.
 
 **`./...` from the repository root does not reach this tree.** A module boundary

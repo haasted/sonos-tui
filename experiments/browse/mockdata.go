@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/haasted/sonos-sandbox/internal/store"
+	"github.com/haasted/sonos-tui/internal/store"
 )
 
 // mockFavourites is a made-up favourites list across every media type,

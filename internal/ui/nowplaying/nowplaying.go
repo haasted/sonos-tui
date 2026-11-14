@@ -12,9 +12,9 @@ import (
 
 	"math/rand/v2"
 
-	"github.com/haasted/sonos-sandbox/internal/ui/flashsweep"
-	"github.com/haasted/sonos-sandbox/internal/ui/marquee"
-	"github.com/haasted/sonos-sandbox/pkg/ui/spinners"
+	"github.com/haasted/sonos-tui/internal/ui/flashsweep"
+	"github.com/haasted/sonos-tui/internal/ui/marquee"
+	"github.com/haasted/sonos-tui/pkg/ui/spinners"
 )
 
 type Track struct {

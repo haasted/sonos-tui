@@ -612,7 +612,7 @@ func sessionPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".config", "sonos-sandbox", "web-session"), nil
+	return filepath.Join(home, ".config", "sonos-tui", "web-session"), nil
 }
 
 // askCredentials asks for the Sonos account in the terminal. The password

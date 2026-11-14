@@ -7,8 +7,8 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/haasted/sonos-sandbox/internal/ui/panes"
-	"github.com/haasted/sonos-sandbox/pkg/ui/spinners"
+	"github.com/haasted/sonos-tui/internal/ui/panes"
+	"github.com/haasted/sonos-tui/pkg/ui/spinners"
 )
 
 // tabsRootModel is the outermost Bubbletea model for the "tabs" layout —

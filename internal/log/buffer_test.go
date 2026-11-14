@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/haasted/sonos-sandbox/internal/log"
+	"github.com/haasted/sonos-tui/internal/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

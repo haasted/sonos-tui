@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/haasted/sonos-sandbox/internal/sonos"
+	"github.com/haasted/sonos-tui/internal/sonos"
 )
 
 // Case: / narrowing the list as the reader types, matching the title and the

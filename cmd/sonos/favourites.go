@@ -10,9 +10,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"github.com/haasted/sonos-sandbox/internal/sonos"
-	"github.com/haasted/sonos-sandbox/internal/store"
-	"github.com/haasted/sonos-sandbox/internal/ui/theme"
+	"github.com/haasted/sonos-tui/internal/sonos"
+	"github.com/haasted/sonos-tui/internal/store"
+	"github.com/haasted/sonos-tui/internal/ui/theme"
 )
 
 // favouriteKinds is the order ← and → walk the media types in.

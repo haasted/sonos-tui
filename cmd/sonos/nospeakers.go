@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/haasted/sonos-sandbox/internal/sonos"
+	"github.com/haasted/sonos-tui/internal/sonos"
 )
 
 // noSpeakersLogHint ends every such text: how to get a log worth sharing.
