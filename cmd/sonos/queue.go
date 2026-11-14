@@ -139,6 +139,9 @@ func (q queueContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if wheel, ok := msg.(tea.MouseWheelMsg); ok {
 		return q.wheel(wheel), nil
 	}
+	if click, ok := msg.(listClickMsg); ok {
+		return q.click(click)
+	}
 	key, ok := msg.(tea.KeyMsg)
 	if !ok {
 		return q, nil
@@ -201,6 +204,23 @@ func (q queueContent) wheel(msg tea.MouseWheelMsg) queueContent {
 	}
 	q.listView = q.wheelMove(delta)
 	return q
+}
+
+// click puts the cursor on the track clicked, and a double-click plays from
+// it, as enter does. A click on the heading, or on a note, does nothing.
+func (q queueContent) click(msg listClickMsg) (queueContent, tea.Cmd) {
+	if q.note() != "" {
+		return q, nil
+	}
+	list, _, double, ok := q.listView.click(msg.line, msg.at)
+	if !ok {
+		return q, nil
+	}
+	q.listView = list
+	if double {
+		return q.playFromCursor()
+	}
+	return q, nil
 }
 
 // shift moves the track under the cursor one place and keeps the cursor on it.

@@ -47,6 +47,13 @@ type (
 	listHintTickMsg struct{ gen int }
 )
 
+// listClickMsg is a click on a line of a list modal's content, counted from
+// the top of its heading, and when it came.
+type listClickMsg struct {
+	line int
+	at   time.Time
+}
+
 func listTick(gen int) tea.Cmd {
 	return tea.Tick(listPulseInterval, func(time.Time) tea.Msg { return listTickMsg{gen: gen} })
 }
@@ -132,6 +139,24 @@ func (m appModel) applyListWheel(msg tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 	if content, ok := modal.Content.(listContent); ok && content.bumping() {
 		return m, tea.Batch(cmd, restartListChain(slot))
 	}
+	return m, cmd
+}
+
+// applyListClick hands a click to the open list, translated from the
+// terminal's rows to the list's lines. Off the list's content it does nothing.
+func (m appModel) applyListClick(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
+	slot, ok := m.openList()
+	if !ok || !m.listTakesTheWheel() || m.marking.IsOpen() || msg.Button != tea.MouseLeft {
+		return m, nil
+	}
+	_, line, inside := slot.modal.ContentPoint(m.backdrop(), msg.X, msg.Y-m.screenTop)
+	if !inside {
+		return m, nil
+	}
+	retireListHint(slot)
+
+	modal, cmd := slot.modal.Update(listClickMsg{line: line, at: time.Now()})
+	*slot.modal = modal
 	return m, cmd
 }
 

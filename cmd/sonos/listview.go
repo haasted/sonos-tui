@@ -56,6 +56,10 @@ const (
 	// landingContext is how many rows a landing keeps above the row it lands
 	// on. The rest of the window shows what comes after that row.
 	landingContext = 2
+
+	// doubleClickTime is the longest between two clicks on one row that makes
+	// them a double-click, the usual system default.
+	doubleClickTime = 500 * time.Millisecond
 )
 
 // listCursorGlyph marks the row the reader is on. The cursor moves, and so
@@ -95,6 +99,9 @@ type listView[T any] struct {
 	wheelDir    int       // which way that gesture is going: -1 up, 1 down
 	wheelBumped bool      // the current swipe has lit an end already
 	swipe       swipeTracker
+
+	clickedAt  time.Time // when a row was last clicked; zero after a double-click
+	clickedRow int       // the item that click landed on
 
 	// filter is what the reader has typed, and filtering says the box is open
 	// and taking their keys. Open with nothing typed still shows everything,
@@ -171,6 +178,26 @@ func (l listView[T]) moveToEnd(edge bumpEdge) listView[T] {
 	}
 	l.cursor = target
 	return l.follow()
+}
+
+// click puts the cursor on the row drawn on a line of the list, counted from
+// its heading, and reports the row and whether the click doubled the one
+// before it. A line with no row on it reports false and changes nothing.
+func (l listView[T]) click(line int, at time.Time) (listView[T], int, bool, bool) {
+	first, last := l.window()
+	row := first + line - listHeaderRows
+	if line < listHeaderRows || row >= last {
+		return l, 0, false, false
+	}
+
+	double := !l.clickedAt.IsZero() && row == l.clickedRow && at.Sub(l.clickedAt) <= doubleClickTime
+	l.clickedAt, l.clickedRow = at, row
+	if double {
+		l.clickedAt = time.Time{} // a third click starts afresh
+	}
+	l.filtering = false // the reader has moved into the list, as down does
+	l.cursor = row
+	return l, row, double, true
 }
 
 // wheelStep reads one wheel notch and says how many rows it moves, signed,

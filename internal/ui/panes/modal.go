@@ -236,8 +236,7 @@ func (m Modal) Update(msg tea.Msg) (Modal, tea.Cmd) {
 	return m, cmd
 }
 
-// ViewOver composites the modal onto the view behind it, centred, or at the
-// top for ModalFixed.
+// ViewOver composites the modal onto the view behind it, where origin puts it.
 //
 // The two modes differ in what "behind" means. ModalFullScreen draws onto the
 // alternate screen, which starts blank, so background is redrawn here padded to
@@ -254,22 +253,46 @@ func (m Modal) ViewOver(background string) string {
 		backdrop = lipgloss.NewStyle().Width(m.width).Height(m.height).Render(background)
 	}
 
-	// ModalFixed sits at the top. Its size does not change with its content,
-	// so centring it vertically would only move it when the terminal did --
-	// but the top is where the reader is already looking.
 	box := m.box()
-	y := max((lipgloss.Height(backdrop)-lipgloss.Height(box))/2, 0)
-	if m.Mode == ModalFixed {
-		y = 0
-	}
+	x, y := m.origin(lipgloss.Width(backdrop), lipgloss.Height(backdrop), lipgloss.Width(box), lipgloss.Height(box))
 
 	return lipgloss.NewCompositor(
 		lipgloss.NewLayer(backdrop),
-		lipgloss.NewLayer(box).
-			X(max((lipgloss.Width(backdrop)-lipgloss.Width(box))/2, 0)).
-			Y(y).
-			Z(1),
+		lipgloss.NewLayer(box).X(x).Y(y).Z(1),
 	).Render()
+}
+
+// ContentPoint maps a point on the view the modal is drawn over to the same
+// point in its content, counted from the content's top-left. It reports false
+// for a point outside the content: off the box, on its border or its padding.
+func (m Modal) ContentPoint(background string, x, y int) (int, int, bool) {
+	if !m.open {
+		return 0, 0, false
+	}
+	backWidth, backHeight := lipgloss.Width(background), lipgloss.Height(background)
+	if m.Mode == ModalFullScreen {
+		backWidth, backHeight = m.width, m.height
+	}
+	width, height := m.BoxSize()
+	left, top := m.origin(backWidth, backHeight, width, height)
+
+	cx, cy := x-left-modalFrameWidth/2, y-top-modalFrameHeight/2
+	if cx < 0 || cy < 0 || cx >= width-modalFrameWidth || cy >= height-modalFrameHeight {
+		return 0, 0, false
+	}
+	return cx, cy, true
+}
+
+// origin is where the box's top-left sits on its backdrop: centred, or at the
+// top for ModalFixed. Its size does not change with its content, so centring
+// it vertically would only move it when the terminal did -- but the top is
+// where the reader is already looking.
+func (m Modal) origin(backWidth, backHeight, boxWidth, boxHeight int) (x, y int) {
+	x = max((backWidth-boxWidth)/2, 0)
+	if m.Mode == ModalFixed {
+		return x, 0
+	}
+	return x, max((backHeight-boxHeight)/2, 0)
 }
 
 // box renders the border and the content inside it, clipped to the box so

@@ -59,6 +59,9 @@ func main() {
 
 	model := newAppModel(ctx, events, cached, selected)
 	model.db = db
+	if row, ok := startRow(); ok {
+		model.screenTop = row
+	}
 	program := tea.NewProgram(model, tea.WithContext(ctx))
 
 	go discoverSpeakers(ctx, program)

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log/slog"
+	"math"
 	"sort"
 	"strings"
 
@@ -70,6 +71,11 @@ type appModel struct {
 	// only ever grows: see growFrame.
 	frameRows int
 
+	// screenTop is the terminal row the frame's top line is on, counted from 0.
+	// It starts where the cursor was when the program began, or at the bottom
+	// when the terminal did not say: see settleScreenTop.
+	screenTop int
+
 	// household is how the speakers around here are grouped. Read once from
 	// each system when it is found, and kept current from then on by the
 	// events every speaker sends when its own grouping changes.
@@ -131,7 +137,8 @@ func newAppModel(ctx context.Context, events *sonos.EventManager, cached []sonos
 
 	m := appModel{ctx: ctx, tabs: tabs, eventManager: events, fromCache: len(cached) > 0,
 		help: help, queue: queue, favourites: favourites, grouping: grouping, marking: marking,
-		cachedStates: map[string]cachedState{}, found: map[string]bool{}}
+		cachedStates: map[string]cachedState{}, found: map[string]bool{},
+		screenTop: math.MaxInt} // the bottom, until main says where the cursor was
 	for _, speaker := range cached {
 		m = m.insertSpeaker(speakerKey(speaker), speaker.RoomName(), newSpeakerModel(ctx, sonos.NewDevice(speaker)))
 		m.cachedStates[speakerKey(speaker)] = cachedChecking
@@ -251,7 +258,7 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return model, cmd
 	}
-	return updated.syncPlaying().growFrame(), cmd
+	return updated.syncPlaying().growFrame().settleScreenTop(), cmd
 }
 
 // growFrame records the tallest the frame has needed to be, and never lets it
@@ -549,6 +556,8 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.applyModalSweepTick(msg)
 	case tea.MouseWheelMsg:
 		return m.applyListWheel(msg)
+	case tea.MouseClickMsg:
+		return m.applyListClick(msg)
 	case listHintDueMsg:
 		return m.applyListHintDue(msg)
 	case listHintTickMsg:
@@ -743,22 +752,10 @@ func (m appModel) View() tea.View {
 		return tea.NewView(m.tooSmallView())
 	}
 
-	var content string
-	switch {
-	case len(m.tabs.Items) == 0 && m.discoveryDone:
-		content = noSpeakersText(m.discovery)
-	case len(m.tabs.Items) == 0:
-		content = "Discovering Sonos speakers..."
-	default:
-		content = m.tabs.View()
-	}
-
-	// Pad first, so the modal composites onto a backdrop already at the frame's
-	// full height and the frame itself never changes size while it is open.
 	// The border light is read fresh each frame: it depends on when the reader
 	// last pressed against an end, which changes under the modal rather than
 	// on it.
-	framed := padToHeight(content, max(m.frameRows, playerHeightRows))
+	framed := m.backdrop()
 	for _, list := range m.litLists() {
 		framed = list.ViewOver(framed)
 	}
@@ -864,6 +861,35 @@ func (m appModel) openHelp(table helpTable) (appModel, tea.Cmd) {
 	m.help.Content = helpContent{table: table}
 	m.help = m.help.Open()
 	return m.restartSweepChain()
+}
+
+// backdrop is what the modals are drawn over. It is padded first, so a modal
+// composites onto a backdrop already at the frame's full height and the frame
+// itself never changes size while it is open.
+func (m appModel) backdrop() string {
+	var content string
+	switch {
+	case len(m.tabs.Items) == 0 && m.discoveryDone:
+		content = noSpeakersText(m.discovery)
+	case len(m.tabs.Items) == 0:
+		content = "Discovering Sonos speakers..."
+	default:
+		content = m.tabs.View()
+	}
+	return padToHeight(content, m.frameHeight())
+}
+
+// frameHeight is how many rows the inline frame takes on screen.
+func (m appModel) frameHeight() int { return max(m.frameRows, playerHeightRows) }
+
+// settleScreenTop moves the frame's top row up as far as the terminal has
+// scrolled to make room for it. The frame never shrinks, so the top never
+// comes back down.
+func (m appModel) settleScreenTop() appModel {
+	if m.sized {
+		m.screenTop = max(min(m.screenTop, m.height-m.frameHeight()), 0)
+	}
+	return m
 }
 
 // padToHeight grows content to exactly rows lines. It never truncates: losing
