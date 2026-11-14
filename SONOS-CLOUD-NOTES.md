@@ -177,6 +177,25 @@ By type:
 | `PLAYLIST` | `playlist:pl.606df…` | `owner`; `readOnly`; `renameable`; `userContent`; `summary` |
 | `PROGRAM` | `radio:ra.551695` | an Apple Music station, such as "David Bowie & Similar Artists" |
 
+### What `defaults` holds
+
+`defaults` is base64 (standard alphabet, without padding) of a small JSON
+object. The web app passes it along unchanged when a result is opened, to draw
+the page's header before the page's own data arrives. It is the same on a
+search result and on an entry of a page, such as an album on an artist's page.
+
+| Type | Fields in `defaults` |
+|---|---|
+| `ARTIST` | `name`, `imageUrl`, `explicit`, `playable` |
+| `ALBUM` | `name`, `artist`, `artistId`, `summary`, `imageUrl`, `explicit`, `playable` |
+| `TRACK` | `name`, `artist`, `artistId`, `summary`, `imageUrl`, `explicit`, `playable`, `mimeType` (`audio/aac`), `durationMs`, `containerId`, `containerName`, `containerType` (`ALBUM`) |
+| `PLAYLIST` | `name`, `summary`, `imageUrl`, `explicit`, `playable` |
+
+An album's `summary` is its genre and release year, as `Genre - Year`
+(`Alternative - 2017`). It is the only place the year is: the results and the
+pages have no release date. A playlist's `summary` is its description, or
+`Apple Music Playlist` for one in the reader's library.
+
 For this program, two findings are important:
 
 - **An album's artist is in the result.** That is the field the speakers do
@@ -258,4 +277,35 @@ The `href` of a section and of an item points to Sonos's own content API,
 with `filterExplicit=false&muse2=true&defaults=…`: the web app's backend
 passes its requests on to it. A section also has a `fastScrollUri`.
 
-Opening a playlist is not measured yet.
+A playlist opens the same way, under `playlists`, with the id escaped twice:
+
+```
+GET /api/content/v2/households/{household}/services/52231/accounts/2/playlists/libraryplaylist%253Ap.…/browse?muse2=true&defaults=…
+```
+
+This was a playlist in the reader's own library (`libraryplaylist:p.…`),
+found through the Sonos favourites. Search never returns library content, but
+the content API opens a library playlist once its id is known. The answer's
+template is not measured yet.
+
+## Versions
+
+Content answers carry a response header **`x-sonos-api-version`**, `0.91.3`
+when measured. It is the only explicit version of the content API, and a 0.x
+version fits an API that is not public. A change in it is the likely moment
+for these findings to stop being true, so it is worth recording and watching.
+
+Other markers:
+
+| Where | Value |
+|---|---|
+| Path | `/api/content/v1/…` for search and favourites, `/api/content/v2/…` for opening |
+| Sonos's own address in `href` | `api.ws.sonos.com/content/api/v2/…` |
+| Parameter | `muse2=true` ("Muse" is Sonos's name for its cloud API) |
+| Websocket subprotocol | `v1.api.smartspeaker.audio` |
+| Websocket answers | `"apiVersion": 1` |
+| Session | `"version": 3` |
+
+Other headers show the hosting: Vercel serves the web app, behind CloudFront,
+and answers are cached privately for 60 seconds (`cache-control: max-age=60,
+must-revalidate, private`).
