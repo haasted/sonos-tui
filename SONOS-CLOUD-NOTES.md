@@ -315,7 +315,19 @@ another page size.
   app's scrolling sends it as it is, so it very likely shows only the first 50
   of a longer list.
 - **`total` is more than the items that come back.** Bob Dylan says 142, but
-  only 107 albums arrive. The rest are missing behind the API.
+  only 107 albums arrive. `total` counts every album in the account's Apple
+  storefront (Apple's public lookup also gives 142 for `country=dk`),
+  including albums sold only as downloads. The list leaves out every album
+  with no streamable track, after each page is cut: 33 of the first 100 and 2
+  of the next 42. Treat `total` as an upper bound, not as a count.
+- **A left-out album still opens** through `albums/…/browse`, but each of its
+  tracks has only `ACTION_FAVORITES` and `playable:false` in its `defaults`.
+  A streamable track has `ACTION_PLAY` and `playable:true`. This is per
+  track: an album can stream some of its tracks.
+- **The web app shows only the first page of an artist.** Its artist page
+  asks with no `count`, gets 67 of Dylan's albums and no `nextUri`, and so
+  never scrolls for more. Inferred from its code and a replay of its request,
+  not seen on screen.
 - Whether play.sonos.com or the content API behind it rounds the offset is
   not known. Search takes an offset too, and is not measured.
 
