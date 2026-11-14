@@ -69,6 +69,10 @@ type pageSection struct {
 // not turn into a flood of requests or one enormous answer.
 const maxItems = 1000
 
+// pageSize is the most entries the API sends for one request, and the step
+// its offsets go in.
+const pageSize = 100
+
 // pageItem is one entry in a section, which can be opened in its turn.
 type pageItem struct {
 	Title    string       `json:"title"`
@@ -224,37 +228,56 @@ func (b *browser) open(opts searchOptions, r resource) ([]resource, error) {
 
 // completeSections fetches the whole list of a section that came with only a
 // first page, such as an artist with more albums than were sent, up to
-// maxItems. One request: through the web app, any offset but 0 answers an
-// empty page, so a larger count is how the rest is had.
+// maxItems. The API rounds an offset up to a multiple of pageSize and sends no
+// more than pageSize at a time, so it is asked a whole page at a time.
 func (b *browser) completeSections(opts searchOptions, r resource, p *page) error {
 	for i, section := range p.Sections.Items {
 		if section.Total <= len(section.Items) || section.FastScrollURI == "" {
 			continue
 		}
-		count := min(section.Total, maxItems)
-		q := url.Values{"count": {strconv.Itoa(count)}, "offset": {"0"}, "filterExplicit": {"false"}, "muse2": {"true"}}
-		target := fmt.Sprintf("%s/api/content/v2/households/%s/services/%s/accounts/%d/containers/%s/resources?%s",
-			webApp, url.PathEscape(opts.household), opts.services, opts.account,
-			url.PathEscape(url.PathEscape(r.ID.ObjectID)), q.Encode())
 		fmt.Printf("   fetching all %d entries (at most %d)\n", section.Total, maxItems)
-		resp, err := b.send(http.MethodGet, target, nil, http.Header{"Accept": {"application/json"}})
-		if err != nil {
-			return err
+		var all []pageItem
+		for offset := 0; offset < maxItems; offset += pageSize {
+			items, more, err := b.fetchPage(opts, r, offset)
+			if err != nil {
+				return err
+			}
+			all = append(all, items...)
+			if len(items) == 0 || !more {
+				break
+			}
 		}
-		if resp.StatusCode >= 400 {
-			return fmt.Errorf("fetching the rest answered %d", resp.StatusCode)
-		}
-		var all struct {
-			Items []pageItem `json:"items"`
-		}
-		if err := json.Unmarshal(resp.Body, &all); err != nil {
-			return fmt.Errorf("reading the rest: %w", err)
-		}
-		if len(all.Items) > len(section.Items) {
-			p.Sections.Items[i].Items = all.Items
+		if len(all) > len(section.Items) {
+			p.Sections.Items[i].Items = all
 		}
 	}
 	return nil
+}
+
+// fetchPage fetches the page of a container's list that starts at offset, and
+// reports whether a page follows it. A page can hold fewer than pageSize
+// entries and still not be the last.
+func (b *browser) fetchPage(opts searchOptions, r resource, offset int) ([]pageItem, bool, error) {
+	q := url.Values{"count": {strconv.Itoa(pageSize)}, "offset": {strconv.Itoa(offset)}, "filterExplicit": {"false"}, "muse2": {"true"}}
+	target := fmt.Sprintf("%s/api/content/v2/households/%s/services/%s/accounts/%d/containers/%s/resources?%s",
+		webApp, url.PathEscape(opts.household), opts.services, opts.account,
+		url.PathEscape(url.PathEscape(r.ID.ObjectID)), q.Encode())
+	resp, err := b.send(http.MethodGet, target, nil, http.Header{"Accept": {"application/json"}})
+	if err != nil {
+		return nil, false, err
+	}
+	if resp.StatusCode >= 400 {
+		return nil, false, fmt.Errorf("fetching entries from %d answered %d", offset, resp.StatusCode)
+	}
+	var answer struct {
+		Items   []pageItem `json:"items"`
+		NextURI string     `json:"nextUri"`
+	}
+	if err := json.Unmarshal(resp.Body, &answer); err != nil {
+		return nil, false, fmt.Errorf("reading entries from %d: %w", offset, err)
+	}
+	fmt.Printf("   %d entries from %d\n", len(answer.Items), offset)
+	return answer.Items, answer.NextURI != "", nil
 }
 
 // printPage lists a page: an album's tracks, or the entries of each section,

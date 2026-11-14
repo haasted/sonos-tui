@@ -288,6 +288,37 @@ found through the Sonos favourites. Search never returns library content, but
 the content API opens a library playlist once its id is known. The answer's
 template is not measured yet.
 
+## Paging a list
+
+A section that holds only its first page is fetched in full from its
+container:
+
+```
+GET /api/content/v2/households/{household}/services/52231/accounts/2/containers/artist%253A312095/resources?count=100&offset=0&filterExplicit=false&muse2=true
+```
+
+**The API pages in steps of 100, and rounds `offset` up to the next
+multiple of 100.** offset=50 asks for the page from 100, and the v1 catalog
+endpoint answers `info.offset: 100` for it. `count` is capped at 100:
+count=1000 still answers at most 100 items.
+
+So page with `count=100` and `offset=0, 100, 200, …`, and stop at an empty
+page or one with no `nextUri`. A page can hold fewer than 100 items (67, 98
+and 99 were seen) and still not be the last. Measured for Apple Music
+(service 52231), on artists, albums and playlists; other services may have
+another page size.
+
+- **An offset past the end** answers "No content items available." on an
+  artist, and a 500 from Apple's `getMetadata` on an album.
+- **`nextUri` carries the web app's own `count` and `offset`**, such as
+  `offset=50&count=50`, which the rounding turns into an empty page. The web
+  app's scrolling sends it as it is, so it very likely shows only the first 50
+  of a longer list.
+- **`total` is more than the items that come back.** Bob Dylan says 142, but
+  only 107 albums arrive. The rest are missing behind the API.
+- Whether play.sonos.com or the content API behind it rounds the offset is
+  not known. Search takes an offset too, and is not measured.
+
 ## Versions
 
 Content answers carry a response header **`x-sonos-api-version`**, `0.91.3`
