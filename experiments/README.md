@@ -36,6 +36,11 @@ production code never imports from here.
   `~/.config/sonos-sandbox/web-session` (mode 0600) and prints no secret. Needs
   the internet, not speakers; see `make sonos-web` (`WEB_ARGS=-fresh`), and
   `make sonos-search` to type one search after another and list the results.
+- `browse/` — a mock-up of the client's favourites modal, to try out browsing
+  into a favourite before the real modal changes. The modal's code is copied
+  from `cmd/sonos` (it is package `main` there and cannot be imported); the
+  favourites are made up, with real Apple Music ids, and nothing plays. See
+  `make browse-mock`.
 - `coverart/` — evaluates `github.com/blacktop/go-termimg` and
   `github.com/BourgeoisBear/rasterm` for rendering album art in the terminal.
   Runs against fixture images in `data/`, no live speaker calls.
