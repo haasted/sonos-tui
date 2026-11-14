@@ -33,6 +33,11 @@ func mockFavourites() []store.Favourite {
 		{store.FavouriteAlbum, "Colors", "Beck", "album:1440881121"},
 		{store.FavouriteTrack, "Downtown Train (2023 Remaster)", "Tom Waits", "song:1695048155"},
 		{store.FavouriteAlbum, "Low (2017 Remaster)", "David Bowie", "album:1347895593"},
+		{store.FavouriteAlbum, "Be Here Now - Single", "Beck", "album:1783905690"},
+		{store.FavouriteAlbum, "Big Time (Live)", "Tom Waits", "album:1443540897"},
+		{store.FavouriteAlbum, "Boots on the Ground - Single", "Massive Attack & Tom Waits", "album:1886123355"},
+		{store.FavouriteAlbum, "Grave Diggers: Tom Waits - EP", "Tom Waits", "album:1650272960"},
+		{store.FavouriteAlbum, "Saw Lightning - Single", "Beck", "album:1460177651"},
 	}
 	at := time.Date(2026, 11, 12, 12, 0, 0, 0, time.UTC)
 	favourites := make([]store.Favourite, len(rows))

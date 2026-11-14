@@ -32,7 +32,7 @@ var favouriteKindNames = map[store.FavouriteKind]string{
 // a track, and keeps the cursor on a favourite by its row id.
 var favouritesFilter = listFilter[store.Favourite]{
 	match: func(fav store.Favourite, text string) bool {
-		return fav.Kind == backKind || anyContains(text, fav.Title, fav.Artist)
+		return fav.Kind == backKind || (fav.Kind != headingKind && anyContains(text, fav.Title, fav.Artist))
 	},
 	same: func(a, b store.Favourite) bool { return a.ID == b.ID },
 }
@@ -197,6 +197,35 @@ func (f favouritesContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // It is not a real kind: no favourite is stored with it.
 const backKind store.FavouriteKind = "back"
 
+// headingKind marks a group heading in the albums list, such as "Singles &
+// EPs". Like backKind, it is not a real kind, and the cursor passes over it.
+const headingKind store.FavouriteKind = "heading"
+
+// albumGroups are the groups the albums list is split into, in this order.
+var albumGroups = []string{"Albums", "Live", "Singles & EPs"}
+
+func isHeading(fav store.Favourite) bool { return fav.Kind == headingKind }
+
+// albumGroup says which group an album goes in, from its title: Apple names
+// singles and EPs with a fixed suffix, and a live album only by the word.
+func albumGroup(title string) string {
+	switch {
+	case strings.HasSuffix(title, " - Single"), strings.HasSuffix(title, " - EP"):
+		return "Singles & EPs"
+	case strings.Contains(strings.ToLower(title), "live"):
+		return "Live"
+	}
+	return "Albums"
+}
+
+// shownTitle is an album's title without the suffix its group already says.
+func shownTitle(fav store.Favourite) string {
+	if fav.Kind != store.FavouriteAlbum {
+		return fav.Title
+	}
+	return strings.TrimSuffix(strings.TrimSuffix(fav.Title, " - Single"), " - EP")
+}
+
 // backRow is that row. It matches every filter, so it is always there.
 var backRow = store.Favourite{ID: -1, Kind: backKind, Title: "← back"}
 
@@ -265,6 +294,40 @@ func (f favouritesContent) trackCountLabel() string {
 		return fmt.Sprintf("%d", tracks)
 	}
 	return ""
+}
+
+// drawHeading draws a group heading as a rule across the row, with the
+// group's name set into it, so it reads as a break between groups and not as
+// one more entry. Its rule is stronger than the line under the heading, which
+// only frames the list.
+func (f favouritesContent) drawHeading(name string, widths [2]int, arrow string) string {
+	full := listMarkWidth + widths[0] + listGap + widths[1]
+	lead := "── "
+	tail := max(full-lipgloss.Width(lead)-lipgloss.Width(name)-1, 0)
+	line := groupRuleStyle().Render(lead) + favouritesKindStyle().Render(name) +
+		groupRuleStyle().Render(" "+strings.Repeat("─", tail))
+	if !f.overflows() {
+		return line
+	}
+	return line + strings.Repeat(" ", listGap) + listArrowStyle(f.openedAt).Render(arrow)
+}
+
+func groupRuleStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.LightDark(lipgloss.Color("#A3A3A3"), lipgloss.Color("#7A7A7A")))
+}
+
+// realCount is how many favourites the list shows, its headings left out.
+func (f favouritesContent) realCount() int { return countReal(f.items) }
+
+// countReal counts the entries that are not headings.
+func countReal(items []store.Favourite) int {
+	n := 0
+	for _, fav := range items {
+		if !isHeading(fav) {
+			n++
+		}
+	}
+	return n
 }
 
 // onBackRow reports the cursor on the row that goes back up.
@@ -440,7 +503,7 @@ func (f favouritesContent) settle() (favouritesContent, tea.Cmd) {
 	if at < 0 {
 		at = min(f.cursor, f.lastRow())
 	}
-	f.cursor = at
+	f.cursor = f.landing(at, 1)
 	f.listView = f.follow()
 	return f, nil
 }
@@ -453,12 +516,12 @@ func (f favouritesContent) isGoing(fav store.Favourite) bool {
 // up, as in the queue. With every row fading, the cursor stays where it is.
 func (f favouritesContent) restingRow(from int) int {
 	for i := from; i < len(f.items); i++ {
-		if !f.isGoing(f.items[i]) {
+		if !f.isGoing(f.items[i]) && !isHeading(f.items[i]) {
 			return i
 		}
 	}
 	for i := min(from, len(f.items)) - 1; i >= 0; i-- {
-		if !f.isGoing(f.items[i]) {
+		if !f.isGoing(f.items[i]) && !isHeading(f.items[i]) {
 			return i
 		}
 	}
@@ -487,7 +550,9 @@ func (f favouritesContent) neighbourKind() store.FavouriteKind {
 // cursor at the top.
 func (f favouritesContent) show() favouritesContent {
 	f.items, f.all, f.cursor, f.offset = f.ofKind(), nil, 0, 0
+	f.skip = isHeading
 	f.listView = f.narrow(favouritesFilter)
+	f.cursor = f.landing(0, 1)
 	return f
 }
 
@@ -499,7 +564,24 @@ func (f favouritesContent) ofKind() []store.Favourite {
 			items = append(items, fav)
 		}
 	}
-	return items
+	if f.kind != store.FavouriteAlbum {
+		return items
+	}
+	// Albums are grouped under headings, newest first within each group.
+	var grouped []store.Favourite
+	for g, group := range albumGroups {
+		var members []store.Favourite
+		for _, fav := range items {
+			if albumGroup(fav.Title) == group {
+				members = append(members, fav)
+			}
+		}
+		if len(members) > 0 {
+			heading := store.Favourite{ID: int64(-100 - g), Kind: headingKind, Title: fmt.Sprintf("%s · %d", group, len(members))}
+			grouped = append(append(grouped, heading), members...)
+		}
+	}
+	return grouped
 }
 
 // kinds are the media types that have favourites, in the order ← and → walk.
@@ -562,11 +644,14 @@ func (f favouritesContent) View() tea.View {
 		func(fav store.Favourite) string { return fav.Artist })
 
 	return tea.NewView(f.render(f.headingParts(), f.note(), func(index int, fav store.Favourite, arrow string) string {
+		if isHeading(fav) {
+			return f.drawHeading(fav.Title, [2]int{title, artist}, arrow)
+		}
 		style := queueRowStyle()
 		if fav.Kind == backKind || f.isGoing(fav) || fav.ID == f.coming {
 			style = style.Foreground(themedGoingColor()).Bold(false)
 		}
-		return f.drawRow(index, fav.Title, fav.Artist, [2]int{title, artist}, style, arrow, false)
+		return f.drawRow(index, shownTitle(fav), fav.Artist, [2]int{title, artist}, style, arrow, false)
 	}))
 }
 
@@ -631,11 +716,14 @@ func (f favouritesContent) countLabel() string {
 	case f.note() != "":
 		return ""
 	case f.filter != "":
-		return f.matchLabel()
+		return fmt.Sprintf("%d of %d", f.realCount(), countReal(f.everything()))
 	case f.overflows():
-		return f.rangeLabel()
-	case len(f.items) > favouritesCountFloor:
-		return fmt.Sprintf("%d", len(f.items))
+		// Headings take rows but are not favourites, so they are not counted.
+		first, last := f.window()
+		before, shown := countReal(f.items[:first]), countReal(f.items[first:last])
+		return fmt.Sprintf("%d-%d of %d", before+1, before+shown, f.realCount())
+	case f.realCount() > favouritesCountFloor:
+		return fmt.Sprintf("%d", f.realCount())
 	default:
 		return ""
 	}
