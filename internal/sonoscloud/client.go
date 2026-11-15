@@ -1,6 +1,6 @@
 // Package sonoscloud talks to the Sonos cloud as the Sonos web app
-// (play.sonos.com) does, with the reader's own signed-in session. Every
-// request is made to look like the web app's own, from a browser.
+// (play.sonos.com) does, with the reader's own session. Every request copies,
+// as far as it can, what Google Chrome on a Mac sends: "the browser" below.
 package sonoscloud
 
 import (
@@ -24,14 +24,17 @@ const (
 	// Sonos's own API.
 	DefaultBaseURL = "https://play.sonos.com"
 
-	// browserAgent and the client hints are what a current Chrome on a Mac
-	// sends. Update them together.
+	// browserAgent and the client hints name the browser's version. Update
+	// them together.
 	browserAgent  = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
 	browserHints  = `"Chromium";v="130", "Google Chrome";v="130", "Not?A_Brand";v="99"`
 	browserLocale = "en-US,en;q=0.9"
 
 	// appPage is the page the web app's own requests come from.
 	appPage = "/en-us/web-app"
+
+	// pageAccept is what the browser accepts when it loads a page.
+	pageAccept = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
 
 	// maxAnswer is the largest answer read, far above any measured one.
 	maxAnswer = 32 << 20
@@ -164,21 +167,15 @@ func (c *Client) get(ctx context.Context, path string, query url.Values) ([]byte
 	if err != nil {
 		return nil, err
 	}
-	c.fetchHeaders(req.Header, "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Referer", c.base.JoinPath(appPage).String())
 
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("sonoscloud: GET %s: %w", path, unwrapURLError(err))
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxAnswer))
-	slog.Debug("sonoscloud", "method", http.MethodGet, "path", path, "status", resp.StatusCode)
-
+	resp, body, err := fetch(c.http, req)
 	if saveErr := c.saveIfRenewed(); saveErr != nil {
 		slog.Warn("sonoscloud: saving the renewed session", "err", saveErr)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("sonoscloud: reading GET %s: %w", path, err)
+		return nil, err
 	}
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized:
@@ -189,20 +186,62 @@ func (c *Client) get(ctx context.Context, path string, query url.Values) ([]byte
 	return body, nil
 }
 
-// fetchHeaders are the headers Chrome sends with a fetch from the web app's
-// own page. Go writes them in its own order, and its TLS handshake is not
-// Chrome's: those two differences remain.
-func (c *Client) fetchHeaders(h http.Header, accept string) {
-	h.Set("User-Agent", browserAgent)
-	h.Set("Accept", accept)
-	h.Set("Accept-Language", browserLocale)
-	h.Set("Referer", c.base.JoinPath(appPage).String())
-	h.Set("Sec-Ch-Ua", browserHints)
-	h.Set("Sec-Ch-Ua-Mobile", "?0")
-	h.Set("Sec-Ch-Ua-Platform", `"macOS"`)
-	h.Set("Sec-Fetch-Dest", "empty")
-	h.Set("Sec-Fetch-Mode", "cors")
-	h.Set("Sec-Fetch-Site", "same-origin")
+// fetch sends req as the browser sends a fetch from a page's script, and
+// page as it loads a page. Both answer whatever the status, with the body
+// read and closed; the response's Request holds the address after redirects.
+func fetch(hc *http.Client, req *http.Request) (*http.Response, []byte, error) {
+	req.Header.Set("Sec-Fetch-Dest", "empty")
+	req.Header.Set("Sec-Fetch-Mode", "cors")
+	return send(hc, req)
+}
+
+func page(hc *http.Client, req *http.Request) (*http.Response, []byte, error) {
+	if req.Header.Get("Accept") == "" {
+		req.Header.Set("Accept", pageAccept)
+	}
+	req.Header.Set("Sec-Fetch-Dest", "document")
+	req.Header.Set("Sec-Fetch-Mode", "navigate")
+	req.Header.Set("Sec-Fetch-User", "?1")
+	req.Header.Set("Upgrade-Insecure-Requests", "1")
+	return send(hc, req)
+}
+
+// send adds the headers the browser puts on every request and sends req. Go
+// writes headers in its own order and its TLS handshake is not the browser's;
+// those differences remain. Errors name the path only, never the query.
+func send(hc *http.Client, req *http.Request) (*http.Response, []byte, error) {
+	req.Header.Set("User-Agent", browserAgent)
+	req.Header.Set("Accept-Language", browserLocale)
+	req.Header.Set("Sec-Ch-Ua", browserHints)
+	req.Header.Set("Sec-Ch-Ua-Mobile", "?0")
+	req.Header.Set("Sec-Ch-Ua-Platform", `"macOS"`)
+	req.Header.Set("Sec-Fetch-Site", fetchSite(req))
+
+	resp, err := hc.Do(req)
+	if err != nil {
+		return nil, nil, fmt.Errorf("sonoscloud: %s %s: %w", req.Method, req.URL.Path, unwrapURLError(err))
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxAnswer))
+	slog.Debug("sonoscloud", "method", req.Method, "host", req.URL.Host, "path", req.URL.Path, "status", resp.StatusCode)
+	if err != nil {
+		return nil, nil, fmt.Errorf("sonoscloud: reading %s %s: %w", req.Method, req.URL.Path, err)
+	}
+	return resp, body, nil
+}
+
+// fetchSite is the browser's Sec-Fetch-Site: none when the reader started
+// the request, same-origin when it comes from a page of the same origin, and
+// cross-site otherwise.
+func fetchSite(req *http.Request) string {
+	from, err := url.Parse(req.Header.Get("Referer"))
+	switch {
+	case req.Header.Get("Referer") == "" || err != nil:
+		return "none"
+	case from.Scheme == req.URL.Scheme && from.Host == req.URL.Host:
+		return "same-origin"
+	}
+	return "cross-site"
 }
 
 // saveIfRenewed saves the session when the server has set it since the last
@@ -221,8 +260,7 @@ func (c *Client) saveIfRenewed() error {
 // unwrapURLError drops the *url.Error around a transport error: it repeats
 // the whole address, query and all.
 func unwrapURLError(err error) error {
-	var urlErr *url.Error
-	if errors.As(err, &urlErr) {
+	if urlErr, ok := errors.AsType[*url.Error](err); ok {
 		return urlErr.Err
 	}
 	return err

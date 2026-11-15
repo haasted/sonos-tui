@@ -23,7 +23,7 @@ const secret = "s3cret-session-value"
 const sessionName = "__Secure-next-auth.session-token"
 
 // Case: a request with a saved session. It carries every part of the
-// session cookie and the headers Chrome sends with the web app's own fetch.
+// session cookie, and the headers the browser sends with the web app's fetch.
 func TestClient_SendsTheSessionAndTheBrowsersHeaders(t *testing.T) {
 	var got *http.Request
 	srv := fakeWebApp(t, func(w http.ResponseWriter, r *http.Request) {
@@ -161,10 +161,14 @@ func TestClient_TheSessionNeverReachesOutput(t *testing.T) {
 	}
 }
 
-// fakeWebApp is a TLS server, so the session's Secure cookies are sent.
+// fakeWebApp is a TLS server, so the session's Secure cookies are sent. It
+// logs each request it gets.
 func fakeWebApp(t *testing.T, handle http.HandlerFunc) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewTLSServer(handle)
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Logf("fake web app got %s %s", r.Method, r.URL.Path)
+		handle(w, r)
+	}))
 	t.Cleanup(srv.Close)
 	return srv
 }
