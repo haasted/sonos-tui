@@ -156,9 +156,9 @@ var ErrNoNetwork = errors.New("sonos: no network interface to search on")
 // and, once Speakers has closed, a report of how the searches went.
 type Discovery struct {
 	Speakers <-chan Speaker
+	report   DiscoveryReport
 
-	mu     sync.Mutex
-	report DiscoveryReport
+	mu sync.Mutex // guards report
 }
 
 // DiscoveryReport says what discovery tried, so a run that found nothing can

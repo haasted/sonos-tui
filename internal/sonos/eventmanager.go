@@ -20,9 +20,9 @@ const (
 type EventManager struct {
 	listener *eventListener
 	client   *http.Client
+	subs     map[string]*subscription
 
-	mu   sync.Mutex
-	subs map[string]*subscription
+	mu sync.Mutex // guards subs
 }
 
 type subscription struct {

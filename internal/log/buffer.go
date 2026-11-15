@@ -6,8 +6,9 @@ import (
 )
 
 type Buffer struct {
-	mu    sync.Mutex
 	lines []string
+
+	mu sync.Mutex // guards lines
 }
 
 func NewBuffer() *Buffer {
