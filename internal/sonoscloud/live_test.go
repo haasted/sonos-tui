@@ -31,6 +31,24 @@ func TestLive_TheSavedSessionIsValid(t *testing.T) {
 	t.Logf("the session runs out at %s", info.Expires.Format(time.RFC3339))
 }
 
+// Case: the account's households, from the real Control API. There is at
+// least one, and each id is the speakers' form, a dot and more. The ids are
+// not logged.
+func TestLive_TheHouseholdsAreListed(t *testing.T) {
+	c := liveClient(t)
+
+	households, err := c.Households(t.Context())
+
+	require.NoError(t, err)
+	require.NotEmpty(t, households)
+	for _, h := range households {
+		require.True(t, strings.HasPrefix(h.ID, "Sonos_"), "an id not of the Sonos form")
+		require.NotEqual(t, h.ID, h.LocalID(), "an id with no dot")
+		require.NotEmpty(t, h.OwnerLUID)
+	}
+	t.Logf("the account holds %d household(s)", len(households))
+}
+
 // liveClient is a client with the reader's saved session. It skips the test
 // without -live, and when no valid session is saved or the server no longer
 // takes it: a live test never signs in, as that needs the password.

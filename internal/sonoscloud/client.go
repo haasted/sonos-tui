@@ -48,12 +48,14 @@ var ErrSignedOut = errors.New("sonoscloud: not signed in")
 // at a time as the web app's page would, and saves the session again each
 // time the server renews it. It is safe to use from several goroutines.
 type Client struct {
-	base  *url.URL
-	http  *http.Client
-	jar   *sessionJar
-	store SessionStore
-	mu    sync.Mutex // one request at a time, as a page does
-	now   func() time.Time
+	base       *url.URL
+	http       *http.Client
+	jar        *sessionJar
+	store      SessionStore
+	households HouseholdStore // nil keeps no household between runs
+	now        func() time.Time
+
+	mu sync.Mutex // one request at a time, as a page does
 }
 
 // Option changes how New builds a Client.
@@ -76,13 +78,13 @@ type SessionInfo struct {
 // the server sets it, with its expiry, which a cookiejar.Jar does not give
 // back. It sees cookies set on a redirect too.
 type sessionJar struct {
-	inner *cookiejar.Jar
-	host  string
-	now   func() time.Time
-
-	mu      sync.Mutex
+	inner   *cookiejar.Jar
+	host    string
+	now     func() time.Time
 	session map[string]Cookie
 	changed bool
+
+	mu sync.Mutex // guards session and changed
 }
 
 var _ http.CookieJar = (*sessionJar)(nil)

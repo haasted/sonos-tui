@@ -354,6 +354,12 @@ func (d *Device) Topology(ctx context.Context) (Topology, error) {
 	return d.client.GetZoneGroupState(ctx)
 }
 
+// HouseholdID reads the id of the household the speaker belongs to. Every
+// speaker of a household answers the same.
+func (d *Device) HouseholdID(ctx context.Context) (string, error) {
+	return d.client.GetHouseholdID(ctx)
+}
+
 // HandleZoneGroupTopologyEvent reads how the household is now grouped and
 // publishes it. Nothing is stored on the device: the grouping is the
 // household's and belongs to whoever holds one, where a copy per speaker

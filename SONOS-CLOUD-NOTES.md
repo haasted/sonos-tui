@@ -121,8 +121,13 @@ The answer has the same `corrId`:
 ```
 
 The id has the form `Sonos_`, 26 letters and digits, a dot and 20 letters and
-digits (53 characters; measured on one household). The speakers give the same
-id on the local network, through DeviceProperties `GetHouseholdID`.
+digits (53 characters; measured on one household).
+
+**The speakers give only the part before the dot.** DeviceProperties
+`GetHouseholdID` on the local network answers `Sonos_` and the same 26
+characters (measured 2026-11-15). So the cloud household that is this one is
+the one whose id, up to the dot, equals the speakers'. The part after the dot
+cannot be worked out locally: `getHouseholds` is still needed for the full id.
 
 ## Search
 
