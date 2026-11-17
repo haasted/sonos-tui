@@ -26,4 +26,4 @@ demos/*.gif
 
 # macOS Finder metadata
 .DS_Store
-GO-REVIEW.md
+GO-REVIEW*.md
