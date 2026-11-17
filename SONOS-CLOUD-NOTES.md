@@ -160,6 +160,18 @@ Each has `info` (`count`, `offset`, `pageSize`) and `resources[]`.
 "david bowie" gave 2 artists, 15 tracks, 14 albums, 2 playlists and 15
 programs, all related.
 
+Measured 2026-11-15:
+
+- **`count` is for the whole answer**, shared among the types: count=2
+  gave one artist and one track, count=50 gave 48 results in five groups.
+  Each group's `info.pageSize` echoes the count.
+- **The account in the address is not checked.** Account 99 answers
+  exactly as account 2, and each result's `id.accountId` still says `2`.
+  So the answer tells which account the household has on the service.
+- **A household the cloud does not know answers 410 Gone.**
+- `/api/content/v1/households/{household}/services` and `…/accounts`
+  answer 404: there is no list of the household's accounts there.
+
 ### Results
 
 Each resource has:

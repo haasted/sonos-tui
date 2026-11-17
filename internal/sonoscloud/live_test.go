@@ -49,6 +49,32 @@ func TestLive_TheHouseholdsAreListed(t *testing.T) {
 	t.Logf("the account holds %d household(s)", len(households))
 }
 
+// Case: a search of Apple Music (service 52231) in the real household. It
+// finds David Bowie's albums, and an album's summary gives its year.
+func TestLive_SearchFindsAlbums(t *testing.T) {
+	c := liveClient(t)
+	households, err := c.Households(t.Context())
+	require.NoError(t, err)
+	household, err := sonoscloud.PickHousehold(households, "")
+	if errors.Is(err, sonoscloud.ErrHouseholdUnknown) {
+		t.Skip("the account holds more than one household")
+	}
+
+	results, err := c.Search(t.Context(), household.ID, 52231, 2, "david bowie")
+
+	require.NoError(t, err)
+	var albumYear bool
+	for _, g := range results.Groups {
+		t.Logf("%s: %d", g.Name, len(g.Results))
+		for _, r := range g.Results {
+			if _, _, ok := r.GenreYear(); ok {
+				albumYear = true
+			}
+		}
+	}
+	require.True(t, albumYear, "no album with a genre and a year")
+}
+
 // liveClient is a client with the reader's saved session. It skips the test
 // without -live, and when no valid session is saved or the server no longer
 // takes it: a live test never signs in, as that needs the password.

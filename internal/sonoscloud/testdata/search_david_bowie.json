@@ -1,0 +1,442 @@
+{
+ "info": {
+  "count": 9
+ },
+ "errors": [],
+ "ALBUMS": {
+  "info": {
+   "count": 2,
+   "offset": 0,
+   "pageSize": 50
+  },
+  "resources": [
+   {
+    "id": {
+     "objectId": "album:1676286487",
+     "serviceId": "52231",
+     "accountId": "2",
+     "serviceName": "Apple Music",
+     "serviceNameId": "apple-music"
+    },
+    "name": "Blackstar",
+    "type": "ALBUM",
+    "artists": [
+     {
+      "name": "David Bowie",
+      "id": {
+       "objectId": "artist:551695",
+       "serviceId": "52231",
+       "accountId": "2",
+       "serviceName": "Apple Music",
+       "serviceNameId": "apple-music"
+      },
+      "type": "ARTIST",
+      "playable": false,
+      "images": []
+     }
+    ],
+    "playable": true,
+    "images": [
+     {
+      "url": "https://is3-ssl.mzstatic.com/image/thumb/Music126/v4/cd/c9/0d/cdc90daa-b426-916f-163a-1ff65a6f4108/5054197573972.jpg/400x400bb.jpeg"
+     }
+    ],
+    "explicit": true,
+    "summary": {
+     "content": "Rock - 2016"
+    },
+    "enumerable": true,
+    "defaults": "eyJuYW1lIjoiQmxhY2tzdGFyIiwiYXJ0aXN0IjoiRGF2aWQgQm93aWUiLCJhcnRpc3RJZCI6ImFydGlzdDo1NTE2OTUiLCJzdW1tYXJ5IjoiUm9jayAtIDIwMTYiLCJpbWFnZVVybCI6Imh0dHBzOi8vaXMzLXNzbC5tenN0YXRpYy5jb20vaW1hZ2UvdGh1bWIvTXVzaWMxMjYvdjQvY2QvYzkvMGQvY2RjOTBkYWEtYjQyNi05MTZmLTE2M2EtMWZmNjVhNmY0MTA4LzUwNTQxOTc1NzM5NzIuanBnLzQwMHg0MDBiYi5qcGVnIiwiZXhwbGljaXQiOnRydWUsInBsYXlhYmxlIjp0cnVlfQ",
+    "actions": [
+     "ACTION_PLAY",
+     "ACTION_FAVORITES"
+    ]
+   },
+   {
+    "id": {
+     "objectId": "album:1475002920",
+     "serviceId": "52231",
+     "accountId": "2",
+     "serviceName": "Apple Music",
+     "serviceNameId": "apple-music"
+    },
+    "name": "Let's Dance (2018 Remaster)",
+    "type": "ALBUM",
+    "artists": [
+     {
+      "name": "David Bowie",
+      "id": {
+       "objectId": "artist:551695",
+       "serviceId": "52231",
+       "accountId": "2",
+       "serviceName": "Apple Music",
+       "serviceNameId": "apple-music"
+      },
+      "type": "ARTIST",
+      "playable": false,
+      "images": []
+     }
+    ],
+    "playable": true,
+    "images": [
+     {
+      "url": "https://is3-ssl.mzstatic.com/image/thumb/Music115/v4/bd/df/9d/bddf9d26-d45a-278f-26c1-e5274094cb27/190295671600.jpg/400x400bb.jpeg"
+     }
+    ],
+    "explicit": false,
+    "summary": {
+     "content": "Rock - 1983"
+    },
+    "enumerable": true,
+    "defaults": "eyJuYW1lIjoiTGV0J3MgRGFuY2UgKDIwMTggUmVtYXN0ZXIpIiwiYXJ0aXN0IjoiRGF2aWQgQm93aWUiLCJhcnRpc3RJZCI6ImFydGlzdDo1NTE2OTUiLCJzdW1tYXJ5IjoiUm9jayAtIDE5ODMiLCJpbWFnZVVybCI6Imh0dHBzOi8vaXMzLXNzbC5tenN0YXRpYy5jb20vaW1hZ2UvdGh1bWIvTXVzaWMxMTUvdjQvYmQvZGYvOWQvYmRkZjlkMjYtZDQ1YS0yNzhmLTI2YzEtZTUyNzQwOTRjYjI3LzE5MDI5NTY3MTYwMC5qcGcvNDAweDQwMGJiLmpwZWciLCJleHBsaWNpdCI6ZmFsc2UsInBsYXlhYmxlIjp0cnVlfQ",
+    "actions": [
+     "ACTION_PLAY",
+     "ACTION_FAVORITES"
+    ]
+   }
+  ]
+ },
+ "ARTISTS": {
+  "info": {
+   "count": 1,
+   "offset": 0,
+   "pageSize": 50
+  },
+  "resources": [
+   {
+    "id": {
+     "objectId": "artist:551695",
+     "serviceId": "52231",
+     "accountId": "2",
+     "serviceName": "Apple Music",
+     "serviceNameId": "apple-music"
+    },
+    "name": "David Bowie",
+    "type": "ARTIST",
+    "playable": false,
+    "images": [
+     {
+      "url": "https://is3-ssl.mzstatic.com/image/thumb/AMCArtistImages211/v4/5a/3c/4d/5a3c4d88-ca2d-25ee-a255-c3dec44a6355/ami-identity-ad17268d3b2d4741ffef2b5397d07b5b-2026-01-01T01-15-35.357Z_cropped.png/400x400bb.jpeg"
+     }
+    ],
+    "defaults": "eyJuYW1lIjoiRGF2aWQgQm93aWUiLCJpbWFnZVVybCI6Imh0dHBzOi8vaXMzLXNzbC5tenN0YXRpYy5jb20vaW1hZ2UvdGh1bWIvQU1DQXJ0aXN0SW1hZ2VzMjExL3Y0LzVhLzNjLzRkLzVhM2M0ZDg4LWNhMmQtMjVlZS1hMjU1LWMzZGVjNDRhNjM1NS9hbWktaWRlbnRpdHktYWQxNzI2OGQzYjJkNDc0MWZmZWYyYjUzOTdkMDdiNWItMjAyNi0wMS0wMVQwMS0xNS0zNS4zNTdaX2Nyb3BwZWQucG5nLzQwMHg0MDBiYi5qcGVnIiwiZXhwbGljaXQiOmZhbHNlLCJwbGF5YWJsZSI6ZmFsc2V9",
+    "actions": [
+     "ACTION_FAVORITES"
+    ]
+   }
+  ]
+ },
+ "PLAYLISTS": {
+  "info": {
+   "count": 2,
+   "offset": 0,
+   "pageSize": 50
+  },
+  "resources": [
+   {
+    "id": {
+     "objectId": "playlist:pl.606df299487e4c0e9022793836927a49",
+     "serviceId": "52231",
+     "accountId": "2",
+     "serviceName": "Apple Music",
+     "serviceNameId": "apple-music"
+    },
+    "name": "David Bowie Essentials",
+    "type": "PLAYLIST",
+    "images": [
+     {
+      "url": "https://is1-ssl.mzstatic.com/image/thumb/AMCArtistImages211/v4/5a/3c/4d/5a3c4d88-ca2d-25ee-a255-c3dec44a6355/ami-identity-ad17268d3b2d4741ffef2b5397d07b5b-2026-01-01T01-15-35.357Z_cropped.png/400x400SC.FPESS05.jpeg?l=en-GB"
+     }
+    ],
+    "playable": true,
+    "explicit": false,
+    "enumerable": true,
+    "readOnly": true,
+    "renameable": false,
+    "userContent": false,
+    "summary": {
+     "content": "One of music’s most indelible and influential shapeshifters."
+    },
+    "owner": {
+     "id": {
+      "objectId": "0",
+      "serviceId": "52231",
+      "accountId": "2",
+      "type": "MUSEOBJECTID"
+     },
+     "name": "Playlist by Apple Music Rock",
+     "images": [],
+     "type": "USER"
+    },
+    "defaults": "eyJuYW1lIjoiRGF2aWQgQm93aWUgRXNzZW50aWFscyIsInN1bW1hcnkiOiJPbmUgb2YgbXVzaWPigJlzIG1vc3QgaW5kZWxpYmxlIGFuZCBpbmZsdWVudGlhbCBzaGFwZXNoaWZ0ZXJzLiIsImltYWdlVXJsIjoiaHR0cHM6Ly9pczEtc3NsLm16c3RhdGljLmNvbS9pbWFnZS90aHVtYi9BTUNBcnRpc3RJbWFnZXMyMTEvdjQvNWEvM2MvNGQvNWEzYzRkODgtY2EyZC0yNWVlLWEyNTUtYzNkZWM0NGE2MzU1L2FtaS1pZGVudGl0eS1hZDE3MjY4ZDNiMmQ0NzQxZmZlZjJiNTM5N2QwN2I1Yi0yMDI2LTAxLTAxVDAxLTE1LTM1LjM1N1pfY3JvcHBlZC5wbmcvNDAweDQwMFNDLkZQRVNTMDUuanBlZz9sPWVuLUdCIiwiZXhwbGljaXQiOmZhbHNlLCJwbGF5YWJsZSI6dHJ1ZX0",
+    "actions": [
+     "ACTION_PLAY",
+     "ACTION_FAVORITES"
+    ]
+   },
+   {
+    "id": {
+     "objectId": "playlist:pl.18df52da188a4d39be68a43ae1456771",
+     "serviceId": "52231",
+     "accountId": "2",
+     "serviceName": "Apple Music",
+     "serviceNameId": "apple-music"
+    },
+    "name": "Bowie in Berlin",
+    "type": "PLAYLIST",
+    "images": [
+     {
+      "url": "https://is1-ssl.mzstatic.com/image/thumb/Features115/v4/17/ae/64/17ae6431-ee1a-f0b6-07e7-b6c16359b0f9/contsched.chguhvip.png/400x400SC.DN02.jpeg?l=en-GB"
+     }
+    ],
+    "playable": true,
+    "explicit": false,
+    "enumerable": true,
+    "readOnly": true,
+    "renameable": false,
+    "userContent": false,
+    "summary": {
+     "content": "The shape-shifting star finds inspiration in a Cold War outpost."
+    },
+    "owner": {
+     "id": {
+      "objectId": "0",
+      "serviceId": "52231",
+      "accountId": "2",
+      "type": "MUSEOBJECTID"
+     },
+     "name": "Playlist by Apple Music Classic Rock",
+     "images": [],
+     "type": "USER"
+    },
+    "defaults": "eyJuYW1lIjoiQm93aWUgaW4gQmVybGluIiwic3VtbWFyeSI6IlRoZSBzaGFwZS1zaGlmdGluZyBzdGFyIGZpbmRzIGluc3BpcmF0aW9uIGluIGEgQ29sZCBXYXIgb3V0cG9zdC4iLCJpbWFnZVVybCI6Imh0dHBzOi8vaXMxLXNzbC5tenN0YXRpYy5jb20vaW1hZ2UvdGh1bWIvRmVhdHVyZXMxMTUvdjQvMTcvYWUvNjQvMTdhZTY0MzEtZWUxYS1mMGI2LTA3ZTctYjZjMTYzNTliMGY5L2NvbnRzY2hlZC5jaGd1aHZpcC5wbmcvNDAweDQwMFNDLkROMDIuanBlZz9sPWVuLUdCIiwiZXhwbGljaXQiOmZhbHNlLCJwbGF5YWJsZSI6dHJ1ZX0",
+    "actions": [
+     "ACTION_PLAY",
+     "ACTION_FAVORITES"
+    ]
+   }
+  ]
+ },
+ "PROGRAMS": {
+  "info": {
+   "count": 2,
+   "offset": 0,
+   "pageSize": 50
+  },
+  "resources": [
+   {
+    "id": {
+     "objectId": "radio:ra.551695",
+     "serviceId": "52231",
+     "accountId": "2",
+     "serviceName": "Apple Music",
+     "serviceNameId": "apple-music"
+    },
+    "name": "David Bowie & Similar Artists",
+    "type": "PROGRAM",
+    "images": [
+     {
+      "url": "https://is1-ssl.mzstatic.com/image/thumb/AMCArtistImages211/v4/5a/3c/4d/5a3c4d88-ca2d-25ee-a255-c3dec44a6355/ami-identity-ad17268d3b2d4741ffef2b5397d07b5b-2026-01-01T01-15-35.357Z_cropped.png/400x400AM.RSMA04.jpeg?imgLeft=AMCArtistImages211%2Fv4%2F3a%2Ff1%2Fab%2F3af1ab1d-88d5-6f6e-d780-6c65e5c5f1d1%2Fami-identity-7fc42470ca1a15181e89be862a31de39-2026-05-01T16-02-23.241Z_cropped.png&imgRight=Features115%2Fv4%2Faa%2F75%2Fc6%2Faa75c6fc-9f38-3d79-98b4-df0ed4357f14%2Fmzl.zyfbcxpb.jpg"
+     }
+    ],
+    "playable": true,
+    "artists": [],
+    "explicit": false,
+    "enumerable": true,
+    "defaults": "eyJuYW1lIjoiRGF2aWQgQm93aWUgJiBTaW1pbGFyIEFydGlzdHMiLCJpbWFnZVVybCI6Imh0dHBzOi8vaXMxLXNzbC5tenN0YXRpYy5jb20vaW1hZ2UvdGh1bWIvQU1DQXJ0aXN0SW1hZ2VzMjExL3Y0LzVhLzNjLzRkLzVhM2M0ZDg4LWNhMmQtMjVlZS1hMjU1LWMzZGVjNDRhNjM1NS9hbWktaWRlbnRpdHktYWQxNzI2OGQzYjJkNDc0MWZmZWYyYjUzOTdkMDdiNWItMjAyNi0wMS0wMVQwMS0xNS0zNS4zNTdaX2Nyb3BwZWQucG5nLzQwMHg0MDBBTS5SU01BMDQuanBlZz9pbWdMZWZ0PUFNQ0FydGlzdEltYWdlczIxMSUyRnY0JTJGM2ElMkZmMSUyRmFiJTJGM2FmMWFiMWQtODhkNS02ZjZlLWQ3ODAtNmM2NWU1YzVmMWQxJTJGYW1pLWlkZW50aXR5LTdmYzQyNDcwY2ExYTE1MTgxZTg5YmU4NjJhMzFkZTM5LTIwMjYtMDUtMDFUMTYtMDItMjMuMjQxWl9jcm9wcGVkLnBuZyZpbWdSaWdodD1GZWF0dXJlczExNSUyRnY0JTJGYWElMkY3NSUyRmM2JTJGYWE3NWM2ZmMtOWYzOC0zZDc5LTk4YjQtZGYwZWQ0MzU3ZjE0JTJGbXpsLnp5ZmJjeHBiLmpwZyIsImV4cGxpY2l0IjpmYWxzZSwicGxheWFibGUiOnRydWV9",
+    "actions": [
+     "ACTION_PLAY",
+     "ACTION_FAVORITES"
+    ]
+   },
+   {
+    "id": {
+     "objectId": "radio:ra.1039797280",
+     "serviceId": "52231",
+     "accountId": "2",
+     "serviceName": "Apple Music",
+     "serviceNameId": "apple-music"
+    },
+    "name": "Starman (2012 Remaster) Station",
+    "type": "PROGRAM",
+    "images": [
+     {
+      "url": "https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/5f/fa/56/5ffa56c2-ea1f-7a17-6bad-192ff9b6476d/825646124206.jpg/400x400AM.RSSB04.jpeg"
+     }
+    ],
+    "playable": true,
+    "artists": [],
+    "explicit": false,
+    "enumerable": true,
+    "defaults": "eyJuYW1lIjoiU3Rhcm1hbiAoMjAxMiBSZW1hc3RlcikgU3RhdGlvbiIsImltYWdlVXJsIjoiaHR0cHM6Ly9pczEtc3NsLm16c3RhdGljLmNvbS9pbWFnZS90aHVtYi9NdXNpYzExNC92NC81Zi9mYS81Ni81ZmZhNTZjMi1lYTFmLTdhMTctNmJhZC0xOTJmZjliNjQ3NmQvODI1NjQ2MTI0MjA2LmpwZy80MDB4NDAwQU0uUlNTQjA0LmpwZWciLCJleHBsaWNpdCI6ZmFsc2UsInBsYXlhYmxlIjp0cnVlfQ",
+    "actions": [
+     "ACTION_PLAY",
+     "ACTION_FAVORITES"
+    ]
+   }
+  ]
+ },
+ "TRACKS": {
+  "info": {
+   "count": 2,
+   "offset": 0,
+   "pageSize": 50
+  },
+  "resources": [
+   {
+    "id": {
+     "objectId": "song:1039797280",
+     "serviceId": "52231",
+     "accountId": "2",
+     "serviceName": "Apple Music",
+     "serviceNameId": "apple-music"
+    },
+    "name": "Starman (2012 Remaster)",
+    "type": "TRACK",
+    "artists": [
+     {
+      "name": "David Bowie",
+      "id": {
+       "objectId": "artist:551695",
+       "serviceId": "52231",
+       "accountId": "2",
+       "serviceName": "Apple Music",
+       "serviceNameId": "apple-music"
+      },
+      "type": "ARTIST",
+      "playable": false
+     }
+    ],
+    "explicit": false,
+    "playable": true,
+    "summary": {
+     "content": "David Bowie"
+    },
+    "images": [
+     {
+      "url": "https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/5f/fa/56/5ffa56c2-ea1f-7a17-6bad-192ff9b6476d/825646124206.jpg/400x400bb.jpeg"
+     }
+    ],
+    "container": {
+     "id": {
+      "objectId": "album:1039796877",
+      "serviceId": "52231",
+      "accountId": "2",
+      "serviceName": "Apple Music",
+      "serviceNameId": "apple-music"
+     },
+     "name": "The Rise and Fall of Ziggy Stardust and the Spiders from Mars (2012 Remaster)",
+     "type": "ALBUM",
+     "artists": [
+      {
+       "name": "David Bowie",
+       "id": {
+        "objectId": "artist:551695",
+        "serviceId": "52231",
+        "accountId": "2",
+        "serviceName": "Apple Music",
+        "serviceNameId": "apple-music"
+       },
+       "type": "ARTIST",
+       "playable": false
+      }
+     ],
+     "images": [
+      {
+       "url": "https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/5f/fa/56/5ffa56c2-ea1f-7a17-6bad-192ff9b6476d/825646124206.jpg/400x400bb.jpeg"
+      }
+     ],
+     "playable": true
+    },
+    "ordinal": 4,
+    "durationMs": 254000,
+    "defaults": "eyJuYW1lIjoiU3Rhcm1hbiAoMjAxMiBSZW1hc3RlcikiLCJhcnRpc3QiOiJEYXZpZCBCb3dpZSIsImFydGlzdElkIjoiYXJ0aXN0OjU1MTY5NSIsInN1bW1hcnkiOiJEYXZpZCBCb3dpZSIsImltYWdlVXJsIjoiaHR0cHM6Ly9pczEtc3NsLm16c3RhdGljLmNvbS9pbWFnZS90aHVtYi9NdXNpYzExNC92NC81Zi9mYS81Ni81ZmZhNTZjMi1lYTFmLTdhMTctNmJhZC0xOTJmZjliNjQ3NmQvODI1NjQ2MTI0MjA2LmpwZy80MDB4NDAwYmIuanBlZyIsImV4cGxpY2l0IjpmYWxzZSwicGxheWFibGUiOnRydWUsIm1pbWVUeXBlIjoiYXVkaW8vYWFjIiwiZHVyYXRpb25NcyI6MjU0MDAwLCJjb250YWluZXJJZCI6ImFsYnVtOjEwMzk3OTY4NzciLCJjb250YWluZXJOYW1lIjoiVGhlIFJpc2UgYW5kIEZhbGwgb2YgWmlnZ3kgU3RhcmR1c3QgYW5kIHRoZSBTcGlkZXJzIGZyb20gTWFycyAoMjAxMiBSZW1hc3RlcikiLCJjb250YWluZXJUeXBlIjoiQUxCVU0ifQ",
+    "actions": [
+     "ACTION_PLAY",
+     "ACTION_FAVORITES"
+    ]
+   },
+   {
+    "id": {
+     "objectId": "song:1347894092",
+     "serviceId": "52231",
+     "accountId": "2",
+     "serviceName": "Apple Music",
+     "serviceNameId": "apple-music"
+    },
+    "name": "\"Heroes\" (2017 Remaster)",
+    "type": "TRACK",
+    "artists": [
+     {
+      "name": "David Bowie",
+      "id": {
+       "objectId": "artist:551695",
+       "serviceId": "52231",
+       "accountId": "2",
+       "serviceName": "Apple Music",
+       "serviceNameId": "apple-music"
+      },
+      "type": "ARTIST",
+      "playable": false
+     }
+    ],
+    "explicit": false,
+    "playable": true,
+    "summary": {
+     "content": "David Bowie"
+    },
+    "images": [
+     {
+      "url": "https://is4-ssl.mzstatic.com/image/thumb/Music115/v4/e2/65/b2/e265b2ae-48d5-9dd8-0251-6cd6c6c4eb53/190295842826.jpg/400x400bb.jpeg"
+     }
+    ],
+    "container": {
+     "id": {
+      "objectId": "album:1347894082",
+      "serviceId": "52231",
+      "accountId": "2",
+      "serviceName": "Apple Music",
+      "serviceNameId": "apple-music"
+     },
+     "name": "\"Heroes\" (2017 Remaster)",
+     "type": "ALBUM",
+     "artists": [
+      {
+       "name": "David Bowie",
+       "id": {
+        "objectId": "artist:551695",
+        "serviceId": "52231",
+        "accountId": "2",
+        "serviceName": "Apple Music",
+        "serviceNameId": "apple-music"
+       },
+       "type": "ARTIST",
+       "playable": false
+      }
+     ],
+     "images": [
+      {
+       "url": "https://is4-ssl.mzstatic.com/image/thumb/Music115/v4/e2/65/b2/e265b2ae-48d5-9dd8-0251-6cd6c6c4eb53/190295842826.jpg/400x400bb.jpeg"
+      }
+     ],
+     "playable": true
+    },
+    "ordinal": 3,
+    "durationMs": 371000,
+    "defaults": "eyJuYW1lIjoiXCJIZXJvZXNcIiAoMjAxNyBSZW1hc3RlcikiLCJhcnRpc3QiOiJEYXZpZCBCb3dpZSIsImFydGlzdElkIjoiYXJ0aXN0OjU1MTY5NSIsInN1bW1hcnkiOiJEYXZpZCBCb3dpZSIsImltYWdlVXJsIjoiaHR0cHM6Ly9pczQtc3NsLm16c3RhdGljLmNvbS9pbWFnZS90aHVtYi9NdXNpYzExNS92NC9lMi82NS9iMi9lMjY1YjJhZS00OGQ1LTlkZDgtMDI1MS02Y2Q2YzZjNGViNTMvMTkwMjk1ODQyODI2LmpwZy80MDB4NDAwYmIuanBlZyIsImV4cGxpY2l0IjpmYWxzZSwicGxheWFibGUiOnRydWUsIm1pbWVUeXBlIjoiYXVkaW8vYWFjIiwiZHVyYXRpb25NcyI6MzcxMDAwLCJjb250YWluZXJJZCI6ImFsYnVtOjEzNDc4OTQwODIiLCJjb250YWluZXJOYW1lIjoiXCJIZXJvZXNcIiAoMjAxNyBSZW1hc3RlcikiLCJjb250YWluZXJUeXBlIjoiQUxCVU0ifQ",
+    "actions": [
+     "ACTION_PLAY",
+     "ACTION_FAVORITES"
+    ]
+   }
+  ]
+ },
+ "resourceOrder": [
+  "ARTISTS",
+  "TRACKS",
+  "ALBUMS",
+  "PLAYLISTS",
+  "PROGRAMS"
+ ],
+ "externalLinks": []
+}

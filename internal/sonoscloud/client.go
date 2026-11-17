@@ -225,7 +225,13 @@ func send(hc *http.Client, req *http.Request) (*http.Response, []byte, error) {
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxAnswer))
-	slog.Debug("sonoscloud", "method", req.Method, "host", req.URL.Host, "path", req.URL.Path, "status", resp.StatusCode)
+	logged := []any{"method", req.Method, "host", req.URL.Host, "path", req.URL.Path, "status", resp.StatusCode}
+	// A change of the content API's version is when it may stop answering as
+	// measured, so each request's line shows it.
+	if version := resp.Header.Get("X-Sonos-Api-Version"); version != "" {
+		logged = append(logged, "apiVersion", version)
+	}
+	slog.Debug("sonoscloud", logged...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("sonoscloud: reading %s %s: %w", req.Method, req.URL.Path, err)
 	}
