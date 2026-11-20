@@ -254,6 +254,13 @@ func (q queueContent) shift(delta int) (queueContent, tea.Cmd) {
 		q.moveFrom = q.items[q.cursor].Position
 	}
 
+	// Behind a filter the whole queue moves too: the track goes just past the
+	// track shown beside it, which can be far off in the whole queue.
+	if q.all != nil {
+		from := positionIndex(q.all, q.items[q.cursor].Position)
+		beside := positionIndex(q.all, q.items[target].Position)
+		q.all = movedItems(q.all, from, beside)
+	}
 	q.items = movedItems(q.items, q.cursor, target)
 	q.cursor = target
 	q = q.follow()
@@ -280,14 +287,24 @@ func movedItems(items []sonos.QueueItem, from, to int) []sonos.QueueItem {
 	return append(rest, moved[to:]...)
 }
 
+// positionIndex is the index of the item at a queue position, or -1. Positions
+// stay unique during a move: only the order changes here, never a number.
+func positionIndex(items []sonos.QueueItem, position int) int {
+	return slices.IndexFunc(items, func(item sonos.QueueItem) bool { return item.Position == position })
+}
+
 // pendingMove is the move waiting to be sent, and whether there is one. to is
-// the position the track now appears at, which is what the speaker is asked
-// for.
+// where the track now sits in the WHOLE queue, which is what the speaker is
+// asked for. A row of a filtered list is not a queue position.
 func (q queueContent) pendingMove() (from, to int, pending bool) {
-	if q.moveFrom == 0 || q.cursor >= len(q.items) {
+	if q.moveFrom == 0 {
 		return 0, 0, false
 	}
-	return q.moveFrom, q.cursor + 1, true
+	at := positionIndex(q.everything(), q.moveFrom)
+	if at < 0 {
+		return 0, 0, false
+	}
+	return q.moveFrom, at + 1, true
 }
 
 // clearMove closes the window, whether it was committed or abandoned.

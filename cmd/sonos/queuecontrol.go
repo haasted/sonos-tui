@@ -407,7 +407,7 @@ func (m appModel) applyQueueMoveCommit(msg queueMoveCommitMsg) (tea.Model, tea.C
 
 	// Remember which track went, so the queue that comes back can put the
 	// cursor on it again rather than on whatever row it left behind.
-	m.queue.Content = content.settleMove(landing{at: to, uri: content.items[content.cursor].URI})
+	m.queue.Content = content.settleMove(landing{at: to, uri: content.everything()[to-1].URI})
 
 	speaker, found := m.activeSpeaker()
 	if !found {
