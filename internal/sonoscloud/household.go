@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -48,6 +49,16 @@ type HouseholdStore interface {
 	ClearHousehold() error
 }
 
+// memoryHouseholds keeps the household for the client's life only.
+type memoryHouseholds struct {
+	household Household
+	found     bool
+
+	mu sync.Mutex // guards household and found
+}
+
+var _ HouseholdStore = &memoryHouseholds{}
+
 // controlHeader is the first object of a Control API message.
 type controlHeader struct {
 	Command   string `json:"command,omitempty"`
@@ -57,10 +68,30 @@ type controlHeader struct {
 	Success   bool   `json:"success,omitempty"`
 }
 
-// WithHouseholdStore keeps the household in store, so that it is asked for
-// only when the kept one no longer fits.
-func WithHouseholdStore(store HouseholdStore) Option {
+// withHouseholdStore keeps the household in store between runs. Without one
+// it is kept in memory for the client's life.
+func withHouseholdStore(store HouseholdStore) option {
 	return func(c *Client) { c.households = store }
+}
+
+func (m *memoryHouseholds) LoadHousehold() (Household, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.household, m.found, nil
+}
+
+func (m *memoryHouseholds) SaveHousehold(h Household) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.household, m.found = h, true
+	return nil
+}
+
+func (m *memoryHouseholds) ClearHousehold() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.household, m.found = Household{}, false
+	return nil
 }
 
 // LocalID is the household's id as its speakers report it: the cloud's id up
@@ -89,17 +120,15 @@ func PickHousehold(households []Household, localID string) (Household, error) {
 }
 
 // Household is this household, as PickHousehold chooses it. A kept household
-// that still fits is answered without a request; otherwise the account's
-// households are asked for, and the choice is kept.
+// that still fits, or any kept one when localID is empty, is answered without
+// a request; otherwise the account's households are asked for, and kept.
 func (c *Client) Household(ctx context.Context, localID string) (Household, error) {
-	if c.households != nil {
-		kept, found, err := c.households.LoadHousehold()
-		if err != nil {
-			return Household{}, err
-		}
-		if found && (localID == "" || kept.LocalID() == localID) {
-			return kept, nil
-		}
+	kept, found, err := c.households.LoadHousehold()
+	if err != nil {
+		return Household{}, err
+	}
+	if found && (localID == "" || kept.LocalID() == localID) {
+		return kept, nil
 	}
 
 	households, err := c.Households(ctx)
@@ -110,10 +139,8 @@ func (c *Client) Household(ctx context.Context, localID string) (Household, erro
 	if err != nil {
 		return Household{}, err
 	}
-	if c.households != nil {
-		if err := c.households.SaveHousehold(h); err != nil {
-			return Household{}, err
-		}
+	if err := c.households.SaveHousehold(h); err != nil {
+		return Household{}, err
 	}
 	return h, nil
 }
@@ -125,7 +152,7 @@ func (c *Client) Households(ctx context.Context) ([]Household, error) {
 	ctx, cancel := context.WithTimeout(ctx, householdWait)
 	defer cancel()
 
-	body, err := c.get(ctx, "/api/mfe", "")
+	body, err := c.get(ctx, "/api/mfe", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +198,7 @@ func (c *Client) dialControlAPI(ctx context.Context, ticket string) (*websocket.
 	target.RawQuery = url.Values{"ticket": {ticket}}.Encode()
 
 	// The websocket library refuses a client timeout: ctx bounds the dial.
-	hc := *c.http
+	hc := *c.http.Client
 	hc.Timeout = 0
 	header := http.Header{}
 	header.Set("Origin", origin(c.base))

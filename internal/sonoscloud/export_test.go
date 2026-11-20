@@ -10,3 +10,18 @@ func SetControlAPI(t *testing.T, address string) {
 	controlAPI = address
 	t.Cleanup(func() { controlAPI = previous })
 }
+
+// Option and the With functions give tests the options New takes, which
+// only tests use: fake servers, stores in memory, a known account.
+type Option = option
+
+var (
+	WithBaseURL        = withBaseURL
+	WithHTTPClient     = withHTTPClient
+	WithSessionStore   = withSessionStore
+	WithHouseholdStore = withHouseholdStore
+	WithAccount        = withAccount
+)
+
+// DefaultSessionPath is the file New keeps the session in by default.
+var DefaultSessionPath = defaultSessionPath

@@ -13,6 +13,7 @@ import (
 
 	"github.com/haasted/sonos-tui/internal/log"
 	"github.com/haasted/sonos-tui/internal/sonos"
+	"github.com/haasted/sonos-tui/internal/sonoscloud"
 	"github.com/haasted/sonos-tui/internal/store"
 )
 
@@ -59,6 +60,7 @@ func main() {
 
 	model := newAppModel(ctx, events, cached, selected)
 	model.db = db
+	model.cloud = openCloud()
 	if row, ok := startRow(); ok {
 		model.screenTop = row
 	}
@@ -108,6 +110,17 @@ func openStore(ctx context.Context) (*store.Store, error) {
 	}
 	slog.Info("database ready", "path", path, "schema", version)
 	return db, nil
+}
+
+// openCloud makes the client for the Sonos cloud. A failure is logged and
+// leaves the app without it: the cloud is optional, and nothing else needs it.
+func openCloud() *sonoscloud.Client {
+	client, err := sonoscloud.New()
+	if err != nil {
+		slog.Warn("making the cloud client", "err", err)
+		return nil
+	}
+	return client
 }
 
 // loadCachedSpeakers returns last run's speakers, or nothing when there is no

@@ -14,6 +14,7 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -49,17 +50,21 @@ var ErrSignedOut = errors.New("sonoscloud: not signed in")
 // time the server renews it. It is safe to use from several goroutines.
 type Client struct {
 	base       *url.URL
-	http       *http.Client
+	http       browser
 	jar        *sessionJar
 	store      SessionStore
-	households HouseholdStore // nil keeps no household between runs
+	households HouseholdStore // where the household is kept; in memory unless given
+	accounts   map[int]int    // the household's account on each service, as last seen
 	now        func() time.Time
 
-	mu sync.Mutex // one request at a time, as a page does
+	mu sync.Mutex // one request at a time, as a page does; guards accounts too
 }
 
-// Option changes how New builds a Client.
-type Option func(*Client)
+// browser is an HTTP client that sends requests as the browser does.
+type browser struct{ *http.Client }
+
+// option changes how New builds a Client. Only tests use one today.
+type option func(*Client)
 
 // StatusError is an answer that was not a success. It holds no part of the
 // request's headers or the answer's body, so it is safe to log.
@@ -68,6 +73,8 @@ type StatusError struct {
 	Path   string
 	Status int
 }
+
+var _ error = &StatusError{}
 
 // SessionInfo is what the web app says about the session.
 type SessionInfo struct {
@@ -89,9 +96,9 @@ type sessionJar struct {
 
 var _ http.CookieJar = (*sessionJar)(nil)
 
-// WithBaseURL points the client somewhere other than the web app, such as a
+// withBaseURL points the client somewhere other than the web app, such as a
 // test server.
-func WithBaseURL(base string) Option {
+func withBaseURL(base string) option {
 	return func(c *Client) {
 		if u, err := url.Parse(base); err == nil {
 			c.base = u
@@ -99,20 +106,40 @@ func WithBaseURL(base string) Option {
 	}
 }
 
-// WithHTTPClient sends requests through hc, for its transport and timeout.
+// withHTTPClient sends requests through hc, for its transport and timeout.
 // The client puts its own cookie jar on a copy and leaves hc as it is.
-func WithHTTPClient(hc *http.Client) Option {
-	return func(c *Client) { c.http = hc }
+func withHTTPClient(hc *http.Client) option {
+	return func(c *Client) { c.http = browser{hc} }
 }
 
-// New loads the saved session from store and makes a client that sends it.
-// A missing session is not an error: requests then answer ErrSignedOut.
-func New(store SessionStore, opts ...Option) (*Client, error) {
-	c := &Client{store: store, now: time.Now, http: &http.Client{Timeout: 30 * time.Second}}
+// withSessionStore keeps the session in store instead of the default file.
+func withSessionStore(store SessionStore) option {
+	return func(c *Client) { c.store = store }
+}
+
+// withAccount says which account the household has on a service before an
+// answer has said. The client learns the account itself.
+func withAccount(service, account int) option {
+	return func(c *Client) { c.accounts[service] = account }
+}
+
+// New makes a client with the saved session: by default the file that the
+// sign-in writes, ~/.config/sonos-tui/web-session. A missing session is not
+// an error: requests then answer ErrSignedOut.
+func New(opts ...option) (*Client, error) {
+	c := &Client{now: time.Now, http: browser{&http.Client{Timeout: 30 * time.Second}}, accounts: map[int]int{}}
 	c.base, _ = url.Parse(DefaultBaseURL)
 	for _, opt := range opts {
 		opt(c)
 	}
+	if c.store == nil {
+		path, err := defaultSessionPath()
+		if err != nil {
+			return nil, err
+		}
+		c.store = FileStore{Path: path}
+	}
+	store := c.store
 
 	saved, err := store.Load()
 	if err != nil {
@@ -122,12 +149,15 @@ func New(store SessionStore, opts ...Option) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	if c.households == nil {
+		c.households = &memoryHouseholds{}
+	}
 	c.jar = &sessionJar{inner: inner, host: c.base.Host, now: c.now, session: map[string]Cookie{}}
 	c.jar.load(c.base, saved)
 
-	hc := *c.http
+	hc := *c.http.Client
 	hc.Jar = c.jar
-	c.http = &hc
+	c.http = browser{&hc}
 	return c, nil
 }
 
@@ -138,7 +168,7 @@ func (e *StatusError) Error() string {
 // Session asks the web app about the session, as its page does when it
 // opens. An answer with no session is ErrSignedOut.
 func (c *Client) Session(ctx context.Context) (SessionInfo, error) {
-	body, err := c.get(ctx, "/api/auth/session", "")
+	body, err := c.get(ctx, "/api/auth/session", nil)
 	if err != nil {
 		return SessionInfo{}, err
 	}
@@ -154,10 +184,9 @@ func (c *Client) Session(ctx context.Context) (SessionInfo, error) {
 	return SessionInfo{Expires: answer.Expires}, nil
 }
 
-// get sends a GET that needs the session, with rawQuery as its query, and
-// returns the answer's body. It answers ErrSignedOut without a request when
-// no valid session is saved.
-func (c *Client) get(ctx context.Context, path, rawQuery string) ([]byte, error) {
+// get sends a GET that needs the session, and returns the answer's body. It
+// answers ErrSignedOut without a request when no valid session is saved.
+func (c *Client) get(ctx context.Context, path string, query url.Values) ([]byte, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -165,7 +194,7 @@ func (c *Client) get(ctx context.Context, path, rawQuery string) ([]byte, error)
 		return nil, ErrSignedOut
 	}
 	target := c.base.JoinPath(path)
-	target.RawQuery = rawQuery
+	target.RawQuery = query.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
 	if err != nil {
 		return nil, err
@@ -173,7 +202,7 @@ func (c *Client) get(ctx context.Context, path, rawQuery string) ([]byte, error)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Referer", c.base.JoinPath(appPage).String())
 
-	resp, body, err := fetch(c.http, req)
+	resp, body, err := c.http.fetch(req)
 	if saveErr := c.saveIfRenewed(); saveErr != nil {
 		slog.Warn("sonoscloud: saving the renewed session", "err", saveErr)
 	}
@@ -192,13 +221,13 @@ func (c *Client) get(ctx context.Context, path, rawQuery string) ([]byte, error)
 // fetch sends req as the browser sends a fetch from a page's script, and
 // page as it loads a page. Both answer whatever the status, with the body
 // read and closed; the response's Request holds the address after redirects.
-func fetch(hc *http.Client, req *http.Request) (*http.Response, []byte, error) {
+func (b browser) fetch(req *http.Request) (*http.Response, []byte, error) {
 	req.Header.Set("Sec-Fetch-Dest", "empty")
 	req.Header.Set("Sec-Fetch-Mode", "cors")
-	return send(hc, req)
+	return b.send(req)
 }
 
-func page(hc *http.Client, req *http.Request) (*http.Response, []byte, error) {
+func (b browser) page(req *http.Request) (*http.Response, []byte, error) {
 	if req.Header.Get("Accept") == "" {
 		req.Header.Set("Accept", pageAccept)
 	}
@@ -206,13 +235,13 @@ func page(hc *http.Client, req *http.Request) (*http.Response, []byte, error) {
 	req.Header.Set("Sec-Fetch-Mode", "navigate")
 	req.Header.Set("Sec-Fetch-User", "?1")
 	req.Header.Set("Upgrade-Insecure-Requests", "1")
-	return send(hc, req)
+	return b.send(req)
 }
 
 // send adds the headers the browser puts on every request and sends req. Go
 // writes headers in its own order and its TLS handshake is not the browser's;
 // those differences remain. Errors name the path only, never the query.
-func send(hc *http.Client, req *http.Request) (*http.Response, []byte, error) {
+func (b browser) send(req *http.Request) (*http.Response, []byte, error) {
 	req.Header.Set("User-Agent", browserAgent)
 	req.Header.Set("Accept-Language", browserLocale)
 	req.Header.Set("Sec-Ch-Ua", browserHints)
@@ -220,7 +249,7 @@ func send(hc *http.Client, req *http.Request) (*http.Response, []byte, error) {
 	req.Header.Set("Sec-Ch-Ua-Platform", `"macOS"`)
 	req.Header.Set("Sec-Fetch-Site", fetchSite(req))
 
-	resp, err := hc.Do(req)
+	resp, err := b.Do(req)
 	if err != nil {
 		return nil, nil, fmt.Errorf("sonoscloud: %s %s: %w", req.Method, req.URL.Path, unwrapURLError(err))
 	}
@@ -251,6 +280,35 @@ func fetchSite(req *http.Request) string {
 		return "same-origin"
 	}
 	return "cross-site"
+}
+
+// account is the household's account on service, as last seen, or 0, which
+// the content API also takes.
+func (c *Client) account(service int) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.accounts[service]
+}
+
+// learnAccount keeps the account an answer says for service, so the next
+// request names the account the web app would.
+func (c *Client) learnAccount(service int, accountID string) {
+	account, err := strconv.Atoi(accountID)
+	if err != nil || account <= 0 {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.accounts[service] = account
+}
+
+// wrongHousehold forgets the kept household, which the cloud has just said
+// it does not know, and says so as ErrWrongHousehold.
+func (c *Client) wrongHousehold() error {
+	if err := c.households.ClearHousehold(); err != nil {
+		slog.Warn("sonoscloud: forgetting the household", "err", err)
+	}
+	return ErrWrongHousehold
 }
 
 // saveIfRenewed saves the session when the server has set it since the last

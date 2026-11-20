@@ -3,10 +3,13 @@ package sonoscloud
 import (
 	"encoding/base64"
 	"encoding/json"
-	"net/url"
-	"strconv"
+	"log/slog"
+	"regexp"
 	"strings"
 )
+
+// genreYearPattern is an album's summary: a genre, which may hold " - ", then its year.
+var genreYearPattern = regexp.MustCompile(`^(.+) - (\d{4})$`)
 
 // details is what a result's or an entry's defaults holds: base64 of a small
 // JSON summary, which the web app uses to draw a page before its data comes.
@@ -29,6 +32,8 @@ type details struct {
 // defaults write it as text, an album's as a boolean.
 type looseBool bool
 
+var _ json.Unmarshaler = new(looseBool)
+
 func (b *looseBool) UnmarshalJSON(data []byte) error {
 	*b = looseBool(strings.Trim(string(data), `"`) == "true")
 	return nil
@@ -49,34 +54,20 @@ func decodeDetails(defaults string) details {
 	return d
 }
 
-// sonosQuery encodes parameters as key, value, key, value, in the order given:
-// url.Values sorts them, and the web app's order is part of how it looks.
-func sonosQuery(pairs ...string) string {
-	var parts []string
-	for i := 0; i+1 < len(pairs); i += 2 {
-		parts = append(parts, url.QueryEscape(pairs[i])+"="+url.QueryEscape(pairs[i+1]))
-	}
-	return strings.Join(parts, "&")
-}
-
 // genreYear reads an album's summary, "Genre - Year", the only place the
 // content API gives its year.
-func genreYear(summary string) (genre string, year int, ok bool) {
-	at := strings.LastIndex(summary, " - ")
-	if at < 0 {
-		return "", 0, false
+func genreYear(summary string) (genre, year string, ok bool) {
+	m := genreYearPattern.FindStringSubmatch(summary)
+	if m == nil {
+		return "", "", false
 	}
-	year, err := strconv.Atoi(summary[at+3:])
-	if err != nil {
-		return "", 0, false
-	}
-	return summary[:at], year, true
+	return m[1], m[2], true
 }
 
-// orDefault is value, or fallback when value is empty.
-func orDefault(value, fallback string) string {
-	if value == "" {
-		return fallback
+// checkSummary logs an album summary that genreYear cannot read, to find the
+// formats it does not know yet.
+func checkSummary(album ResultID, summary string) {
+	if _, _, ok := genreYear(summary); !ok {
+		slog.Debug("album summary has no genre and year", "album", album.ObjectID, "summary", summary)
 	}
-	return value
 }

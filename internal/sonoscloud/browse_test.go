@@ -23,18 +23,18 @@ import (
 func TestOpenAlbum_ReadsTheAlbumAndItsTracks(t *testing.T) {
 	f := newFakeBrowse(t)
 
-	album, err := f.client(t).OpenAlbum(t.Context(), "Sonos_home.cloud", 52231, 2, "album:1676286487")
+	album, err := f.client(t).OpenAlbum(t.Context(), "Sonos_home.cloud", 52231, "album:1676286487")
 
 	require.NoError(t, err)
 	assert.Equal(t, "/api/content/v2/households/Sonos_home.cloud/services/52231/accounts/2/albums/album%253A1676286487/browse", f.paths[0])
-	assert.Equal(t, "muse2=true&count=50", f.queries[0])
+	assert.Equal(t, "count=50&muse2=true", f.queries[0])
 	assert.Equal(t, "album:1676286487", album.ID.ObjectID)
 	assert.Equal(t, "Blackstar", album.Name)
 	assert.Equal(t, "David Bowie", album.Artist)
 	genre, year, ok := album.GenreYear()
 	assert.True(t, ok)
 	assert.Equal(t, "Rock", genre)
-	assert.Equal(t, 2016, year)
+	assert.Equal(t, "2016", year)
 	assert.Equal(t, 7, album.Total)
 	require.Len(t, album.Tracks, 3)
 
@@ -58,7 +58,7 @@ func TestOpenAlbum_ATrackThatCannotBePlayed(t *testing.T) {
 		"tracks":{"total":1,"items":[{"title":"I Guess I'll Have to Change My Plan","actions":["ACTION_FAVORITES"],
 		"resource":{"id":{"objectId":"song%3A2"}},"ordinal":1,"duration":"200"}]}}`)
 
-	album, err := f.client(t).OpenAlbum(t.Context(), "Sonos_home.cloud", 52231, 2, "album:1")
+	album, err := f.client(t).OpenAlbum(t.Context(), "Sonos_home.cloud", 52231, "album:1")
 
 	require.NoError(t, err)
 	assert.False(t, album.Tracks[0].Playable)
@@ -70,7 +70,7 @@ func TestOpenArtist_ReadsTheArtistAndItsAlbums(t *testing.T) {
 	f := newFakeBrowse(t)
 	f.containerPages = 0 // the list stops after the page's own entries
 
-	artist, err := f.client(t).OpenArtist(t.Context(), "Sonos_home.cloud", 52231, 2, "artist:551695")
+	artist, err := f.client(t).OpenArtist(t.Context(), "Sonos_home.cloud", 52231, "artist:551695")
 
 	require.NoError(t, err)
 	assert.Equal(t, "/api/content/v2/households/Sonos_home.cloud/services/52231/accounts/2/artists/artist%253A551695/browse", f.paths[0])
@@ -88,7 +88,7 @@ func TestOpenArtist_ReadsTheArtistAndItsAlbums(t *testing.T) {
 	assert.True(t, first.Playable)
 	_, year, ok := first.GenreYear()
 	assert.True(t, ok)
-	assert.Equal(t, 1986, year)
+	assert.Equal(t, "1986", year)
 }
 
 // Case: an artist with more albums than its page holds. The rest come from
@@ -97,7 +97,7 @@ func TestOpenArtist_FetchesTheRestUpTo200(t *testing.T) {
 	f := newFakeBrowse(t)
 	f.containerPages = 5 // far more than the cap
 
-	artist, err := f.client(t).OpenArtist(t.Context(), "Sonos_home.cloud", 52231, 2, "artist:551695")
+	artist, err := f.client(t).OpenArtist(t.Context(), "Sonos_home.cloud", 52231, "artist:551695")
 
 	require.NoError(t, err)
 	assert.Len(t, artist.Albums, 200)
@@ -113,7 +113,7 @@ func TestOpenArtist_StopsAtTheLastPage(t *testing.T) {
 	f := newFakeBrowse(t)
 	f.containerPages = 1
 
-	artist, err := f.client(t).OpenArtist(t.Context(), "Sonos_home.cloud", 52231, 2, "artist:551695")
+	artist, err := f.client(t).OpenArtist(t.Context(), "Sonos_home.cloud", 52231, "artist:551695")
 
 	require.NoError(t, err)
 	assert.Len(t, artist.Albums, 3+100)
@@ -126,7 +126,7 @@ func TestOpenArtist_AlbumKinds(t *testing.T) {
 	f := newFakeBrowse(t)
 	f.artist = artistPage("Changes - Single", "Live Santa Monica '72", "The Man Who Sold the World - EP")
 
-	artist, err := f.client(t).OpenArtist(t.Context(), "Sonos_home.cloud", 52231, 2, "artist:551695")
+	artist, err := f.client(t).OpenArtist(t.Context(), "Sonos_home.cloud", 52231, "artist:551695")
 
 	require.NoError(t, err)
 	var kinds []sonoscloud.AlbumKind
@@ -142,7 +142,7 @@ func TestOpenAlbum_AWrongHousehold(t *testing.T) {
 	f := newFakeBrowse(t)
 	f.gone = true
 
-	_, err := f.client(t).OpenAlbum(t.Context(), "Sonos_elsewhere.cloud", 52231, 2, "album:1676286487")
+	_, err := f.client(t).OpenAlbum(t.Context(), "Sonos_elsewhere.cloud", 52231, "album:1676286487")
 
 	assert.ErrorIs(t, err, sonoscloud.ErrWrongHousehold)
 }
@@ -183,10 +183,11 @@ func newFakeBrowse(t *testing.T) *fakeBrowse {
 	return f
 }
 
-// client is a client of the fake with a valid saved session.
+// client is a client of the fake with a valid saved session, knowing the
+// household's Apple Music account.
 func (f *fakeBrowse) client(t *testing.T) *sonoscloud.Client {
 	t.Helper()
-	return newClient(t, f.srv, &memStore{session: validSession(sessionName)})
+	return newClient(t, f.srv, &memStore{session: validSession(sessionName)}, sonoscloud.WithAccount(sonoscloud.AppleMusic, 2))
 }
 
 // containerPage is 100 made-up albums from offset, with a nextUri unless it

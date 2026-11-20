@@ -149,7 +149,7 @@ func (f *fakeSignIn) client(t *testing.T, store sonoscloud.SessionStore) *sonosc
 	roots.AddCert(f.web.Certificate())
 	roots.AddCert(f.okta.Certificate())
 	hc := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots}}}
-	c, err := sonoscloud.New(store, sonoscloud.WithBaseURL(f.web.URL), sonoscloud.WithHTTPClient(hc))
+	c, err := sonoscloud.New(sonoscloud.WithSessionStore(store), sonoscloud.WithBaseURL(f.web.URL), sonoscloud.WithHTTPClient(hc))
 	require.NoError(t, err)
 	return c
 }

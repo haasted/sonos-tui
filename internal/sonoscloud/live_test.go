@@ -4,8 +4,6 @@ import (
 	"errors"
 	"flag"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -60,7 +58,7 @@ func TestLive_SearchFindsAlbums(t *testing.T) {
 		t.Skip("the account holds more than one household")
 	}
 
-	results, err := c.Search(t.Context(), household.ID, 52231, 2, "david bowie")
+	results, err := c.Search(t.Context(), household.ID, 52231, "david bowie")
 
 	require.NoError(t, err)
 	var albumYear bool
@@ -86,13 +84,13 @@ func TestLive_OpenAlbumAndArtist(t *testing.T) {
 		t.Skip("the account holds more than one household")
 	}
 
-	album, err := c.OpenAlbum(t.Context(), household.ID, 52231, 2, "album:1676286487")
+	album, err := c.OpenAlbum(t.Context(), household.ID, 52231, "album:1676286487")
 	require.NoError(t, err)
 	require.NotEmpty(t, album.Tracks)
 	_, year, _ := album.GenreYear()
-	t.Logf("%s by %s (%d): %d of %d tracks", album.Name, album.Artist, year, len(album.Tracks), album.Total)
+	t.Logf("%s by %s (%s): %d of %d tracks", album.Name, album.Artist, year, len(album.Tracks), album.Total)
 
-	artist, err := c.OpenArtist(t.Context(), household.ID, 52231, 2, "artist:551695")
+	artist, err := c.OpenArtist(t.Context(), household.ID, 52231, "artist:551695")
 	require.NoError(t, err)
 	require.NotNil(t, artist.Station)
 	require.Greater(t, len(artist.Albums), 100, "the rest of the list was not fetched")
@@ -109,15 +107,15 @@ func liveClient(t *testing.T) *sonoscloud.Client {
 		t.Skip("needs -live")
 	}
 	logRequestsTo(t)
-	home, err := os.UserHomeDir()
+	path, err := sonoscloud.DefaultSessionPath()
 	require.NoError(t, err)
-	store := sonoscloud.FileStore{Path: filepath.Join(home, ".config", "sonos-tui", "web-session")}
+	store := sonoscloud.FileStore{Path: path}
 	saved, err := store.Load()
 	require.NoError(t, err)
 	if !saved.Valid(time.Now()) {
 		t.Skip("no valid session saved; sign in first")
 	}
-	c, err := sonoscloud.New(store)
+	c, err := sonoscloud.New(sonoscloud.WithSessionStore(store))
 	require.NoError(t, err)
 	if _, err := c.Session(t.Context()); errors.Is(err, sonoscloud.ErrSignedOut) {
 		t.Skip("the server no longer takes the saved session; sign in first")

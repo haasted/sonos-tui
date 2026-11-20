@@ -91,6 +91,21 @@ func TestHousehold_ANewHouseholdIsAskedForAndKept(t *testing.T) {
 	assert.Equal(t, cottage, kept.household)
 }
 
+// Case: no store given. The household is kept in memory, so a second call
+// is answered without a request.
+func TestHousehold_KeptInMemoryWithoutAStore(t *testing.T) {
+	f := newFakeControl(t, home, cottage)
+	c := f.client(t, nil)
+
+	for range 2 {
+		got, err := c.Household(t.Context(), home.LocalID())
+		require.NoError(t, err)
+		assert.Equal(t, home, got)
+	}
+
+	assert.Equal(t, 1, f.tickets)
+}
+
 // Case: no saved session. The household cannot be asked for, and nothing is
 // sent to either server.
 func TestHouseholds_SignedOut(t *testing.T) {
@@ -172,7 +187,7 @@ func (f *fakeControl) client(t *testing.T, kept sonoscloud.HouseholdStore, opts 
 	if kept != nil {
 		options = append(options, sonoscloud.WithHouseholdStore(kept))
 	}
-	c, err := sonoscloud.New(&memStore{session: session}, options...)
+	c, err := sonoscloud.New(append(options, sonoscloud.WithSessionStore(&memStore{session: session}))...)
 	require.NoError(t, err)
 	return c
 }

@@ -11,6 +11,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/haasted/sonos-tui/internal/sonos"
+	"github.com/haasted/sonos-tui/internal/sonoscloud"
 	"github.com/haasted/sonos-tui/internal/store"
 	"github.com/haasted/sonos-tui/internal/ui/nowplaying"
 	"github.com/haasted/sonos-tui/internal/ui/panes"
@@ -54,8 +55,9 @@ type appModel struct {
 	queue         panes.Modal
 	favourites    panes.Modal
 	grouping      panes.Modal
-	marking       panes.Modal  // asks whether a mark in the queue is for the track or its playlist or album
-	db            *store.Store // the database; nil only in tests
+	marking       panes.Modal        // asks whether a mark in the queue is for the track or its playlist or album
+	db            *store.Store       // the database; nil only in tests
+	cloud         *sonoscloud.Client // the Sonos cloud; nil when its client could not be made
 
 	sized bool // a size has arrived; until then fits refuses nothing
 

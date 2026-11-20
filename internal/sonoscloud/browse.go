@@ -1,6 +1,7 @@
 package sonoscloud
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -137,18 +138,20 @@ type wireAction struct {
 
 // OpenAlbum opens an album of a service, such as "album:1676286487", with
 // its tracks.
-func (c *Client) OpenAlbum(ctx context.Context, household string, service, account int, objectID string) (Album, error) {
+func (c *Client) OpenAlbum(ctx context.Context, household string, service int, objectID string) (Album, error) {
 	var page wirePage
-	if err := c.getPage(ctx, household, service, account, "albums/"+pathID(objectID)+"/browse",
-		sonosQuery("muse2", "true", "count", albumCount), &page); err != nil {
+	if err := c.getPage(ctx, household, service, "albums/"+pathID(objectID)+"/browse",
+		url.Values{"muse2": {"true"}, "count": {albumCount}}, &page); err != nil {
 		return Album{}, err
 	}
 
+	c.learnAccount(service, page.Resource.ID.AccountID)
 	d := decodeDetails(page.Resource.Defaults)
 	album := Album{
-		ID: unescapedID(page.Resource.ID), Name: orDefault(page.Title, d.Name), Artist: orDefault(page.Subtitle, d.Artist),
-		Summary: d.Summary, ImageURL: orDefault(page.Images.Tile, d.ImageURL), Total: page.Tracks.Total,
+		ID: unescapedID(page.Resource.ID), Name: cmp.Or(page.Title, d.Name), Artist: cmp.Or(page.Subtitle, d.Artist),
+		Summary: d.Summary, ImageURL: cmp.Or(page.Images.Tile, d.ImageURL), Total: page.Tracks.Total,
 	}
+	checkSummary(album.ID, album.Summary)
 	for _, e := range page.Tracks.Items {
 		album.Tracks = append(album.Tracks, e.track())
 	}
@@ -157,17 +160,18 @@ func (c *Client) OpenAlbum(ctx context.Context, household string, service, accou
 
 // OpenArtist opens an artist of a service, such as "artist:551695", with its
 // station and up to maxEntries of its albums.
-func (c *Client) OpenArtist(ctx context.Context, household string, service, account int, objectID string) (Artist, error) {
+func (c *Client) OpenArtist(ctx context.Context, household string, service int, objectID string) (Artist, error) {
 	var page wirePage
-	if err := c.getPage(ctx, household, service, account, "artists/"+pathID(objectID)+"/browse",
-		sonosQuery("muse2", "true"), &page); err != nil {
+	if err := c.getPage(ctx, household, service, "artists/"+pathID(objectID)+"/browse",
+		url.Values{"muse2": {"true"}}, &page); err != nil {
 		return Artist{}, err
 	}
 
+	c.learnAccount(service, page.Resource.ID.AccountID)
 	artist := Artist{ID: unescapedID(page.Resource.ID), Name: page.Title, ImageURL: page.Images.Tile}
 	for _, a := range page.CustomActions {
 		if a.Action == "ACTION_PLAY_STATION" {
-			artist.Station = &Ref{ID: unescapedID(a.Resource.ID), Name: orDefault(decodeDetails(a.Resource.Defaults).Name, a.Label)}
+			artist.Station = &Ref{ID: unescapedID(a.Resource.ID), Name: cmp.Or(decodeDetails(a.Resource.Defaults).Name, a.Label)}
 		}
 	}
 	if len(page.Sections.Items) == 0 {
@@ -179,7 +183,7 @@ func (c *Client) OpenArtist(ctx context.Context, household string, service, acco
 	artist.Total = section.Total
 	entries := section.Items
 	if section.NextURI != "" || (section.FastScrollURI != "" && section.Total > len(entries)) {
-		rest, err := c.restOfList(ctx, household, service, account, objectID, len(entries))
+		rest, err := c.restOfList(ctx, household, service, objectID, len(entries))
 		if err != nil {
 			return Artist{}, err
 		}
@@ -194,13 +198,13 @@ func (c *Client) OpenArtist(ctx context.Context, household string, service, acco
 // restOfList fetches a container's entries from offset pageSize on, a page
 // at a time, until a page is empty or has nowhere to go, or maxEntries are
 // had with the had already in hand.
-func (c *Client) restOfList(ctx context.Context, household string, service, account int, objectID string, had int) ([]wireEntry, error) {
+func (c *Client) restOfList(ctx context.Context, household string, service int, objectID string, had int) ([]wireEntry, error) {
 	var rest []wireEntry
 	for offset := pageSize; had+len(rest) < maxEntries; offset += pageSize {
 		var list wireEntryList
-		if err := c.getPage(ctx, household, service, account, "containers/"+pathID(objectID)+"/resources", sonosQuery(
-			"count", strconv.Itoa(pageSize), "offset", strconv.Itoa(offset), "filterExplicit", "false", "muse2", "true",
-		), &list); err != nil {
+		if err := c.getPage(ctx, household, service, "containers/"+pathID(objectID)+"/resources", url.Values{
+			"count": {strconv.Itoa(pageSize)}, "offset": {strconv.Itoa(offset)}, "filterExplicit": {"false"}, "muse2": {"true"},
+		}, &list); err != nil {
 			return nil, err
 		}
 		rest = append(rest, list.Items...)
@@ -213,13 +217,13 @@ func (c *Client) restOfList(ctx context.Context, household string, service, acco
 
 // getPage gets a page of the household's service and reads it into into. A
 // 410 Gone is ErrWrongHousehold, as for a search.
-func (c *Client) getPage(ctx context.Context, household string, service, account int, rest, rawQuery string, into any) error {
+func (c *Client) getPage(ctx context.Context, household string, service int, rest string, query url.Values, into any) error {
 	path := fmt.Sprintf("/api/content/v2/households/%s/services/%d/accounts/%d/%s",
-		url.PathEscape(household), service, account, rest)
-	body, err := c.get(ctx, path, rawQuery)
+		url.PathEscape(household), service, c.account(service), rest)
+	body, err := c.get(ctx, path, query)
 	var status *StatusError
 	if errors.As(err, &status) && status.Status == http.StatusGone {
-		return ErrWrongHousehold
+		return c.wrongHousehold()
 	}
 	if err != nil {
 		return err
@@ -231,18 +235,18 @@ func (c *Client) getPage(ctx context.Context, household string, service, account
 }
 
 // GenreYear reads the album's summary, "Genre - Year".
-func (a Album) GenreYear() (genre string, year int, ok bool) { return genreYear(a.Summary) }
+func (a Album) GenreYear() (genre, year string, ok bool) { return genreYear(a.Summary) }
 
 // GenreYear reads the album's summary, "Genre - Year".
-func (e AlbumEntry) GenreYear() (genre string, year int, ok bool) { return genreYear(e.Summary) }
+func (e AlbumEntry) GenreYear() (genre, year string, ok bool) { return genreYear(e.Summary) }
 
 func (e wireEntry) track() Track {
 	d := decodeDetails(e.Resource.Defaults)
 	seconds, _ := strconv.Atoi(e.Duration)
 	t := Track{
-		ID: unescapedID(e.Resource.ID), Name: orDefault(e.Title, d.Name), Ordinal: e.Ordinal,
+		ID: unescapedID(e.Resource.ID), Name: cmp.Or(e.Title, d.Name), Ordinal: e.Ordinal,
 		Duration: time.Duration(seconds) * time.Second, Playable: slices.Contains(e.Actions, "ACTION_PLAY"),
-		MimeType: d.MimeType, ImageURL: orDefault(e.Images.Tile, d.ImageURL),
+		MimeType: d.MimeType, ImageURL: cmp.Or(e.Images.Tile, d.ImageURL),
 	}
 	for _, a := range e.Artists {
 		t.Artists = append(t.Artists, Ref{ID: srnID(a.ID), Name: a.Name})
@@ -252,11 +256,13 @@ func (e wireEntry) track() Track {
 
 func (e wireEntry) albumEntry() AlbumEntry {
 	d := decodeDetails(e.Resource.Defaults)
-	name := orDefault(e.Title, d.Name)
-	return AlbumEntry{
-		ID: unescapedID(e.Resource.ID), Name: name, Artist: orDefault(e.Subtitle, d.Artist), Kind: albumKind(name),
-		Summary: d.Summary, ImageURL: orDefault(e.Images.Tile, d.ImageURL), Playable: slices.Contains(e.Actions, "ACTION_PLAY"),
+	name := cmp.Or(e.Title, d.Name)
+	entry := AlbumEntry{
+		ID: unescapedID(e.Resource.ID), Name: name, Artist: cmp.Or(e.Subtitle, d.Artist), Kind: albumKind(name),
+		Summary: d.Summary, ImageURL: cmp.Or(e.Images.Tile, d.ImageURL), Playable: slices.Contains(e.Actions, "ACTION_PLAY"),
 	}
+	checkSummary(entry.ID, entry.Summary)
+	return entry
 }
 
 // albumKind reads the kind Apple Music marks at the end of a title.

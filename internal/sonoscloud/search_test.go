@@ -24,12 +24,13 @@ func TestSearch_AsksTheServiceAndGroupsTheResults(t *testing.T) {
 		w.Write(searchFixture(t))
 	})
 
-	results, err := newClient(t, srv, &memStore{session: validSession(sessionName)}).
-		Search(t.Context(), "Sonos_home.cloud", 52231, 2, "david bowie")
+	results, err := newClient(t, srv, &memStore{session: validSession(sessionName)}, sonoscloud.WithAccount(sonoscloud.AppleMusic, 2)).
+		Search(t.Context(), "Sonos_home.cloud", sonoscloud.AppleMusic, "david bowie")
 
 	require.NoError(t, err)
 	assert.Equal(t, "/api/content/v1/households/Sonos_home.cloud/services/52231/accounts/2/search", got.URL.Path)
-	assert.Equal(t, "query=david+bowie&count=50", got.URL.RawQuery, "not in the web app's order")
+	assert.Equal(t, "david bowie", got.URL.Query().Get("query"))
+	assert.Equal(t, "50", got.URL.Query().Get("count"))
 	var names []string
 	for _, g := range results.Groups {
 		names = append(names, g.Name)
@@ -75,13 +76,14 @@ func TestResult_GenreYear(t *testing.T) {
 	for name, tc := range map[string]struct {
 		result sonoscloud.Result
 		genre  string
-		year   int
+		year   string
 		ok     bool
 	}{
-		"an album":                  {sonoscloud.Result{Type: sonoscloud.TypeAlbum, Summary: "Rock - 2016"}, "Rock", 2016, true},
-		"a genre with a dash in it": {sonoscloud.Result{Type: sonoscloud.TypeAlbum, Summary: "Singer - Songwriter - 1971"}, "Singer - Songwriter", 1971, true},
-		"an album with no year":     {sonoscloud.Result{Type: sonoscloud.TypeAlbum, Summary: "Rock"}, "", 0, false},
-		"a playlist":                {sonoscloud.Result{Type: sonoscloud.TypePlaylist, Summary: "Hits - 2024"}, "", 0, false},
+		"an album":                  {sonoscloud.Result{Type: sonoscloud.TypeAlbum, Summary: "Rock - 2016"}, "Rock", "2016", true},
+		"a genre with a dash in it": {sonoscloud.Result{Type: sonoscloud.TypeAlbum, Summary: "Singer - Songwriter - 1971"}, "Singer - Songwriter", "1971", true},
+		"an album with no year":     {sonoscloud.Result{Type: sonoscloud.TypeAlbum, Summary: "Rock"}, "", "", false},
+		"a dashed genre, no year":   {sonoscloud.Result{Type: sonoscloud.TypeAlbum, Summary: "Singer - Songwriter"}, "", "", false},
+		"a playlist":                {sonoscloud.Result{Type: sonoscloud.TypePlaylist, Summary: "Hits - 2024"}, "", "", false},
 	} {
 		genre, year, ok := tc.result.GenreYear()
 		assert.Equal(t, tc.ok, ok, name)
@@ -110,7 +112,7 @@ func TestSearch_AWrongHousehold(t *testing.T) {
 	})
 
 	_, err := newClient(t, srv, &memStore{session: validSession(sessionName)}).
-		Search(t.Context(), "Sonos_elsewhere.cloud", 52231, 2, "david bowie")
+		Search(t.Context(), "Sonos_elsewhere.cloud", 52231, "david bowie")
 
 	assert.ErrorIs(t, err, sonoscloud.ErrWrongHousehold)
 }
@@ -128,10 +130,42 @@ func TestSearch_LogsTheAPIVersion(t *testing.T) {
 	})
 
 	_, err := newClient(t, srv, &memStore{session: validSession(sessionName)}).
-		Search(t.Context(), "Sonos_home.cloud", 52231, 2, "david bowie")
+		Search(t.Context(), "Sonos_home.cloud", 52231, "david bowie")
 
 	require.NoError(t, err)
 	assert.Contains(t, log.String(), "status=200 apiVersion=0.91.3")
+}
+
+// Case: no account known yet. The first search names account 0, which the
+// API takes; the results say the real one, and the next search names it.
+func TestSearch_LearnsTheAccountFromTheResults(t *testing.T) {
+	var paths []string
+	srv := fakeWebApp(t, func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		w.Write(searchFixture(t))
+	})
+	c := newClient(t, srv, &memStore{session: validSession(sessionName)})
+
+	for range 2 {
+		_, err := c.Search(t.Context(), "Sonos_home.cloud", sonoscloud.AppleMusic, "david bowie")
+		require.NoError(t, err)
+	}
+
+	assert.Contains(t, paths[0], "/accounts/0/search")
+	assert.Contains(t, paths[1], "/accounts/2/search")
+}
+
+// Case: a 410 for the household kept. The client forgets it, so the next
+// Household asks the cloud again rather than answer the same wrong one.
+func TestSearch_AWrongHouseholdIsForgotten(t *testing.T) {
+	srv := fakeWebApp(t, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusGone) })
+	kept := &memHouseholds{household: home, found: true}
+	c := newClient(t, srv, &memStore{session: validSession(sessionName)}, sonoscloud.WithHouseholdStore(kept))
+
+	_, err := c.Search(t.Context(), home.ID, sonoscloud.AppleMusic, "david bowie")
+
+	assert.ErrorIs(t, err, sonoscloud.ErrWrongHousehold)
+	assert.False(t, kept.found, "the wrong household is still kept")
 }
 
 // searchOf runs one search against a fake web app that answers body.
@@ -139,7 +173,7 @@ func searchOf(t *testing.T, body []byte) sonoscloud.SearchResults {
 	t.Helper()
 	srv := fakeWebApp(t, func(w http.ResponseWriter, r *http.Request) { w.Write(body) })
 	results, err := newClient(t, srv, &memStore{session: validSession(sessionName)}).
-		Search(t.Context(), "Sonos_home.cloud", 52231, 2, "david bowie")
+		Search(t.Context(), "Sonos_home.cloud", 52231, "david bowie")
 	require.NoError(t, err)
 	return results
 }

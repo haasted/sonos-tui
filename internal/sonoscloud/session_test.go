@@ -1,6 +1,7 @@
 package sonoscloud_test
 
 import (
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -46,6 +47,32 @@ func TestFileStore_NoFileIsNoSession(t *testing.T) {
 	loaded, err = store.Load()
 	require.NoError(t, err)
 	assert.Empty(t, loaded.Cookies)
+}
+
+// Case: a client made with no store. It reads the session the sign-in saved
+// in the default file, and with no file it says signed out without a request.
+func TestNew_UsesTheDefaultSessionFile(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	var requests int
+	srv := fakeWebApp(t, func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.Write([]byte(`{"expires":"2026-11-25T12:00:00.000Z"}`))
+	})
+	newDefault := func() *sonoscloud.Client {
+		c, err := sonoscloud.New(sonoscloud.WithBaseURL(srv.URL), sonoscloud.WithHTTPClient(srv.Client()))
+		require.NoError(t, err)
+		return c
+	}
+
+	_, err := newDefault().Session(t.Context())
+	assert.ErrorIs(t, err, sonoscloud.ErrSignedOut)
+	assert.Zero(t, requests)
+
+	path, err := sonoscloud.DefaultSessionPath()
+	require.NoError(t, err)
+	require.NoError(t, sonoscloud.FileStore{Path: path}.Save(validSession(sessionName)))
+	_, err = newDefault().Session(t.Context())
+	assert.NoError(t, err)
 }
 
 // Case: a session whose parts run out at different times. It is valid until

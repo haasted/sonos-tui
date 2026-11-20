@@ -34,7 +34,7 @@ var stateTokenPattern = regexp.MustCompile(`"stateToken":"((?:[^"\\]|\\.)*)"`)
 // attempt leaves the client's session as it was.
 type signIn struct {
 	c    *Client
-	http *http.Client
+	http browser
 }
 
 // oktaAnswer is the part of Okta's /api/v1/authn answer the sign-in reads.
@@ -61,10 +61,10 @@ func (c *Client) SignIn(ctx context.Context, username, password string) error {
 		return err
 	}
 	jar := &sessionJar{inner: inner, host: c.base.Host, now: c.now, session: map[string]Cookie{}}
-	hc := *c.http
+	hc := *c.http.Client
 	hc.Jar = jar
 
-	if err := (signIn{c: c, http: &hc}).run(ctx, username, password); err != nil {
+	if err := (signIn{c: c, http: browser{&hc}}).run(ctx, username, password); err != nil {
 		return err
 	}
 	session, _ := jar.takeChange()
@@ -74,7 +74,7 @@ func (c *Client) SignIn(ctx context.Context, username, password string) error {
 	if err := c.store.Save(session); err != nil {
 		return err
 	}
-	c.jar, c.http = jar, &hc
+	c.jar, c.http = jar, browser{&hc}
 	return nil
 }
 
@@ -154,7 +154,7 @@ func (s signIn) authn(ctx context.Context, oktaPage, authorize *url.URL, usernam
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Referer", oktaPage.String())
 	req.Header.Set("Origin", origin(okta))
-	resp, answer, err := fetch(s.http, req)
+	resp, answer, err := s.http.fetch(req)
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +197,7 @@ func (s signIn) loadPageBody(ctx context.Context, target *url.URL, referer strin
 	if referer != "" {
 		req.Header.Set("Referer", referer)
 	}
-	resp, body, err := page(s.http, req)
+	resp, body, err := s.http.page(req)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -224,7 +224,7 @@ func (s signIn) fetchJSON(ctx context.Context, method string, target *url.URL, r
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.Header.Set("Origin", origin(target))
 	}
-	resp, answer, err := fetch(s.http, req)
+	resp, answer, err := s.http.fetch(req)
 	if err != nil {
 		return err
 	}

@@ -173,9 +173,10 @@ func fakeWebApp(t *testing.T, handle http.HandlerFunc) *httptest.Server {
 	return srv
 }
 
-func newClient(t *testing.T, srv *httptest.Server, store sonoscloud.SessionStore) *sonoscloud.Client {
+func newClient(t *testing.T, srv *httptest.Server, store sonoscloud.SessionStore, opts ...sonoscloud.Option) *sonoscloud.Client {
 	t.Helper()
-	c, err := sonoscloud.New(store, sonoscloud.WithBaseURL(srv.URL), sonoscloud.WithHTTPClient(srv.Client()))
+	opts = append([]sonoscloud.Option{sonoscloud.WithSessionStore(store), sonoscloud.WithBaseURL(srv.URL), sonoscloud.WithHTTPClient(srv.Client())}, opts...)
+	c, err := sonoscloud.New(opts...)
 	require.NoError(t, err)
 	return c
 }

@@ -76,6 +76,16 @@ func (c Cookie) GoString() string {
 
 func (c Cookie) LogValue() slog.Value { return slog.StringValue(c.String()) }
 
+// defaultSessionPath is the file the sign-in keeps the session in when no
+// other store is given.
+func defaultSessionPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".config", "sonos-tui", "web-session"), nil
+}
+
 func (f FileStore) Load() (Session, error) {
 	data, err := os.ReadFile(f.Path)
 	if errors.Is(err, os.ErrNotExist) {

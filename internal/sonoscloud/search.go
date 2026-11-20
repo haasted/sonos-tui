@@ -1,6 +1,7 @@
 package sonoscloud
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,6 +10,10 @@ import (
 	"net/url"
 	"time"
 )
+
+// AppleMusic is Apple Music's service type, as the content API's paths and a
+// speaker's SA_RINCON52231_ desc name it. A speaker's URI calls it sid=204.
+const AppleMusic = 52231
 
 // searchCount is how many results a search asks for, as the web app does.
 // It is the whole answer's count, shared among the types.
@@ -25,7 +30,8 @@ const (
 )
 
 // ErrWrongHousehold says the Sonos cloud does not know the household asked
-// about; it answers 410 Gone. Ask for the household again.
+// about; it answers 410 Gone. The kept household is forgotten, so the next
+// Household asks the cloud again.
 var ErrWrongHousehold = errors.New("sonoscloud: the Sonos cloud does not know this household")
 
 // ResultType is what a result is: an artist, an album and so on.
@@ -101,28 +107,34 @@ type wireRef struct {
 	Name string   `json:"name"`
 }
 
-// Search searches one service of the household, such as Apple Music (52231),
-// with the account the household has on it. The account in the request is
-// not checked; each result's ID says the account the service answered for.
-func (c *Client) Search(ctx context.Context, household string, service, account int, query string) (SearchResults, error) {
+// Search searches one service of the household, such as AppleMusic. The
+// request names the household's account on it as last seen; the content API
+// does not check it, and each result's ID says the real one.
+func (c *Client) Search(ctx context.Context, household string, service int, query string) (SearchResults, error) {
 	path := fmt.Sprintf("/api/content/v1/households/%s/services/%d/accounts/%d/search",
-		url.PathEscape(household), service, account)
-	body, err := c.get(ctx, path, sonosQuery("query", query, "count", searchCount))
+		url.PathEscape(household), service, c.account(service))
+	body, err := c.get(ctx, path, url.Values{"query": {query}, "count": {searchCount}})
 	var status *StatusError
 	if errors.As(err, &status) && status.Status == http.StatusGone {
-		return SearchResults{}, ErrWrongHousehold
+		return SearchResults{}, c.wrongHousehold()
 	}
 	if err != nil {
 		return SearchResults{}, err
 	}
-	return parseSearch(body)
+	results, err := parseSearch(body)
+	for _, g := range results.Groups {
+		for _, r := range g.Results {
+			c.learnAccount(service, r.ID.AccountID)
+		}
+	}
+	return results, err
 }
 
 // GenreYear reads an album's summary, "Genre - Year", the only place the
 // content API gives its year. It reports false for any other summary.
-func (r Result) GenreYear() (genre string, year int, ok bool) {
+func (r Result) GenreYear() (genre, year string, ok bool) {
 	if r.Type != TypeAlbum {
-		return "", 0, false
+		return "", "", false
 	}
 	return genreYear(r.Summary)
 }
@@ -161,7 +173,7 @@ func parseSearch(body []byte) (SearchResults, error) {
 func (w wireResult) result() Result {
 	d := decodeDetails(w.Defaults)
 	r := Result{
-		ID: w.ID, Type: w.Type, Name: orDefault(w.Name, d.Name), Summary: orDefault(w.Summary.Content, d.Summary),
+		ID: w.ID, Type: w.Type, Name: cmp.Or(w.Name, d.Name), Summary: cmp.Or(w.Summary.Content, d.Summary),
 		Playable: w.Playable, Explicit: w.Explicit, Ordinal: w.Ordinal, MimeType: d.MimeType,
 		Duration: time.Duration(max(w.DurationMs, d.DurationMs)) * time.Millisecond,
 	}
@@ -180,6 +192,9 @@ func (w wireResult) result() Result {
 	if len(w.Images) > 0 {
 		r.ImageURL = w.Images[0].URL
 	}
-	r.ImageURL = orDefault(r.ImageURL, d.ImageURL)
+	r.ImageURL = cmp.Or(r.ImageURL, d.ImageURL)
+	if r.Type == TypeAlbum {
+		checkSummary(r.ID, r.Summary)
+	}
 	return r
 }
