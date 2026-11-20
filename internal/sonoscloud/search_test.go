@@ -29,8 +29,7 @@ func TestSearch_AsksTheServiceAndGroupsTheResults(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, "/api/content/v1/households/Sonos_home.cloud/services/52231/accounts/2/search", got.URL.Path)
-	assert.Equal(t, "david bowie", got.URL.Query().Get("query"))
-	assert.Equal(t, "50", got.URL.Query().Get("count"))
+	assert.Equal(t, "query=david+bowie&count=50", got.URL.RawQuery, "not in the web app's order")
 	var names []string
 	for _, g := range results.Groups {
 		names = append(names, g.Name)

@@ -75,6 +75,31 @@ func TestLive_SearchFindsAlbums(t *testing.T) {
 	require.True(t, albumYear, "no album with a genre and a year")
 }
 
+// Case: an album and an artist opened in the real household. The album has
+// its tracks; the artist's albums go past its page's own, up to 200.
+func TestLive_OpenAlbumAndArtist(t *testing.T) {
+	c := liveClient(t)
+	households, err := c.Households(t.Context())
+	require.NoError(t, err)
+	household, err := sonoscloud.PickHousehold(households, "")
+	if errors.Is(err, sonoscloud.ErrHouseholdUnknown) {
+		t.Skip("the account holds more than one household")
+	}
+
+	album, err := c.OpenAlbum(t.Context(), household.ID, 52231, 2, "album:1676286487")
+	require.NoError(t, err)
+	require.NotEmpty(t, album.Tracks)
+	_, year, _ := album.GenreYear()
+	t.Logf("%s by %s (%d): %d of %d tracks", album.Name, album.Artist, year, len(album.Tracks), album.Total)
+
+	artist, err := c.OpenArtist(t.Context(), household.ID, 52231, 2, "artist:551695")
+	require.NoError(t, err)
+	require.NotNil(t, artist.Station)
+	require.Greater(t, len(artist.Albums), 100, "the rest of the list was not fetched")
+	require.LessOrEqual(t, len(artist.Albums), 200)
+	t.Logf("%s: %d of %d albums, station %q", artist.Name, len(artist.Albums), artist.Total, artist.Station.Name)
+}
+
 // liveClient is a client with the reader's saved session. It skips the test
 // without -live, and when no valid session is saved or the server no longer
 // takes it: a live test never signs in, as that needs the password.

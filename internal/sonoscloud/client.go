@@ -138,7 +138,7 @@ func (e *StatusError) Error() string {
 // Session asks the web app about the session, as its page does when it
 // opens. An answer with no session is ErrSignedOut.
 func (c *Client) Session(ctx context.Context) (SessionInfo, error) {
-	body, err := c.get(ctx, "/api/auth/session", nil)
+	body, err := c.get(ctx, "/api/auth/session", "")
 	if err != nil {
 		return SessionInfo{}, err
 	}
@@ -154,9 +154,10 @@ func (c *Client) Session(ctx context.Context) (SessionInfo, error) {
 	return SessionInfo{Expires: answer.Expires}, nil
 }
 
-// get sends a GET that needs the session, and returns the answer's body. It
-// answers ErrSignedOut without a request when no valid session is saved.
-func (c *Client) get(ctx context.Context, path string, query url.Values) ([]byte, error) {
+// get sends a GET that needs the session, with rawQuery as its query, and
+// returns the answer's body. It answers ErrSignedOut without a request when
+// no valid session is saved.
+func (c *Client) get(ctx context.Context, path, rawQuery string) ([]byte, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -164,7 +165,7 @@ func (c *Client) get(ctx context.Context, path string, query url.Values) ([]byte
 		return nil, ErrSignedOut
 	}
 	target := c.base.JoinPath(path)
-	target.RawQuery = query.Encode()
+	target.RawQuery = rawQuery
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
 	if err != nil {
 		return nil, err

@@ -300,6 +300,19 @@ A playlist opens the same way, under `playlists`, with the id escaped twice:
 GET /api/content/v2/households/{household}/services/52231/accounts/2/playlists/libraryplaylist%253Ap.…/browse?muse2=true&defaults=…
 ```
 
+Measured 2026-11-18:
+
+- **`muse2=true` changed nothing** on the album measured: the answers with
+  and without it were the same, byte for byte. The client sends it, as the
+  web app does.
+- **An artist page holds the first page of its albums** (97 of Bowie's 187),
+  the same entries as `containers/…/resources` at offset 0. The rest comes
+  from the container from offset 100 on.
+- **`defaults` is not always written the same way**: a station's says
+  `"playable": "true"`, as text, where an album's says `true`.
+- **A page entry's year is only in its `defaults`**: entries have no
+  `summary` field of their own, unlike search results.
+
 This was a playlist in the reader's own library (`libraryplaylist:p.…`),
 found through the Sonos favourites. Search never returns library content, but
 the content API opens a library playlist once its id is known. The answer's

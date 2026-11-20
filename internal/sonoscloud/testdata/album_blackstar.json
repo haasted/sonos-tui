@@ -1,0 +1,132 @@
+{
+ "type": "TEMPLATE_ALBUM_PAGE",
+ "id": "srn:content:audio:album:album%3A1676286487#52231:2",
+ "resource": {
+  "type": "ALBUM",
+  "id": {
+   "objectId": "album%3A1676286487",
+   "serviceId": "52231",
+   "accountId": "2"
+  },
+  "defaults": "eyJuYW1lIjoiQmxhY2tzdGFyIiwiYXJ0aXN0IjoiRGF2aWQgQm93aWUiLCJhcnRpc3RJZCI6ImFydGlzdDo1NTE2OTUiLCJzdW1tYXJ5IjoiUm9jayAtIDIwMTYiLCJpbWFnZVVybCI6Imh0dHBzOi8vaXMzLXNzbC5tenN0YXRpYy5jb20vaW1hZ2UvdGh1bWIvTXVzaWMxMjYvdjQvY2QvYzkvMGQvY2RjOTBkYWEtYjQyNi05MTZmLTE2M2EtMWZmNjVhNmY0MTA4LzUwNTQxOTc1NzM5NzIuanBnLzQwMHg0MDBiYi5qcGVnIiwiZXhwbGljaXQiOnRydWUsInBsYXlhYmxlIjp0cnVlfQ"
+ },
+ "title": "Blackstar",
+ "subtitle": "David Bowie",
+ "images": {
+  "tile1x1": "https://is3-ssl.mzstatic.com/image/thumb/Music126/v4/cd/c9/0d/cdc90daa-b426-916f-163a-1ff65a6f4108/5054197573972.jpg/1200x1200bb.jpeg"
+ },
+ "isExplicit": true,
+ "providersInfo": [],
+ "actions": [
+  "ACTION_PLAY",
+  "ACTION_FAVORITES"
+ ],
+ "customActions": [],
+ "sections": {
+  "items": []
+ },
+ "tracks": {
+  "items": [
+   {
+    "id": "srn:content:audio:track:song%3A1676286495#52231:2",
+    "title": "★",
+    "subtitle": "David Bowie",
+    "images": {
+     "tile1x1": "https://is3-ssl.mzstatic.com/image/thumb/Music126/v4/cd/c9/0d/cdc90daa-b426-916f-163a-1ff65a6f4108/5054197573972.jpg/400x400bb.jpeg"
+    },
+    "actions": [
+     "ACTION_PLAY",
+     "ACTION_FAVORITES"
+    ],
+    "type": "ITEM_TRACK",
+    "resource": {
+     "id": {
+      "objectId": "song%3A1676286495",
+      "serviceId": "52231",
+      "accountId": "2"
+     },
+     "type": "TRACK",
+     "defaults": "eyJuYW1lIjoi4piFIiwiYXJ0aXN0IjoiRGF2aWQgQm93aWUiLCJhcnRpc3RJZCI6ImFydGlzdDo1NTE2OTUiLCJzdW1tYXJ5IjoiRGF2aWQgQm93aWUiLCJpbWFnZVVybCI6Imh0dHBzOi8vaXMzLXNzbC5tenN0YXRpYy5jb20vaW1hZ2UvdGh1bWIvTXVzaWMxMjYvdjQvY2QvYzkvMGQvY2RjOTBkYWEtYjQyNi05MTZmLTE2M2EtMWZmNjVhNmY0MTA4LzUwNTQxOTc1NzM5NzIuanBnLzQwMHg0MDBiYi5qcGVnIiwiZXhwbGljaXQiOmZhbHNlLCJwbGF5YWJsZSI6dHJ1ZSwibWltZVR5cGUiOiJhdWRpby9hYWMiLCJkdXJhdGlvbk1zIjo1OTcwMDAsImNvbnRhaW5lcklkIjoiYWxidW06MTY3NjI4NjQ4NyIsImNvbnRhaW5lck5hbWUiOiJCbGFja3N0YXIiLCJjb250YWluZXJUeXBlIjoiQUxCVU0ifQ"
+    },
+    "artists": [
+     {
+      "id": "srn:content:audio:artist:artist%3A551695#52231:2",
+      "name": "David Bowie"
+     }
+    ],
+    "isExplicit": false,
+    "ordinal": 1,
+    "duration": "597"
+   },
+   {
+    "id": "srn:content:audio:track:song%3A1676286740#52231:2",
+    "title": "'Tis A Pity She Was A Whore",
+    "subtitle": "David Bowie",
+    "images": {
+     "tile1x1": "https://is3-ssl.mzstatic.com/image/thumb/Music126/v4/cd/c9/0d/cdc90daa-b426-916f-163a-1ff65a6f4108/5054197573972.jpg/400x400bb.jpeg"
+    },
+    "actions": [
+     "ACTION_PLAY",
+     "ACTION_FAVORITES"
+    ],
+    "type": "ITEM_TRACK",
+    "resource": {
+     "id": {
+      "objectId": "song%3A1676286740",
+      "serviceId": "52231",
+      "accountId": "2"
+     },
+     "type": "TRACK",
+     "defaults": "eyJuYW1lIjoiJ1RpcyBBIFBpdHkgU2hlIFdhcyBBIFdob3JlIiwiYXJ0aXN0IjoiRGF2aWQgQm93aWUiLCJhcnRpc3RJZCI6ImFydGlzdDo1NTE2OTUiLCJzdW1tYXJ5IjoiRGF2aWQgQm93aWUiLCJpbWFnZVVybCI6Imh0dHBzOi8vaXMzLXNzbC5tenN0YXRpYy5jb20vaW1hZ2UvdGh1bWIvTXVzaWMxMjYvdjQvY2QvYzkvMGQvY2RjOTBkYWEtYjQyNi05MTZmLTE2M2EtMWZmNjVhNmY0MTA4LzUwNTQxOTc1NzM5NzIuanBnLzQwMHg0MDBiYi5qcGVnIiwiZXhwbGljaXQiOnRydWUsInBsYXlhYmxlIjp0cnVlLCJtaW1lVHlwZSI6ImF1ZGlvL2FhYyIsImR1cmF0aW9uTXMiOjI5MjAwMCwiY29udGFpbmVySWQiOiJhbGJ1bToxNjc2Mjg2NDg3IiwiY29udGFpbmVyTmFtZSI6IkJsYWNrc3RhciIsImNvbnRhaW5lclR5cGUiOiJBTEJVTSJ9"
+    },
+    "artists": [
+     {
+      "id": "srn:content:audio:artist:artist%3A551695#52231:2",
+      "name": "David Bowie"
+     }
+    ],
+    "isExplicit": true,
+    "ordinal": 2,
+    "duration": "292"
+   },
+   {
+    "id": "srn:content:audio:track:song%3A1676286742#52231:2",
+    "title": "Lazarus",
+    "subtitle": "David Bowie",
+    "images": {
+     "tile1x1": "https://is3-ssl.mzstatic.com/image/thumb/Music126/v4/cd/c9/0d/cdc90daa-b426-916f-163a-1ff65a6f4108/5054197573972.jpg/400x400bb.jpeg"
+    },
+    "actions": [
+     "ACTION_PLAY",
+     "ACTION_FAVORITES"
+    ],
+    "type": "ITEM_TRACK",
+    "resource": {
+     "id": {
+      "objectId": "song%3A1676286742",
+      "serviceId": "52231",
+      "accountId": "2"
+     },
+     "type": "TRACK",
+     "defaults": "eyJuYW1lIjoiTGF6YXJ1cyIsImFydGlzdCI6IkRhdmlkIEJvd2llIiwiYXJ0aXN0SWQiOiJhcnRpc3Q6NTUxNjk1Iiwic3VtbWFyeSI6IkRhdmlkIEJvd2llIiwiaW1hZ2VVcmwiOiJodHRwczovL2lzMy1zc2wubXpzdGF0aWMuY29tL2ltYWdlL3RodW1iL011c2ljMTI2L3Y0L2NkL2M5LzBkL2NkYzkwZGFhLWI0MjYtOTE2Zi0xNjNhLTFmZjY1YTZmNDEwOC81MDU0MTk3NTczOTcyLmpwZy80MDB4NDAwYmIuanBlZyIsImV4cGxpY2l0IjpmYWxzZSwicGxheWFibGUiOnRydWUsIm1pbWVUeXBlIjoiYXVkaW8vYWFjIiwiZHVyYXRpb25NcyI6Mzg0MDAwLCJjb250YWluZXJJZCI6ImFsYnVtOjE2NzYyODY0ODciLCJjb250YWluZXJOYW1lIjoiQmxhY2tzdGFyIiwiY29udGFpbmVyVHlwZSI6IkFMQlVNIn0"
+    },
+    "artists": [
+     {
+      "id": "srn:content:audio:artist:artist%3A551695#52231:2",
+      "name": "David Bowie"
+     }
+    ],
+    "isExplicit": false,
+    "ordinal": 3,
+    "duration": "384"
+   }
+  ],
+  "total": 7,
+  "fastScrollUri": "https://api.ws.sonos.com/content/api/v2/households/Sonos_HOUSEHOLD.PLACEHOLDER/services/52231/accounts/2/albums/album%3A1676286487/tracks?count=%3CCOUNT%3E&offset=%3COFFSET%3E&filterExplicit=false&muse2=true"
+ },
+ "providerInfo": {
+  "id": "52231",
+  "slug": "apple-music",
+  "name": "Apple Music"
+ }
+}

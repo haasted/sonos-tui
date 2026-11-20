@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strconv"
-	"strings"
 	"time"
 )
 
@@ -59,6 +57,7 @@ type Result struct {
 	Explicit bool
 	Ordinal  int           // a track's number on its album
 	Duration time.Duration // a track's length
+	MimeType string        // a track's audio format, such as "audio/aac"
 }
 
 // ResultID names a result in its service. ObjectID is the service's own id,
@@ -94,6 +93,7 @@ type wireResult struct {
 	Images []struct {
 		URL string `json:"url"`
 	} `json:"images"`
+	Defaults string `json:"defaults"`
 }
 
 type wireRef struct {
@@ -107,7 +107,7 @@ type wireRef struct {
 func (c *Client) Search(ctx context.Context, household string, service, account int, query string) (SearchResults, error) {
 	path := fmt.Sprintf("/api/content/v1/households/%s/services/%d/accounts/%d/search",
 		url.PathEscape(household), service, account)
-	body, err := c.get(ctx, path, url.Values{"query": {query}, "count": {searchCount}})
+	body, err := c.get(ctx, path, sonosQuery("query", query, "count", searchCount))
 	var status *StatusError
 	if errors.As(err, &status) && status.Status == http.StatusGone {
 		return SearchResults{}, ErrWrongHousehold
@@ -121,15 +121,10 @@ func (c *Client) Search(ctx context.Context, household string, service, account 
 // GenreYear reads an album's summary, "Genre - Year", the only place the
 // content API gives its year. It reports false for any other summary.
 func (r Result) GenreYear() (genre string, year int, ok bool) {
-	at := strings.LastIndex(r.Summary, " - ")
-	if r.Type != TypeAlbum || at < 0 {
+	if r.Type != TypeAlbum {
 		return "", 0, false
 	}
-	year, err := strconv.Atoi(r.Summary[at+3:])
-	if err != nil {
-		return "", 0, false
-	}
-	return r.Summary[:at], year, true
+	return genreYear(r.Summary)
 }
 
 // parseSearch reads a search's answer: the group names in resourceOrder, and
@@ -161,11 +156,14 @@ func parseSearch(body []byte) (SearchResults, error) {
 	return results, nil
 }
 
+// result is the result a wire result describes. Its own fields win, and its
+// defaults fill in what they leave out.
 func (w wireResult) result() Result {
+	d := decodeDetails(w.Defaults)
 	r := Result{
-		ID: w.ID, Type: w.Type, Name: w.Name, Summary: w.Summary.Content,
-		Playable: w.Playable, Explicit: w.Explicit, Ordinal: w.Ordinal,
-		Duration: time.Duration(w.DurationMs) * time.Millisecond,
+		ID: w.ID, Type: w.Type, Name: orDefault(w.Name, d.Name), Summary: orDefault(w.Summary.Content, d.Summary),
+		Playable: w.Playable, Explicit: w.Explicit, Ordinal: w.Ordinal, MimeType: d.MimeType,
+		Duration: time.Duration(max(w.DurationMs, d.DurationMs)) * time.Millisecond,
 	}
 	for _, a := range w.Artists {
 		r.Artists = append(r.Artists, Ref(a))
@@ -173,6 +171,8 @@ func (w wireResult) result() Result {
 	if w.Container != nil {
 		album := Ref(*w.Container)
 		r.Album = &album
+	} else if d.ContainerType == string(TypeAlbum) && d.ContainerID != "" {
+		r.Album = &Ref{ID: ResultID{ObjectID: d.ContainerID, ServiceID: w.ID.ServiceID, AccountID: w.ID.AccountID}, Name: d.ContainerName}
 	}
 	if w.Owner != nil {
 		r.Owner = w.Owner.Name
@@ -180,5 +180,6 @@ func (w wireResult) result() Result {
 	if len(w.Images) > 0 {
 		r.ImageURL = w.Images[0].URL
 	}
+	r.ImageURL = orDefault(r.ImageURL, d.ImageURL)
 	return r
 }

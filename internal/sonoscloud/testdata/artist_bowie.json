@@ -1,0 +1,127 @@
+{
+ "type": "TEMPLATE_PERSON_PAGE",
+ "id": "srn:content:audio:artist:artist%3A551695#52231:2",
+ "resource": {
+  "type": "ARTIST",
+  "id": {
+   "objectId": "artist%3A551695",
+   "serviceId": "52231",
+   "accountId": "2"
+  },
+  "defaults": "eyJuYW1lIjoiRGF2aWQgQm93aWUiLCJpbWFnZVVybCI6Imh0dHBzOi8vaXMzLXNzbC5tenN0YXRpYy5jb20vaW1hZ2UvdGh1bWIvQU1DQXJ0aXN0SW1hZ2VzMjExL3Y0LzVhLzNjLzRkLzVhM2M0ZDg4LWNhMmQtMjVlZS1hMjU1LWMzZGVjNDRhNjM1NS9hbWktaWRlbnRpdHktYWQxNzI2OGQzYjJkNDc0MWZmZWYyYjUzOTdkMDdiNWItMjAyNi0wMS0wMVQwMS0xNS0zNS4zNTdaX2Nyb3BwZWQucG5nLzQwMHg0MDBiYi5qcGVnIiwiZXhwbGljaXQiOmZhbHNlLCJwbGF5YWJsZSI6ZmFsc2V9"
+ },
+ "title": "David Bowie",
+ "images": {
+  "tile1x1": "https://is3-ssl.mzstatic.com/image/thumb/AMCArtistImages211/v4/5a/3c/4d/5a3c4d88-ca2d-25ee-a255-c3dec44a6355/ami-identity-ad17268d3b2d4741ffef2b5397d07b5b-2026-01-01T01-15-35.357Z_cropped.png/1200x1200bb.jpeg"
+ },
+ "actions": [
+  "ACTION_FAVORITES"
+ ],
+ "customActions": [
+  {
+   "type": "ACTION_RELATED_PLAY",
+   "category": "CATEGORY_PLAYBACK",
+   "action": "ACTION_PLAY_STATION",
+   "label": "Start Station",
+   "resource": {
+    "id": {
+     "objectId": "radio%3Ara.551695",
+     "serviceId": "52231",
+     "accountId": "2"
+    },
+    "type": "PROGRAM",
+    "defaults": "eyJuYW1lIjoiRGF2aWQgQm93aWUgUmFkaW8iLCJpbWFnZVVybCI6Imh0dHBzOi8vaXMzLXNzbC5tenN0YXRpYy5jb20vaW1hZ2UvdGh1bWIvQU1DQXJ0aXN0SW1hZ2VzMjExL3Y0LzVhLzNjLzRkLzVhM2M0ZDg4LWNhMmQtMjVlZS1hMjU1LWMzZGVjNDRhNjM1NS9hbWktaWRlbnRpdHktYWQxNzI2OGQzYjJkNDc0MWZmZWYyYjUzOTdkMDdiNWItMjAyNi0wMS0wMVQwMS0xNS0zNS4zNTdaX2Nyb3BwZWQucG5nLzEyMDB4MTIwMGJiLmpwZWciLCJleHBsaWNpdCI6ZmFsc2UsInBsYXlhYmxlIjoidHJ1ZSJ9"
+   }
+  }
+ ],
+ "sections": {
+  "items": [
+   {
+    "id": "srn:content:audio:artist:artist%3A551695#52231:2",
+    "type": "SECTION",
+    "href": "https://api.ws.sonos.com/content/api/v2/households/Sonos_HOUSEHOLD.PLACEHOLDER/services/52231/accounts/2/artists/artist%3A551695/browse?filterExplicit=false&muse2=true&defaults=eyJuYW1lIjoiRGF2aWQgQm93aWUiLCJpbWFnZVVybCI6Imh0dHBzOi8vaXMzLXNzbC5tenN0YXRpYy5jb20vaW1hZ2UvdGh1bWIvQU1DQXJ0aXN0SW1hZ2VzMjExL3Y0LzVhLzNjLzRkLzVhM2M0ZDg4LWNhMmQtMjVlZS1hMjU1LWMzZGVjNDRhNjM1NS9hbWktaWRlbnRpdHktYWQxNzI2OGQzYjJkNDc0MWZmZWYyYjUzOTdkMDdiNWItMjAyNi0wMS0wMVQwMS0xNS0zNS4zNTdaX2Nyb3BwZWQucG5nLzQwMHg0MDBiYi5qcGVnIiwiZXhwbGljaXQiOmZhbHNlLCJwbGF5YWJsZSI6ZmFsc2V9",
+    "items": [
+     {
+      "id": "srn:content:audio:album:album%3A1440880284#52231:2",
+      "title": "Labyrinth (From the Original Soundtrack of the Jim Henson Film)",
+      "subtitle": "David Bowie & Trevor Jones",
+      "images": {
+       "tile1x1": "https://is5-ssl.mzstatic.com/image/thumb/Music114/v4/c1/bc/ea/c1bceade-412a-d8a5-af22-cbe67ce6c7d8/00602557202977.rgb.jpg/400x400bb.jpeg"
+      },
+      "actions": [
+       "ACTION_PLAY",
+       "ACTION_FAVORITES"
+      ],
+      "type": "ITEM_ALBUM",
+      "resource": {
+       "id": {
+        "objectId": "album%3A1440880284",
+        "serviceId": "52231",
+        "accountId": "2"
+       },
+       "type": "ALBUM",
+       "defaults": "eyJuYW1lIjoiTGFieXJpbnRoIChGcm9tIHRoZSBPcmlnaW5hbCBTb3VuZHRyYWNrIG9mIHRoZSBKaW0gSGVuc29uIEZpbG0pIiwiYXJ0aXN0IjoiRGF2aWQgQm93aWUgJiBUcmV2b3IgSm9uZXMiLCJhcnRpc3RJZCI6ImFydGlzdDo1NTE2OTUiLCJzdW1tYXJ5IjoiU291bmR0cmFjayAtIDE5ODYiLCJpbWFnZVVybCI6Imh0dHBzOi8vaXM1LXNzbC5tenN0YXRpYy5jb20vaW1hZ2UvdGh1bWIvTXVzaWMxMTQvdjQvYzEvYmMvZWEvYzFiY2VhZGUtNDEyYS1kOGE1LWFmMjItY2JlNjdjZTZjN2Q4LzAwNjAyNTU3MjAyOTc3LnJnYi5qcGcvNDAweDQwMGJiLmpwZWciLCJleHBsaWNpdCI6ZmFsc2UsInBsYXlhYmxlIjp0cnVlfQ"
+      },
+      "isExplicit": false,
+      "href": "https://api.ws.sonos.com/content/api/v2/households/Sonos_HOUSEHOLD.PLACEHOLDER/services/52231/accounts/2/albums/album%3A1440880284/browse?filterExplicit=false&muse2=true&defaults=eyJuYW1lIjoiTGFieXJpbnRoIChGcm9tIHRoZSBPcmlnaW5hbCBTb3VuZHRyYWNrIG9mIHRoZSBKaW0gSGVuc29uIEZpbG0pIiwiYXJ0aXN0IjoiRGF2aWQgQm93aWUgJiBUcmV2b3IgSm9uZXMiLCJhcnRpc3RJZCI6ImFydGlzdDo1NTE2OTUiLCJzdW1tYXJ5IjoiU291bmR0cmFjayAtIDE5ODYiLCJpbWFnZVVybCI6Imh0dHBzOi8vaXM1LXNzbC5tenN0YXRpYy5jb20vaW1hZ2UvdGh1bWIvTXVzaWMxMTQvdjQvYzEvYmMvZWEvYzFiY2VhZGUtNDEyYS1kOGE1LWFmMjItY2JlNjdjZTZjN2Q4LzAwNjAyNTU3MjAyOTc3LnJnYi5qcGcvNDAweDQwMGJiLmpwZWciLCJleHBsaWNpdCI6ZmFsc2UsInBsYXlhYmxlIjp0cnVlfQ"
+     },
+     {
+      "id": "srn:content:audio:album:album%3A1683711407#52231:2",
+      "title": "Laughing with Liza",
+      "subtitle": "David Bowie",
+      "images": {
+       "tile1x1": "https://is2-ssl.mzstatic.com/image/thumb/Music126/v4/b8/94/9c/b8949c1b-2d20-d3ab-0c25-46d69ebaf3ed/23UMGIM18326.rgb.jpg/400x400bb.jpeg"
+      },
+      "actions": [
+       "ACTION_PLAY",
+       "ACTION_FAVORITES"
+      ],
+      "type": "ITEM_ALBUM",
+      "resource": {
+       "id": {
+        "objectId": "album%3A1683711407",
+        "serviceId": "52231",
+        "accountId": "2"
+       },
+       "type": "ALBUM",
+       "defaults": "eyJuYW1lIjoiTGF1Z2hpbmcgd2l0aCBMaXphIiwiYXJ0aXN0IjoiRGF2aWQgQm93aWUiLCJhcnRpc3RJZCI6ImFydGlzdDo1NTE2OTUiLCJzdW1tYXJ5IjoiUm9jayAtIDIwMjMiLCJpbWFnZVVybCI6Imh0dHBzOi8vaXMyLXNzbC5tenN0YXRpYy5jb20vaW1hZ2UvdGh1bWIvTXVzaWMxMjYvdjQvYjgvOTQvOWMvYjg5NDljMWItMmQyMC1kM2FiLTBjMjUtNDZkNjllYmFmM2VkLzIzVU1HSU0xODMyNi5yZ2IuanBnLzQwMHg0MDBiYi5qcGVnIiwiZXhwbGljaXQiOmZhbHNlLCJwbGF5YWJsZSI6dHJ1ZX0"
+      },
+      "isExplicit": false,
+      "href": "https://api.ws.sonos.com/content/api/v2/households/Sonos_HOUSEHOLD.PLACEHOLDER/services/52231/accounts/2/albums/album%3A1683711407/browse?filterExplicit=false&muse2=true&defaults=eyJuYW1lIjoiTGF1Z2hpbmcgd2l0aCBMaXphIiwiYXJ0aXN0IjoiRGF2aWQgQm93aWUiLCJhcnRpc3RJZCI6ImFydGlzdDo1NTE2OTUiLCJzdW1tYXJ5IjoiUm9jayAtIDIwMjMiLCJpbWFnZVVybCI6Imh0dHBzOi8vaXMyLXNzbC5tenN0YXRpYy5jb20vaW1hZ2UvdGh1bWIvTXVzaWMxMjYvdjQvYjgvOTQvOWMvYjg5NDljMWItMmQyMC1kM2FiLTBjMjUtNDZkNjllYmFmM2VkLzIzVU1HSU0xODMyNi5yZ2IuanBnLzQwMHg0MDBiYi5qcGVnIiwiZXhwbGljaXQiOmZhbHNlLCJwbGF5YWJsZSI6dHJ1ZX0"
+     },
+     {
+      "id": "srn:content:audio:album:album%3A1411414440#52231:2",
+      "title": "London Boy",
+      "subtitle": "David Bowie",
+      "images": {
+       "tile1x1": "https://is5-ssl.mzstatic.com/image/thumb/Music128/v4/8c/b7/ad/8cb7ad9b-31c9-b37d-a14f-05c5be477350/00602567852681.rgb.jpg/400x400bb.jpeg"
+      },
+      "actions": [
+       "ACTION_PLAY",
+       "ACTION_FAVORITES"
+      ],
+      "type": "ITEM_ALBUM",
+      "resource": {
+       "id": {
+        "objectId": "album%3A1411414440",
+        "serviceId": "52231",
+        "accountId": "2"
+       },
+       "type": "ALBUM",
+       "defaults": "eyJuYW1lIjoiTG9uZG9uIEJveSIsImFydGlzdCI6IkRhdmlkIEJvd2llIiwiYXJ0aXN0SWQiOiJhcnRpc3Q6NTUxNjk1Iiwic3VtbWFyeSI6IlBvcCAtIDE5NjciLCJpbWFnZVVybCI6Imh0dHBzOi8vaXM1LXNzbC5tenN0YXRpYy5jb20vaW1hZ2UvdGh1bWIvTXVzaWMxMjgvdjQvOGMvYjcvYWQvOGNiN2FkOWItMzFjOS1iMzdkLWExNGYtMDVjNWJlNDc3MzUwLzAwNjAyNTY3ODUyNjgxLnJnYi5qcGcvNDAweDQwMGJiLmpwZWciLCJleHBsaWNpdCI6ZmFsc2UsInBsYXlhYmxlIjp0cnVlfQ"
+      },
+      "isExplicit": false,
+      "href": "https://api.ws.sonos.com/content/api/v2/households/Sonos_HOUSEHOLD.PLACEHOLDER/services/52231/accounts/2/albums/album%3A1411414440/browse?filterExplicit=false&muse2=true&defaults=eyJuYW1lIjoiTG9uZG9uIEJveSIsImFydGlzdCI6IkRhdmlkIEJvd2llIiwiYXJ0aXN0SWQiOiJhcnRpc3Q6NTUxNjk1Iiwic3VtbWFyeSI6IlBvcCAtIDE5NjciLCJpbWFnZVVybCI6Imh0dHBzOi8vaXM1LXNzbC5tenN0YXRpYy5jb20vaW1hZ2UvdGh1bWIvTXVzaWMxMjgvdjQvOGMvYjcvYWQvOGNiN2FkOWItMzFjOS1iMzdkLWExNGYtMDVjNWJlNDc3MzUwLzAwNjAyNTY3ODUyNjgxLnJnYi5qcGcvNDAweDQwMGJiLmpwZWciLCJleHBsaWNpdCI6ZmFsc2UsInBsYXlhYmxlIjp0cnVlfQ"
+     }
+    ],
+    "total": 187,
+    "fastScrollUri": "https://api.ws.sonos.com/content/api/v2/households/Sonos_HOUSEHOLD.PLACEHOLDER/services/52231/accounts/2/containers/artist%3A551695/resources?count=%3CCOUNT%3E&offset=%3COFFSET%3E&filterExplicit=false&muse2=true"
+   }
+  ]
+ },
+ "providerInfo": {
+  "id": "52231",
+  "slug": "apple-music",
+  "name": "Apple Music"
+ }
+}

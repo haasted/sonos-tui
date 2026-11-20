@@ -125,7 +125,7 @@ func (c *Client) Households(ctx context.Context) ([]Household, error) {
 	ctx, cancel := context.WithTimeout(ctx, householdWait)
 	defer cancel()
 
-	body, err := c.get(ctx, "/api/mfe", nil)
+	body, err := c.get(ctx, "/api/mfe", "")
 	if err != nil {
 		return nil, err
 	}
