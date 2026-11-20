@@ -30,6 +30,10 @@ Comment functions for their purpose, structs for the conceptual meaning, variabl
 
 Variable comments must be placed after the variable declaration with //. If the purpose of a variable is obvious, eg. when used for interface checks, comments should be omitted.
 
+When a type implements an interface, declare a compile-time check next to the type, such as `var _ tea.Model = &appModel{}`. It shows at a glance which types implement which interface.
+
+Put a mutex last in its struct, after a blank line, with a comment that names what it guards, such as `mu sync.Mutex // guards subs`. Technical fields are kept apart from the fields of the domain.
+
 ## Git
 
 Do not commit until explicity instructed to do so.
