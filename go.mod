@@ -4,7 +4,7 @@ go 1.26.3
 
 require (
 	charm.land/bubbles/v2 v2.2.1
-	charm.land/lipgloss/v2 v2.0.6
+	charm.land/lipgloss/v2 v2.1.1
 	github.com/coder/websocket v1.8.15
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/mdns v1.0.7
