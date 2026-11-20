@@ -395,13 +395,14 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		m.hintDone = true // the user has found the keyboard; nothing left to hint
 
-		// Quitting is global, and comes before any modal. The help popup
-		// documents q as quit, so a modal that swallows it makes the popup
-		// tell the reader something untrue.
-		switch msg.String() {
+		// Quitting is global and comes before any modal, so the help's promise
+		// of q holds everywhere. Only an open filter box takes q, as text.
+		switch key := msg.String(); key {
 		case "q", "ctrl+c":
-			m.quitting = true
-			return m, tea.Sequence(tea.ClearScreen, tea.Quit)
+			if key == "ctrl+c" || !m.listTyping() {
+				m.quitting = true
+				return m, tea.Sequence(tea.ClearScreen, tea.Quit)
+			}
 		}
 
 		// Nothing else while the UI is hidden: a key would act on a screen

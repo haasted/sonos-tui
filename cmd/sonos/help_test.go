@@ -356,7 +356,7 @@ func keyMsgFor(key string) tea.KeyMsg {
 		return tea.KeyPressMsg{Code: tea.KeyEnd}
 	case "space":
 		return tea.KeyPressMsg{Code: tea.KeySpace}
-	case "ctrl+u", "ctrl+d":
+	case "ctrl+c", "ctrl+u", "ctrl+d":
 		return tea.KeyPressMsg{Code: rune(key[len(key)-1]), Mod: tea.ModCtrl}
 	default:
 		return tea.KeyPressMsg{Code: rune(key[0]), Text: key}

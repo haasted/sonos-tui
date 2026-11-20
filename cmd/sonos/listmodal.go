@@ -23,6 +23,7 @@ type listContent interface {
 	bumping() bool   // an end is lit, which a fresh chain must carry
 	borderLight() panes.BorderLight
 	hintReady() bool // there are rows for the hinted keys to act on
+	typing() bool    // the filter box is open, so a key is text
 	resized(rows, width int) tea.Model
 }
 
@@ -108,7 +109,7 @@ func (m appModel) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	retireListHint(slot)
-	if msg.String() == "?" {
+	if msg.String() == "?" && !m.listTyping() {
 		return m.openHelp(slot.help)
 	}
 
@@ -123,6 +124,17 @@ func (m appModel) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmd, restartListChain(slot))
 	}
 	return m, cmd
+}
+
+// listTyping reports that the open list's filter box gets the next key as
+// text: the box is open and nothing hides the list.
+func (m appModel) listTyping() bool {
+	slot, open := m.openList()
+	if !open || !m.fits() || m.help.IsOpen() || m.marking.IsOpen() || m.grouping.IsOpen() {
+		return false
+	}
+	content, ok := slot.modal.Content.(listContent)
+	return ok && content.typing()
 }
 
 // applyListWheel hands a wheel notch to the open list, the way the arrow keys

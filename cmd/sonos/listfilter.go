@@ -20,6 +20,9 @@ type listFilter[T any] struct {
 // clear. The reader's first esc undoes the narrowing; a second closes it.
 func (l listView[T]) ClaimsEsc() bool { return l.filtering || l.filter != "" }
 
+// typing reports that the filter box is open and takes keys as text.
+func (l listView[T]) typing() bool { return l.filtering }
+
 // everything is the whole list, filtered or not.
 func (l listView[T]) everything() []T {
 	if l.all != nil {
