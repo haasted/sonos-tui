@@ -20,6 +20,8 @@ The project is early, before any release. The database may be reset or deleted a
 
 ## Go style
 
+Before writing a small helper, look for it in the standard library first (`cmp`, `slices`, `maps`, `strings`, `net/url` and the like), then in a dependency the module already has, then in a proven new one. Write your own only when none fits, such as `cmp.Or` instead of an own "value or fallback" function.
+
 When structuring a package, prefer to place constant, variable and type declarations at the top. Functions and member functions should come after that.
 
 When creating a test, prefer keeping the test functions at the top of the file and the helper functions below.
