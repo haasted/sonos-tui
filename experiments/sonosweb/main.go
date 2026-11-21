@@ -2,8 +2,8 @@
 // ordinary browser would, to find out if a program can get a web session of
 // its own. It asks for the username and password when the sign-in needs them.
 //
-// The session is kept in a file outside the repository (mode 0600), so the
-// next run signs in only when the session has run out. No password, token or
+// The session is kept in the application database, where the app reads it,
+// so the next run signs in only when the session has run out. No password, token or
 // cookie value is printed. Nothing here is production code; its findings
 // belong in SONOS-NOTES.md.
 package main
@@ -30,6 +30,9 @@ import (
 	"github.com/coder/websocket/wsjson"
 	"github.com/gocolly/colly/v2"
 	"golang.org/x/term"
+
+	"github.com/haasted/sonos-tui/internal/sonoscloud"
+	"github.com/haasted/sonos-tui/internal/store"
 )
 
 const (
@@ -108,13 +111,6 @@ func (opts searchOptions) resolved() (searchOptions, error) {
 	return opts, nil
 }
 
-// savedCookie is one session cookie as the session file holds it.
-type savedCookie struct {
-	Name    string    `json:"name"`
-	Value   string    `json:"value"`
-	Expires time.Time `json:"expires"`
-}
-
 func main() {
 	fresh := flag.Bool("fresh", false, "sign in again, ignoring a saved session")
 	var search searchOptions
@@ -151,20 +147,27 @@ var b = newBrowser()
 // signedIn makes sure the browser has a session: the saved one while it
 // lasts, or a new sign-in. The session is saved again either way.
 func signedIn(fresh bool) error {
-	path, err := sessionPath()
+	ctx := context.Background()
+	path, err := store.DefaultPath()
 	if err != nil {
 		return err
 	}
+	db, err := store.Open(ctx, path)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	settings := db.Settings()
 
 	if !fresh {
-		if loaded, err := b.loadSession(path); err != nil {
+		if loaded, err := b.loadSession(ctx, settings); err != nil {
 			fmt.Println("no saved session:", err)
 		} else if loaded {
 			fmt.Println("trying the saved session from", path)
 			if ok, err := b.checkSession(); err != nil {
 				return err
 			} else if ok {
-				return b.saveSession(path)
+				return b.saveSession(ctx, settings, path)
 			}
 			fmt.Println("the saved session has run out; signing in again")
 		}
@@ -180,7 +183,7 @@ func signedIn(fresh bool) error {
 	if !ok {
 		return errors.New("the sign-in finished, but the web app has no session")
 	}
-	return b.saveSession(path)
+	return b.saveSession(ctx, settings, path)
 }
 
 func newBrowser() *browser {
@@ -558,19 +561,16 @@ func (b *browser) send(method, target string, body []byte, hdr http.Header) (*co
 	return b.last, nil
 }
 
-// loadSession puts the saved session cookies in the browser's jar. It
-// reports false when there is no file to load.
-func (b *browser) loadSession(path string) (bool, error) {
-	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
-	}
-	if err != nil {
+// loadSession puts the session cookies saved in settings in the browser's
+// jar. It reports false when none are saved.
+func (b *browser) loadSession(ctx context.Context, settings *store.Settings) (bool, error) {
+	data, err := settings.Get(ctx, store.SettingCloudSession, "")
+	if err != nil || data == "" {
 		return false, err
 	}
-	var saved []savedCookie
-	if err := json.Unmarshal(data, &saved); err != nil {
-		return false, fmt.Errorf("reading %s: %w", path, err)
+	var saved []sonoscloud.Cookie
+	if err := json.Unmarshal([]byte(data), &saved); err != nil {
+		return false, errors.New("the saved session is not valid")
 	}
 	var cookies []*http.Cookie
 	for _, s := range saved {
@@ -581,13 +581,13 @@ func (b *browser) loadSession(path string) (bool, error) {
 	return true, b.c.SetCookies(webApp, cookies)
 }
 
-// saveSession writes the web app's session cookies to path, readable by the
-// reader alone.
-func (b *browser) saveSession(path string) error {
-	var saved []savedCookie
+// saveSession writes the web app's session cookies to settings, in the
+// format the app reads. The database at path is for the reader alone.
+func (b *browser) saveSession(ctx context.Context, settings *store.Settings, path string) error {
+	var saved []sonoscloud.Cookie
 	for _, c := range b.c.Cookies(webApp) {
 		if c.Name == sessionCookie || strings.HasPrefix(c.Name, sessionCookie+".") {
-			saved = append(saved, savedCookie{Name: c.Name, Value: c.Value, Expires: c.Expires})
+			saved = append(saved, sonoscloud.Cookie{Name: c.Name, Value: c.Value, Expires: c.Expires})
 		}
 	}
 	if len(saved) == 0 {
@@ -597,22 +597,11 @@ func (b *browser) saveSession(path string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	if err := os.WriteFile(path, data, 0o600); err != nil {
+	if err := settings.Set(ctx, store.SettingCloudSession, string(data)); err != nil {
 		return err
 	}
 	fmt.Printf("\nsaved the session (%d cookie parts) to %s\n", len(saved), path)
 	return nil
-}
-
-func sessionPath() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".config", "sonos-tui", "web-session"), nil
 }
 
 // askCredentials asks for the Sonos account in the terminal. The password

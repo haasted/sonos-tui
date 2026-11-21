@@ -1,13 +1,10 @@
 package sonoscloud
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -37,16 +34,18 @@ type SessionStore interface {
 	Clear() error
 }
 
-// FileStore keeps the session in a file that only the reader can read.
-type FileStore struct {
-	Path string
+// memorySession keeps the session for the client's life only.
+type memorySession struct {
+	session Session
+
+	mu sync.Mutex // guards session
 }
 
 var (
 	_ fmt.Stringer   = Cookie{}
 	_ fmt.GoStringer = Cookie{}
 	_ slog.LogValuer = Cookie{}
-	_ SessionStore   = FileStore{}
+	_ SessionStore   = &memorySession{}
 )
 
 // Expires is when the first part of the session runs out, and zero when no
@@ -76,61 +75,23 @@ func (c Cookie) GoString() string {
 
 func (c Cookie) LogValue() slog.Value { return slog.StringValue(c.String()) }
 
-// defaultSessionPath is the file the sign-in keeps the session in when no
-// other store is given.
-func defaultSessionPath() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".config", "sonos-tui", "web-session"), nil
+func (m *memorySession) Load() (Session, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.session, nil
 }
 
-func (f FileStore) Load() (Session, error) {
-	data, err := os.ReadFile(f.Path)
-	if errors.Is(err, os.ErrNotExist) {
-		return Session{}, nil
-	}
-	if err != nil {
-		return Session{}, err
-	}
-	var cookies []Cookie
-	if err := json.Unmarshal(data, &cookies); err != nil {
-		return Session{}, fmt.Errorf("reading the session in %s: %w", f.Path, err)
-	}
-	return Session{Cookies: cookies}, nil
+func (m *memorySession) Save(s Session) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.session = s
+	return nil
 }
 
-// Save replaces the file through a rename, so a crash cannot leave half a
-// session behind.
-func (f FileStore) Save(s Session) error {
-	data, err := json.Marshal(s.Cookies)
-	if err != nil {
-		return err
-	}
-	dir := filepath.Dir(f.Path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
-	}
-	tmp, err := os.CreateTemp(dir, ".session-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name()) // fails harmlessly once renamed
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), f.Path)
-}
-
-func (f FileStore) Clear() error {
-	if err := os.Remove(f.Path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
+func (m *memorySession) Clear() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.session = Session{}
 	return nil
 }
 

@@ -70,7 +70,7 @@ type controlHeader struct {
 
 // withHouseholdStore keeps the household in store between runs. Without one
 // it is kept in memory for the client's life.
-func withHouseholdStore(store HouseholdStore) option {
+func withHouseholdStore(store HouseholdStore) Option {
 	return func(c *Client) { c.households = store }
 }
 

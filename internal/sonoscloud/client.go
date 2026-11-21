@@ -65,8 +65,8 @@ type Client struct {
 // browser is an HTTP client that sends requests as the browser does.
 type browser struct{ *http.Client }
 
-// option changes how New builds a Client. Only tests use one today.
-type option func(*Client)
+// Option changes how New builds a Client.
+type Option func(*Client)
 
 // StatusError is an answer that was not a success. It holds no part of the
 // request's headers or the answer's body, so it is safe to log.
@@ -100,7 +100,7 @@ var _ http.CookieJar = (*sessionJar)(nil)
 
 // withBaseURL points the client somewhere other than the web app, such as a
 // test server.
-func withBaseURL(base string) option {
+func withBaseURL(base string) Option {
 	return func(c *Client) {
 		if u, err := url.Parse(base); err == nil {
 			c.base = u
@@ -110,41 +110,37 @@ func withBaseURL(base string) option {
 
 // withHTTPClient sends requests through hc, for its transport and timeout.
 // The client puts its own cookie jar on a copy and leaves hc as it is.
-func withHTTPClient(hc *http.Client) option {
+func withHTTPClient(hc *http.Client) Option {
 	return func(c *Client) { c.http = browser{hc} }
 }
 
-// withSessionStore keeps the session in store instead of the default file.
-func withSessionStore(store SessionStore) option {
+// WithSessionStore keeps the session in store between runs. Without one the
+// client starts signed out and keeps a sign-in in memory only.
+func WithSessionStore(store SessionStore) Option {
 	return func(c *Client) { c.store = store }
 }
 
 // withClock reads the time from now, so a test can move it.
-func withClock(now func() time.Time) option {
+func withClock(now func() time.Time) Option {
 	return func(c *Client) { c.now = now }
 }
 
 // withAccount says which account the household has on a service before an
 // answer has said. The client learns the account itself.
-func withAccount(service, account int) option {
+func withAccount(service, account int) Option {
 	return func(c *Client) { c.accounts[service] = account }
 }
 
-// New makes a client with the saved session: by default the file that the
-// sign-in writes, ~/.config/sonos-tui/web-session. A missing session is not
-// an error: requests then answer ErrSignedOut.
-func New(opts ...option) (*Client, error) {
+// New makes a client with the session saved in its store. A missing session
+// is not an error: requests then answer ErrSignedOut.
+func New(opts ...Option) (*Client, error) {
 	c := &Client{now: time.Now, http: browser{&http.Client{Timeout: 30 * time.Second}}, accounts: map[int]int{}}
 	c.base, _ = url.Parse(DefaultBaseURL)
 	for _, opt := range opts {
 		opt(c)
 	}
 	if c.store == nil {
-		path, err := defaultSessionPath()
-		if err != nil {
-			return nil, err
-		}
-		c.store = FileStore{Path: path}
+		c.store = &memorySession{}
 	}
 	store := c.store
 

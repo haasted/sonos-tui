@@ -1,6 +1,10 @@
 package store
 
 import (
+	"bytes"
+	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -54,6 +58,43 @@ func TestSettings_SetReplacesTheValue(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "stations", value)
 	assert.Equal(t, 1, countIn(t, s, "setting"))
+}
+
+// Case: a setting deleted. A later read gives the fallback, and deleting a
+// setting that is not there is no error.
+func TestSettings_DeleteRemovesTheValue(t *testing.T) {
+	s := openTemp(t)
+	require.NoError(t, s.Settings().Set(t.Context(), testKey, "albums"))
+
+	require.NoError(t, s.Settings().Delete(t.Context(), testKey))
+	require.NoError(t, s.Settings().Delete(t.Context(), testKey))
+
+	value, err := s.Settings().Get(t.Context(), testKey, "fallback")
+	require.NoError(t, err)
+	assert.Equal(t, "fallback", value)
+	assert.Zero(t, countIn(t, s, "setting"))
+}
+
+// Case: a secret deleted while the database is open. No copy of it stays in
+// the file's free space or in the write-ahead log.
+func TestSettings_DeleteLeavesNoCopyOnDisk(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sonos.db")
+	s, err := Open(t.Context(), path)
+	require.NoError(t, err)
+	defer s.Close()
+	secret := []byte("made-up-secret-7f3a9c")
+
+	require.NoError(t, s.Settings().Set(t.Context(), SettingCloudSession, string(secret)))
+	require.NoError(t, s.Settings().Delete(t.Context(), SettingCloudSession))
+
+	for _, name := range []string{path, path + "-wal"} {
+		data, err := os.ReadFile(name)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		require.NoError(t, err)
+		assert.False(t, bytes.Contains(data, secret), "%s still holds the deleted value", name)
+	}
 }
 
 // Case: the cache cleared with settings stored. Settings are not cache and

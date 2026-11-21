@@ -3,6 +3,7 @@ package store
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -92,14 +93,53 @@ func TestOpen_EveryConnectionCarriesThePragmas(t *testing.T) {
 	require.NoError(err)
 	defer later.Close()
 
-	var journal, foreignKeys, busy string
+	var journal, foreignKeys, busy, secureDelete string
 	require.NoError(later.QueryRowContext(t.Context(), "PRAGMA journal_mode").Scan(&journal))
 	require.NoError(later.QueryRowContext(t.Context(), "PRAGMA foreign_keys").Scan(&foreignKeys))
 	require.NoError(later.QueryRowContext(t.Context(), "PRAGMA busy_timeout").Scan(&busy))
+	require.NoError(later.QueryRowContext(t.Context(), "PRAGMA secure_delete").Scan(&secureDelete))
 
 	require.Equal("wal", strings.ToLower(journal), "readers must not block the writer")
 	require.Equal("1", foreignKeys, "SQLite leaves these off unless asked")
 	require.Equal("5000", busy, "a held write lock must be waited for, not failed on")
+	require.Equal("1", secureDelete, "a deleted secret must not stay in free pages")
+}
+
+// Case: a first run. The folder, the database and its -wal and -shm files
+// are for the reader alone, as the file holds the cloud session.
+func TestOpen_ANewDatabaseIsPrivate(t *testing.T) {
+	skipWithoutUnixModes(t)
+	dir := filepath.Join(t.TempDir(), "sonos-tui")
+	path := filepath.Join(dir, "sonos.db")
+
+	s, err := Open(t.Context(), path)
+	require.NoError(t, err)
+	defer s.Close()
+	require.NoError(t, s.Settings().Set(t.Context(), testKey, "albums"))
+
+	assertMode(t, dir, dirMode)
+	for _, name := range []string{path, path + "-wal", path + "-shm"} {
+		assertMode(t, name, fileMode)
+	}
+}
+
+// Case: a database an older build made, readable by others. Opening it
+// makes the file and its -wal and -shm files private.
+func TestOpen_AnOlderDatabaseIsMadePrivate(t *testing.T) {
+	skipWithoutUnixModes(t)
+	path := filepath.Join(t.TempDir(), "sonos.db")
+	for _, name := range []string{path, path + "-wal", path + "-shm"} {
+		require.NoError(t, os.WriteFile(name, nil, 0o644))
+		require.NoError(t, os.Chmod(name, 0o644))
+	}
+
+	s, err := Open(t.Context(), path)
+	require.NoError(t, err)
+	defer s.Close()
+
+	for _, name := range []string{path, path + "-wal", path + "-shm"} {
+		assertMode(t, name, fileMode)
+	}
 }
 
 // Case: where the file goes when nothing says otherwise. It must be under the
@@ -113,6 +153,21 @@ func TestDefaultPath_SitsUnderTheConfigDirectory(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, filepath.Join(config, dirName, fileName), path)
+}
+
+// skipWithoutUnixModes skips a test of file modes where the system has none.
+func skipWithoutUnixModes(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no Unix file modes")
+	}
+}
+
+// assertMode checks the permission bits of the file or folder at path.
+func assertMode(t *testing.T, path string, want os.FileMode) {
+	t.Helper()
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, want, info.Mode().Perm(), path)
 }
 
 // countIn is how many rows a table holds.
