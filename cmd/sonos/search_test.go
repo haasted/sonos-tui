@@ -390,7 +390,8 @@ type fakeCloud struct {
 	queries   []string // what was searched for, in order
 	artist    sonoscloud.Artist
 	artistErr error
-	opened    []string // the artists opened, by id, in order
+	album     sonoscloud.Album
+	opened    []string // the artists and albums opened, by id, in order
 }
 
 var _ musicCloud = &fakeCloud{}
@@ -409,6 +410,11 @@ func (f *fakeCloud) Search(_ context.Context, _ string, _ int, query string) (so
 func (f *fakeCloud) OpenArtist(_ context.Context, _ string, _ int, objectID string) (sonoscloud.Artist, error) {
 	f.opened = append(f.opened, objectID)
 	return f.artist, f.artistErr
+}
+
+func (f *fakeCloud) OpenAlbum(_ context.Context, _ string, _ int, objectID string) (sonoscloud.Album, error) {
+	f.opened = append(f.opened, objectID)
+	return f.album, nil
 }
 
 // searchModel is the sized app with cloud as its Sonos cloud, and the

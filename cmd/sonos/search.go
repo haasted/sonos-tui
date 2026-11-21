@@ -41,16 +41,18 @@ type searchAskMsg struct{ query string }
 // searchMarkMsg asks for a result to be marked as a favourite.
 type searchMarkMsg struct{ result sonoscloud.Result }
 
-// searchActionMsg asks for a result to start on the speaker in view.
+// searchActionMsg asks for a result to start on the speaker in view. from is
+// set for enter on an album's track: the album then plays from that track.
 type searchActionMsg struct {
 	result sonoscloud.Result
 	action startAction
+	from   *albumStart
 }
 
 // searchContent is the search modal: a box for the query, a row of the result
-// types, and the results of the type in view, or an artist stepped into from
-// them. At the results, listView's filtering flag says the query box has the
-// keys; inside an artist it is the filter over its albums, as in the lists.
+// types, and the results of the type in view, or an artist or album stepped
+// into from them. At the results, listView's filtering flag says the query box
+// has the keys; inside a level it is the filter over its rows, as in the lists.
 type searchContent struct {
 	listView[sonoscloud.Result]
 
@@ -64,6 +66,7 @@ type searchContent struct {
 	levels       []browseLevel[sonoscloud.Result] // what was stepped into, the last on top; none at the results
 	opening      bool                             // the level on top waits for what it holds
 	levelProblem string                           // why the level on top has nothing to show
+	levelTotal   int                              // the tracks the album on top holds, shown or not
 }
 
 var _ listContent = searchContent{}
@@ -94,7 +97,7 @@ func (s searchContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// tab and shift+tab type nothing, so they switch type with the filter
 		// box open, as in the favourites.
 		case s.filtering && key != "tab" && key != "shift+tab":
-			s.listView = s.filterKey(artistFilter, key)
+			s.listView = s.filterKey(levelFilter, key)
 			return s, nil
 		}
 		return s.listKey(msg)
@@ -150,13 +153,13 @@ func (s searchContent) listKey(msg tea.KeyMsg) (searchContent, tea.Cmd) {
 		s = s.back()
 	case "/":
 		if len(s.levels) > 0 {
-			s.listView = s.openFilter(artistFilter)
+			s.listView = s.openFilter(levelFilter)
 		} else {
 			s.filtering = true
 		}
 	case "esc":
 		if s.listView.ClaimsEsc() {
-			s.listView = s.closeFilter(artistFilter)
+			s.listView = s.closeFilter(levelFilter)
 		} else {
 			s = s.back()
 		}
@@ -278,12 +281,23 @@ func (s searchContent) View() tea.View {
 
 // ask is the command a key sends for the result under the cursor, or nil when
 // the list has none.
+// On an album's track, enter plays the album from it and shift+enter the
+// album shuffled; n and N take the track alone.
 func (s searchContent) ask(action startAction) tea.Cmd {
 	if !s.onResult() {
 		return nil
 	}
-	r := s.items[s.cursor]
-	return func() tea.Msg { return searchActionMsg{result: r, action: action} }
+	msg := searchActionMsg{result: s.items[s.cursor], action: action}
+	if s.openedType() == sonoscloud.TypeAlbum {
+		album := s.levels[len(s.levels)-1].item
+		switch action {
+		case startPlay:
+			msg.from = &albumStart{album: album, position: s.trackPosition(msg.result)}
+		case startPlayShuffled:
+			msg.result = album
+		}
+	}
+	return func() tea.Msg { return msg }
 }
 
 // mark is the command a asks for the result under the cursor, or nil when the
@@ -348,6 +362,11 @@ func (s searchContent) levelLine() string {
 			headingPart{text: headingSeparator, style: searchHeadingStyle()},
 			headingPart{text: "/", style: queueFilterPromptStyle()},
 			headingPart{text: s.filter, style: searchHeadingStyle()})
+	} else if shown := len(s.items) - 1; s.levelTotal > shown && shown > 0 {
+		// An album longer than one page is cut short, and says so.
+		parts = append(parts, headingPart{
+			text: fmt.Sprintf("%s%d of %d", headingSeparator, shown, s.levelTotal), style: searchHeadingStyle(),
+		})
 	}
 	var b strings.Builder
 	for _, part := range fitHeading(parts, s.width) {

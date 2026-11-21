@@ -120,6 +120,7 @@ type listView[T any] struct {
 // included, so going back finds it again.
 type browseLevel[T any] struct {
 	name  string // what the heading calls the item opened
+	item  T      // the row that was opened
 	saved listView[T]
 	gen   int // tells the answer to this opening from the answer to another
 }

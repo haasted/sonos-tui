@@ -2,12 +2,15 @@ package main
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/haasted/sonos-tui/internal/sonoscloud"
+	"github.com/haasted/sonos-tui/internal/ui/panes"
 )
 
 // Case: → on an artist in the app. The cloud is asked for that artist, and
@@ -129,17 +132,106 @@ func TestSearchBrowse_KeysActOnAnAlbum(t *testing.T) {
 	}
 }
 
-// Case: → on an album of the artist's page, and on a track in the results.
-// Neither opens yet, so the right edge lights.
+// Case: → on a track of an album's page, and on a station in the results.
+// Neither holds anything to show, so the right edge lights.
 func TestSearchBrowse_RightOnWhatCannotOpenLightsTheEdge(t *testing.T) {
-	s := pressOnSearch(openedBowie(t), "right")
-	assert.Len(t, s.levels, 1, "→ on an album opened something")
+	s := pressOnSearch(openedBlackstar(t), "right")
+	assert.Len(t, s.levels, 2, "→ on a track opened something")
 	assert.Equal(t, bumpRight, s.edge)
 
 	s = searchContent{listView: listView[sonoscloud.Result]{rows: 20, width: 80}}.found("bowie", sampleResults())
-	s = pressOnSearch(s, "right")
+	s = pressOnSearch(s, "tab", "right")
+	assert.Equal(t, sonoscloud.TypeProgram, s.kind)
 	assert.Empty(t, s.levels)
 	assert.Equal(t, bumpRight, s.edge)
+}
+
+// Case: → on an album of the artist's page. Its tracks show, numbered, after
+// the back row, the cursor on the first; the heading names the album and says
+// the list is cut short. A track's artist shows only where it is not the
+// album's.
+func TestSearchBrowse_RightOpensAnAlbum(t *testing.T) {
+	s, cmd := pressOnSearchCmd(openedBowie(t), "right")
+	require.NotNil(t, cmd)
+	open := cmd().(searchOpenMsg)
+	assert.Equal(t, "album:1", open.result.ID.ObjectID)
+
+	s = s.openedAlbum(open.gen, blackstar())
+
+	assert.Equal(t, []string{"← back", "Blackstar", "'Tis a Pity She Was a Whore", "Lazarus"}, resultNames(s))
+	assert.Equal(t, "Blackstar", s.items[s.cursor].Name)
+	view := plain(s.View().Content)
+	assert.Contains(t, view, "Blackstar · 3 of 7\n")
+	assert.Contains(t, view, " 2  'Tis a Pity She Was a Whore")
+	assert.Contains(t, view, "David Bowie & Donny McCaslin", "a guest's artist line was not shown")
+	assert.Equal(t, "", s.shownDetail(s.items[1]), "the album's own artist was shown")
+}
+
+// Case: enter on an album's second track, with and without a filter. The
+// album is asked to play from its second track; the filter does not change
+// which track that is.
+func TestSearchBrowse_EnterPlaysTheAlbumFromTheTrack(t *testing.T) {
+	for name, s := range map[string]searchContent{
+		"plain":    pressOnSearch(openedBlackstar(t), "down"),
+		"filtered": pressOnSearch(openedBlackstar(t), "/", "p", "i", "t", "y", "enter", "down"),
+	} {
+		_, cmd := s.Update(keyMsgFor("enter"))
+		require.NotNil(t, cmd, name)
+		msg := cmd().(searchActionMsg)
+
+		assert.Equal(t, "'Tis a Pity She Was a Whore", msg.result.Name, name)
+		require.NotNil(t, msg.from, name)
+		assert.Equal(t, 2, msg.from.position, name)
+		assert.Equal(t, "album:1", msg.from.album.ID.ObjectID, name)
+	}
+}
+
+// Case: shift+enter and n on an album's track. shift+enter plays the album
+// shuffled; n queues the track alone.
+func TestSearchBrowse_OtherKeysOnATrack(t *testing.T) {
+	s := pressOnSearch(openedBlackstar(t), "down")
+
+	_, cmd := s.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift})
+	shuffled := cmd().(searchActionMsg)
+	assert.Equal(t, sonoscloud.TypeAlbum, shuffled.result.Type)
+	assert.Equal(t, startPlayShuffled, shuffled.action)
+
+	_, cmd = s.Update(keyMsgFor("n"))
+	next := cmd().(searchActionMsg)
+	assert.Equal(t, "'Tis a Pity She Was a Whore", next.result.Name)
+	assert.Nil(t, next.from)
+}
+
+// Case: enter on an album's track, in the app. The speaker gets the album and
+// is sent to the track, and the search closes, as after any play.
+func TestSearchBrowse_AnAlbumStartsFromTheTrackOnTheSpeaker(t *testing.T) {
+	device, heard := recordingDevice(t)
+	device.Speaker.USN = "uuid:RINCON_TEST01400::urn:schemas-upnp-org:device:ZonePlayer:1" // selecting the queue needs the id
+	m := pressKey(searchModel(t, &fakeCloud{signedIn: true}), "s")
+	m.tabs.Items[m.tabs.Active].Content = speakerModel{ctx: t.Context(), device: device}
+	album := sonoscloud.Result{ID: appleMusicID("album:1"), Type: sonoscloud.TypeAlbum, Name: "Blackstar", Playable: true}
+	track := sonoscloud.Result{ID: appleMusicID("song:2"), Type: sonoscloud.TypeTrack, Name: "Lazarus", Playable: true}
+
+	model, cmd := m.Update(searchActionMsg{result: track, action: startPlay, from: &albumStart{album: album, position: 3}})
+	msgs := flatten(cmd)
+
+	assert.False(t, model.(appModel).search.IsOpen())
+	actions := strings.Join(heard(), " ")
+	assert.Contains(t, actions, "#AddURIToQueue")
+	assert.Contains(t, actions, "#Seek")
+	assert.Contains(t, noticeTexts(msgs), "playing Blackstar from Lazarus")
+}
+
+// Case: ← from an album opened on an artist's page, then ← again. Each goes
+// back one level, the cursor where it was.
+func TestSearchBrowse_BackGoesUpOneLevelAtATime(t *testing.T) {
+	s := pressOnSearch(openedBlackstar(t), "left")
+	require.Len(t, s.levels, 1)
+	assert.Equal(t, "Blackstar", s.items[s.cursor].Name)
+
+	s = pressOnSearch(s, "left")
+	assert.Empty(t, s.levels)
+	assert.Equal(t, "David Bowie", s.items[s.cursor].Name)
 }
 
 // Case: the artist's answer arrives after the reader has gone back. There is
@@ -191,6 +283,44 @@ func pressOnArtist(t *testing.T) (searchContent, func() any) {
 	model, cmd := s.Update(keyMsgFor("right"))
 	require.NotNil(t, cmd)
 	return model.(searchContent), func() any { return cmd() }
+}
+
+// pressOnSearchCmd presses key on the search modal, and gives the command it
+// sends.
+func pressOnSearchCmd(s searchContent, key string) (searchContent, tea.Cmd) {
+	model, cmd := s.Update(keyMsgFor(key))
+	return model.(searchContent), cmd
+}
+
+// openedBlackstar is the album's page, opened from the artist's page, with
+// its tracks shown.
+func openedBlackstar(t *testing.T) searchContent {
+	t.Helper()
+	s, cmd := pressOnSearchCmd(openedBowie(t), "right")
+	require.NotNil(t, cmd)
+	return s.openedAlbum(cmd().(searchOpenMsg).gen, blackstar())
+}
+
+// noticeTexts is the text of every notice among msgs.
+func noticeTexts(msgs []tea.Msg) []string {
+	var texts []string
+	for _, msg := range msgs {
+		if notice, ok := msg.(panes.NoticeMsg); ok {
+			texts = append(texts, notice.Text)
+		}
+	}
+	return texts
+}
+
+// blackstar is the first three of an album's seven tracks, one with a guest.
+func blackstar() sonoscloud.Album {
+	bowie := []sonoscloud.Ref{{Name: "David Bowie"}}
+	return sonoscloud.Album{ID: appleMusicID("album:1"), Name: "Blackstar", Artist: "David Bowie", Total: 7, Tracks: []sonoscloud.Track{
+		{ID: appleMusicID("song:1"), Name: "Blackstar", Artists: bowie, Ordinal: 1, Playable: true},
+		{ID: appleMusicID("song:2"), Name: "'Tis a Pity She Was a Whore", Ordinal: 2, Playable: true,
+			Artists: []sonoscloud.Ref{{Name: "David Bowie & Donny McCaslin"}}},
+		{ID: appleMusicID("song:3"), Name: "Lazarus", Artists: bowie, Ordinal: 3, Playable: true},
+	}}
 }
 
 // openedBowie is the artist's page with its albums shown.

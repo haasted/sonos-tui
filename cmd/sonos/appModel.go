@@ -549,6 +549,8 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.applySearchOpen(msg)
 	case artistOpenedMsg:
 		return m.applyArtistOpened(msg)
+	case albumOpenedMsg:
+		return m.applyAlbumOpened(msg)
 	case cloudHouseholdMsg:
 		return m.applyCloudHousehold(msg)
 	case favouriteKindChosenMsg:

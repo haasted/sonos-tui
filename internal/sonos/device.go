@@ -662,14 +662,31 @@ func (d *Device) Previous(ctx context.Context) error {
 // In order, it starts from the first track: the speaker keeps its old place
 // in the queue across the replacement. Shuffled, the speaker picks the start.
 func (d *Device) ReplaceQueue(ctx context.Context, p Playable, mode PlayMode) error {
+	start := 0
+	if mode == PlayModeNormal {
+		start = 1
+	}
+	return d.replaceQueue(ctx, p, mode, start)
+}
+
+// ReplaceQueueFrom is ReplaceQueue in order, starting from the track at
+// position, counted from 1, such as a track chosen on an album's page. It
+// goes there directly, so the first track is never heard.
+func (d *Device) ReplaceQueueFrom(ctx context.Context, p Playable, position int) error {
+	return d.replaceQueue(ctx, p, PlayModeNormal, max(position, 1))
+}
+
+// replaceQueue empties the queue, fills it with p and plays it in mode, from
+// the track at start, or where the speaker picks with start 0.
+func (d *Device) replaceQueue(ctx context.Context, p Playable, mode PlayMode, start int) error {
 	steps := []func() error{
 		func() error { return d.client.RemoveAllTracksFromQueue(ctx) },
 		func() error { return d.client.AddURIToQueue(ctx, p.URI, p.Metadata, queueEnd, false) },
 		func() error { return d.client.SelectQueue(ctx, d.ID()) },
 		func() error { return d.client.SetPlayMode(ctx, mode) },
 	}
-	if mode == PlayModeNormal {
-		steps = append(steps, func() error { return d.client.SeekTrack(ctx, 1) })
+	if start > 0 {
+		steps = append(steps, func() error { return d.client.SeekTrack(ctx, start) })
 	}
 	steps = append(steps, func() error { return d.client.Play(ctx) })
 	return d.run(p, transportPlaying, steps...)

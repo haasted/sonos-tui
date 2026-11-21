@@ -1,5 +1,6 @@
-// Browsing from the search: stepping into an artist to see its albums, and
-// back out to the results as they were. search.go holds the modal itself.
+// Browsing from the search: stepping into an artist to see its albums, or an
+// album to see its tracks, and back out to the list it was opened from as it
+// was. search.go holds the modal itself.
 package main
 
 import (
@@ -36,9 +37,9 @@ var artistGroups = []struct {
 	{"Singles & EPs", []sonoscloud.AlbumKind{sonoscloud.KindSingle, sonoscloud.KindEP}},
 }
 
-// artistFilter matches an album by its title. The back row matches every
-// filter and the headings none, so a filter flattens the groups.
-var artistFilter = listFilter[sonoscloud.Result]{
+// levelFilter matches an album or a track by its name. The back row matches
+// every filter and the headings none, so a filter flattens the groups.
+var levelFilter = listFilter[sonoscloud.Result]{
 	match: func(r sonoscloud.Result, text string) bool {
 		switch r.Type {
 		case rowBack:
@@ -69,25 +70,61 @@ type (
 		artist  sonoscloud.Artist
 		err     error
 	}
+
+	// albumOpenedMsg is an album read from the cloud, for the level opened
+	// with gen.
+	albumOpenedMsg struct {
+		gen     int
+		localID string
+		album   sonoscloud.Album
+		err     error
+	}
 )
+
+// albumStart is an album to play from one of its tracks.
+type albumStart struct {
+	album    sonoscloud.Result
+	position int // the track's place on the album, counted from 1
+}
 
 func isHeading(r sonoscloud.Result) bool { return r.Type == rowHeading }
 
-// open steps into the artist under the cursor and asks for its albums. On
-// anything else it lights the right edge, as pressing against the end of a
-// list does.
+// open steps into the artist or album under the cursor and asks for what it
+// holds. On anything else it lights the right edge, as pressing against the
+// end of a list does.
 func (s searchContent) open() (searchContent, tea.Cmd) {
-	if s.cursor >= len(s.items) || s.items[s.cursor].Type != sonoscloud.TypeArtist {
+	if s.cursor >= len(s.items) || !openable(s.items[s.cursor].Type) {
 		s.listView = s.bump(bumpRight)
 		return s, nil
 	}
-	artist := s.items[s.cursor]
+	row := s.items[s.cursor]
 	gen := nextGen()
-	s.levels = append(slices.Clone(s.levels), browseLevel[sonoscloud.Result]{name: artist.Name, saved: s.listView, gen: gen})
+	s.levels = append(slices.Clone(s.levels), browseLevel[sonoscloud.Result]{name: row.Name, item: row, saved: s.listView, gen: gen})
 	s.items, s.all, s.filter, s.filtering = []sonoscloud.Result{backRow}, nil, "", false
 	s.cursor, s.offset, s.skip = 0, 0, isHeading
-	s.opening, s.levelProblem = true, ""
-	return s, func() tea.Msg { return searchOpenMsg{result: artist, gen: gen} }
+	s.opening, s.levelProblem, s.levelTotal = true, "", 0
+	return s, func() tea.Msg { return searchOpenMsg{result: row, gen: gen} }
+}
+
+// openable reports the types that hold something to show.
+func openable(t sonoscloud.ResultType) bool {
+	return t == sonoscloud.TypeArtist || t == sonoscloud.TypeAlbum
+}
+
+// openedAlbum shows an album's tracks, if the level on top is still the one
+// they were asked for. The album's own artist line is kept, so a track's
+// artist shows only where it differs.
+func (s searchContent) openedAlbum(gen int, album sonoscloud.Album) searchContent {
+	if !s.waitingFor(gen) {
+		return s
+	}
+	top := &s.levels[len(s.levels)-1]
+	top.item.Artists = []sonoscloud.Ref{{Name: album.Artist}}
+	s.opening, s.levelTotal = false, album.Total
+	s.items, s.all = albumRows(album), nil
+	s.cursor, s.offset = min(1, len(s.items)-1), 0
+	s.listView = s.follow()
+	return s
 }
 
 // opened shows an artist's albums, if the level on top is still the one they
@@ -136,7 +173,7 @@ func (s searchContent) leave() searchContent {
 	saved := s.levels[len(s.levels)-1].saved
 	saved.rows, saved.width = s.rows, s.width // the box may have been resized meanwhile
 	s.listView, s.levels = saved, s.levels[:len(s.levels)-1]
-	s.opening, s.levelProblem = false, ""
+	s.opening, s.levelProblem, s.levelTotal = false, "", 0
 	return s
 }
 
@@ -183,24 +220,69 @@ func artistRows(artist sonoscloud.Artist) []sonoscloud.Result {
 	return rows
 }
 
-// shownName is a row's name as the list draws it. On an artist's page an
-// album's " - Single" or " - EP" is left out: its group already says it.
-func (s searchContent) shownName(r sonoscloud.Result) string {
-	if len(s.levels) == 0 || r.Type != sonoscloud.TypeAlbum {
-		return r.Name
+// albumRows is an album's tracks for the list, after the back row. A track is
+// a result, so the keys that act on a search result act on it.
+func albumRows(album sonoscloud.Album) []sonoscloud.Result {
+	rows := []sonoscloud.Result{backRow}
+	for _, track := range album.Tracks {
+		rows = append(rows, sonoscloud.Result{
+			ID: track.ID, Type: sonoscloud.TypeTrack, Name: track.Name, Artists: track.Artists,
+			Album: &sonoscloud.Ref{ID: album.ID, Name: album.Name}, Playable: track.Playable,
+			Ordinal: track.Ordinal, Duration: track.Duration, MimeType: track.MimeType,
+		})
 	}
-	return strings.TrimSuffix(strings.TrimSuffix(r.Name, " - Single"), " - EP")
+	return rows
+}
+
+// openedType is the type of what the level on top opened, or empty at the
+// results.
+func (s searchContent) openedType() sonoscloud.ResultType {
+	if len(s.levels) == 0 {
+		return ""
+	}
+	return s.levels[len(s.levels)-1].item.Type
+}
+
+// trackPosition is a track's place on the album opened, counted from 1, found
+// in the whole list, so a filter does not change it. 0 when it is not there.
+func (s searchContent) trackPosition(r sonoscloud.Result) int {
+	for i, row := range s.everything() {
+		if row.Type == sonoscloud.TypeTrack && levelFilter.same(row, r) {
+			return i // the back row is 0, so the first track is 1
+		}
+	}
+	return 0
+}
+
+// shownName is a row's name as the list draws it. On an artist's page an
+// album's " - Single" or " - EP" is left out: its group already says it. On
+// an album's page a track has its number in front.
+func (s searchContent) shownName(r sonoscloud.Result) string {
+	switch {
+	case s.openedType() == sonoscloud.TypeArtist && r.Type == sonoscloud.TypeAlbum:
+		return strings.TrimSuffix(strings.TrimSuffix(r.Name, " - Single"), " - EP")
+	case s.openedType() == sonoscloud.TypeAlbum && r.Type == sonoscloud.TypeTrack:
+		return fmt.Sprintf("%2d  %s", r.Ordinal, r.Name)
+	}
+	return r.Name
 }
 
 // shownDetail is a row's second column: on an artist's page an album's year,
-// which is all that differs from one album to the next, and otherwise the
+// which is all that differs from one album to the next; on an album's page a
+// track's artist, only where it is not the album's; and otherwise the
 // search's own detail.
 func (s searchContent) shownDetail(r sonoscloud.Result) string {
-	if len(s.levels) == 0 {
-		return resultDetail(r)
+	switch s.openedType() {
+	case sonoscloud.TypeArtist:
+		_, year, _ := r.GenreYear()
+		return year
+	case sonoscloud.TypeAlbum:
+		if artist := artistNames(r); artist != artistNames(s.levels[len(s.levels)-1].item) {
+			return artist
+		}
+		return ""
 	}
-	_, year, _ := r.GenreYear()
-	return year
+	return resultDetail(r)
 }
 
 // levelNote is the body of a level with no rows to draw yet, and empty

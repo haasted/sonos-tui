@@ -131,13 +131,14 @@ var favouritesHelp = helpTable{
 
 // searchHelp is what "?" shows over the search. The box takes the keys while
 // it is open; the list moves with the queue's keys, tab switches type, and
-// → and ← step into an artist and back.
+// → and ← step into an artist or an album and back.
 var searchHelp = helpTable{
 	{
 		{"Search", []helpKey{
-			{"enter", "search; on a result, play it, replacing the queue"},
+			{"enter", "search; on a result, play it, replacing the queue;"},
+			{"", "on an album's track, play the album from it"},
 			{"⇧enter", "play an album shuffled, replacing the queue"},
-			{"/", "back to the box; in an artist, filter its albums"},
+			{"/", "back to the box; in an artist or album, filter it"},
 			{"↑ ↓  k j", "move a row"},
 			{"pgup  F", "page up"},
 			{"pgdn f spc", "page down"},
@@ -146,7 +147,7 @@ var searchHelp = helpTable{
 			{"end  G", "to the end"},
 			{"tab", "next type"},
 			{"⇧tab", "previous type"},
-			{"→  l", "open an artist"},
+			{"→  l", "open an artist or an album"},
 			{"←  h", "back"},
 			{"n", "play next"},
 			{"N", "add to the end of the queue"},

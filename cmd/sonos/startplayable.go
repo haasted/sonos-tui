@@ -48,3 +48,16 @@ func startPlayable(speaker speakerModel, playable sonos.Playable, action startAc
 		return withConfirmation(speaker.to(nowplaying.TrackMsg{Track: trackFromState(speaker.shown())}), said)
 	}
 }
+
+// startAlbumFrom replaces the queue with an album and plays it from the track
+// at position, counted from 1, and says what happened.
+func startAlbumFrom(speaker speakerModel, album sonos.Playable, position int, track string) tea.Cmd {
+	return func() tea.Msg {
+		if err := speaker.transport().ReplaceQueueFrom(speaker.ctx, album, position); err != nil {
+			slog.Warn("starting an album from a track failed", "speaker", speaker.device.Speaker, "title", album.Title, "err", err)
+			return speaker.failed(err)
+		}
+		said := "playing " + album.Title + " from " + track
+		return withConfirmation(speaker.to(nowplaying.TrackMsg{Track: trackFromState(speaker.shown())}), said)
+	}
+}

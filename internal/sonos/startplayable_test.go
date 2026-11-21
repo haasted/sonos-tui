@@ -34,6 +34,21 @@ func TestDevice_ReplaceQueue_SendsTheWholeSequence(t *testing.T) {
 	assert.Equal(t, "PLAYING", d.State().Transport.State)
 }
 
+// Case: an album played from its fifth track. The speaker seeks straight to
+// it, once, so the first track is never started.
+func TestDevice_ReplaceQueueFrom_SeeksStraightToTheTrack(t *testing.T) {
+	srv := newRecordingServer(t, "")
+	d := newQueueDevice(t, srv.Server)
+
+	require.NoError(t, d.ReplaceQueueFrom(context.Background(), playableSingles(t), 5))
+
+	assert.Equal(t, []string{
+		"RemoveAllTracksFromQueue", "AddURIToQueue", "SetAVTransportURI", "SetPlayMode", "Seek", "Play",
+	}, srv.actions())
+	assert.Contains(t, srv.body("Seek"), "<Target>5</Target>")
+	assert.Contains(t, srv.body("SetPlayMode"), "<NewPlayMode>NORMAL</NewPlayMode>")
+}
+
 // Case: a shuffled playlist, which must set the shuffle mode.
 func TestDevice_ReplaceQueue_SetsShuffle(t *testing.T) {
 	srv := newRecordingServer(t, "")

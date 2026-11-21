@@ -48,6 +48,7 @@ type musicCloud interface {
 	Household(ctx context.Context, localID string) (sonoscloud.Household, error)
 	Search(ctx context.Context, household string, service int, query string) (sonoscloud.SearchResults, error)
 	OpenArtist(ctx context.Context, household string, service int, objectID string) (sonoscloud.Artist, error)
+	OpenAlbum(ctx context.Context, household string, service int, objectID string) (sonoscloud.Album, error)
 }
 
 var _ musicCloud = &sonoscloud.Client{}
@@ -167,6 +168,16 @@ func (m appModel) applySearchAction(msg searchActionMsg) (tea.Model, tea.Cmd) {
 	case unavailable(r):
 		return m, notify(panes.NoticeInfo, searchNotAvailable)
 	}
+	// enter on an album's track plays the album, from that track.
+	if msg.from != nil && action == startPlay {
+		album, err := resultPlayable(msg.from.album)
+		if err != nil {
+			slog.Warn("starting an album from a track", "err", err)
+			return m, notify(panes.NoticeWarn, searchNotStarted)
+		}
+		m = m.closeSearch()
+		return m, startAlbumFrom(speaker, album, msg.from.position, r.Name)
+	}
 	playable, err := resultPlayable(r)
 	if err != nil {
 		slog.Warn("starting a search result", "err", err)
@@ -178,14 +189,21 @@ func (m appModel) applySearchAction(msg searchActionMsg) (tea.Model, tea.Cmd) {
 		action = startPlay
 	}
 	if plays {
-		m.search = m.search.Close()
-		slot := m.searchSlot()
-		*slot.pulse, *slot.hint = nextGen(), nextGen()
+		m = m.closeSearch()
 	}
 	return m, startPlayable(speaker, playable, action, false)
 }
 
-// applySearchOpen reads the artist the search stepped into, in the
+// closeSearch closes the search after a play, as the favourites close, and
+// ends the chains that ran while it was open.
+func (m appModel) closeSearch() appModel {
+	m.search = m.search.Close()
+	slot := m.searchSlot()
+	*slot.pulse, *slot.hint = nextGen(), nextGen()
+	return m
+}
+
+// applySearchOpen reads the artist or album the search stepped into, in the
 // background. The answer goes to the level it was asked for, if that is still
 // open; going back leaves it with no level to land in.
 func (m appModel) applySearchOpen(msg searchOpenMsg) (tea.Model, tea.Cmd) {
@@ -205,7 +223,44 @@ func (m appModel) applySearchOpen(msg searchOpenMsg) (tea.Model, tea.Cmd) {
 	if speaker, ok := m.activeSpeaker(); ok {
 		device = speaker.device
 	}
+	if msg.result.Type == sonoscloud.TypeAlbum {
+		return m, openAlbum(m.ctx, m.cloud, device, m.localHousehold, msg.result.ID.ObjectID, msg.gen)
+	}
 	return m, openArtist(m.ctx, m.cloud, device, m.localHousehold, msg.result.ID.ObjectID, msg.gen)
+}
+
+// applyAlbumOpened shows an album's tracks, or why there are none.
+func (m appModel) applyAlbumOpened(msg albumOpenedMsg) (tea.Model, tea.Cmd) {
+	if msg.localID != "" {
+		m.localHousehold = msg.localID
+	}
+	content, ok := m.search.Content.(searchContent)
+	if !ok {
+		return m, nil
+	}
+	if msg.err != nil {
+		m.search.Content = content.openFailed(msg.gen, searchProblem(msg.err))
+		return m, nil
+	}
+	content = content.openedAlbum(msg.gen, msg.album)
+	m.search.Content = content
+	if m.search.IsOpen() && content.overflows() {
+		return m, restartListChain(m.searchSlot())
+	}
+	return m, nil
+}
+
+// openAlbum reads an album of Apple Music and its tracks, finding the
+// household first if the startup lookup has not.
+func openAlbum(ctx context.Context, cloud musicCloud, device *sonos.Device, localID, objectID string, gen int) tea.Cmd {
+	return func() tea.Msg {
+		localID, household, err := findHousehold(ctx, cloud, device, localID)
+		if err != nil {
+			return albumOpenedMsg{gen: gen, localID: localID, err: err}
+		}
+		album, err := cloud.OpenAlbum(ctx, household.ID, sonoscloud.AppleMusic, objectID)
+		return albumOpenedMsg{gen: gen, localID: localID, album: album, err: err}
+	}
 }
 
 // applyArtistOpened shows an artist's albums, or why there are none.
