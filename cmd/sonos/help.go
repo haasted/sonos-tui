@@ -135,7 +135,7 @@ var favouritesHelp = helpTable{
 var searchHelp = helpTable{
 	{
 		{"Search", []helpKey{
-			{"enter", "search; on a result, play it, replacing the queue;"},
+			{"enter", "search; open an artist; play other results;"},
 			{"", "on an album's track, play the album from it"},
 			{"⇧enter", "play an album shuffled, replacing the queue"},
 			{"/", "back to the box; in an artist or album, filter it"},

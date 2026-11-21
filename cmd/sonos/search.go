@@ -165,8 +165,13 @@ func (s searchContent) listKey(msg tea.KeyMsg) (searchContent, tea.Cmd) {
 			s = s.back()
 		}
 	case "enter":
-		if s.onBackRow() {
+		switch {
+		case s.onBackRow():
 			return s.back(), nil
+		// An artist cannot be played, so enter does what the reader most
+		// likely wants of it: it opens it, as → does.
+		case s.cursor < len(s.items) && s.items[s.cursor].Type == sonoscloud.TypeArtist:
+			return s.open()
 		}
 		return s, s.ask(startPlay)
 	case "shift+enter":

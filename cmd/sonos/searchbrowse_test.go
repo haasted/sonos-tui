@@ -33,6 +33,20 @@ func TestSearchBrowse_RightOpensAnArtist(t *testing.T) {
 	assert.Contains(t, view, "2016", "the year is not the second column")
 }
 
+// Case: enter on an artist. An artist cannot be played, so enter opens it,
+// as → does.
+func TestSearchBrowse_EnterOpensAnArtist(t *testing.T) {
+	s := searchContent{listView: listView[sonoscloud.Result]{rows: 20, width: 80}}.found("bowie", artistResults())
+	s = pressOnSearch(s, "down")
+
+	s, cmd := pressOnSearchCmd(s, "enter")
+
+	require.NotNil(t, cmd)
+	assert.Equal(t, "artist:517", cmd().(searchOpenMsg).result.ID.ObjectID)
+	require.Len(t, s.levels, 1)
+	assert.Equal(t, "David Bowie", s.levels[0].name)
+}
+
 // Case: an artist opened, before the cloud answers. The body says it is
 // opening, under the artist's name.
 func TestSearchBrowse_OpeningIsSaid(t *testing.T) {
