@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -29,7 +28,7 @@ var dbFlag = flag.String("db", "", "path to the application database; empty mean
 func main() {
 	flag.Parse()
 	if err := run(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		report(os.Stderr, err)
 		os.Exit(1)
 	}
 }
@@ -57,7 +56,7 @@ func run() error {
 	events, err := sonos.NewEventManager()
 	if err != nil {
 		slog.Error("starting event listener", "err", err)
-		return fmt.Errorf("cannot start the listener for speaker events: %w", err)
+		return fatal{"cannot listen for events from the speakers", err}
 	}
 
 	cached := loadCachedSpeakers(ctx, db.Cache())
@@ -91,7 +90,7 @@ func run() error {
 	shutdownCancel()
 
 	if runErr != nil {
-		return fmt.Errorf("bubbletea error: %w", runErr)
+		return fatal{"the screen stopped working", runErr}
 	}
 	return nil
 }
@@ -104,13 +103,13 @@ func openStore(ctx context.Context) (*store.Store, error) {
 	if path == "" {
 		var err error
 		if path, err = store.DefaultPath(); err != nil {
-			return nil, fmt.Errorf("cannot find the default database location: %w", err)
+			return nil, fatal{"cannot find where to keep the database", err}
 		}
 	}
 
 	db, err := store.Open(ctx, path)
 	if err != nil {
-		return nil, fmt.Errorf("cannot open the database at %s: %w", path, err)
+		return nil, fatal{"cannot open the database at " + path, err}
 	}
 
 	version, err := db.Version(ctx)

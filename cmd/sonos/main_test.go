@@ -38,7 +38,7 @@ func TestMainReportsFailedStart(t *testing.T) {
 	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
 		t.Fatalf("exit: got %v, want status 1; stderr: %q", err, stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "cannot open the database at "+dbPath) {
-		t.Errorf("stderr: got %q, want it to name the database path", stderr.String())
+	if !strings.HasPrefix(stderr.String(), "sonos: cannot open the database at "+dbPath+"\n  ") {
+		t.Errorf("stderr: got %q, want what failed, naming the path, then the cause indented", stderr.String())
 	}
 }
