@@ -60,7 +60,6 @@ type Result struct {
 	Summary  string // an album's "Genre - Year", a playlist's description, a track's artist
 	ImageURL string
 	Playable bool
-	Explicit bool
 	Ordinal  int           // a track's number on its album
 	Duration time.Duration // a track's length
 	MimeType string        // a track's audio format, such as "audio/aac"
@@ -87,7 +86,6 @@ type wireResult struct {
 	Name       string     `json:"name"`
 	Type       ResultType `json:"type"`
 	Playable   bool       `json:"playable"`
-	Explicit   bool       `json:"explicit"`
 	Ordinal    int        `json:"ordinal"`
 	DurationMs int64      `json:"durationMs"`
 	Artists    []wireRef  `json:"artists"`
@@ -174,7 +172,7 @@ func (w wireResult) result() Result {
 	d := decodeDetails(w.Defaults)
 	r := Result{
 		ID: w.ID, Type: w.Type, Name: cmp.Or(w.Name, d.Name), Summary: cmp.Or(w.Summary.Content, d.Summary),
-		Playable: w.Playable, Explicit: w.Explicit, Ordinal: w.Ordinal, MimeType: d.MimeType,
+		Playable: w.Playable, Ordinal: w.Ordinal, MimeType: d.MimeType,
 		Duration: time.Duration(max(w.DurationMs, d.DurationMs)) * time.Millisecond,
 	}
 	for _, a := range w.Artists {

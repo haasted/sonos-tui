@@ -59,7 +59,6 @@ func TestSearch_ReadsEachTypeOfResult(t *testing.T) {
 
 	album := results.Groups[2].Results[0]
 	assert.Equal(t, "Blackstar", album.Name)
-	assert.True(t, album.Explicit)
 	assert.Equal(t, "Rock - 2016", album.Summary)
 
 	playlist := results.Groups[3].Results[0]
