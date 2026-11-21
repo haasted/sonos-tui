@@ -52,19 +52,19 @@ func TestSearch_EnterSearchesAndShowsTheResults(t *testing.T) {
 	assert.NotContains(t, plain(s.View().Content), "Playlists")
 }
 
-// Case: → and ← through the types. The empty tracks are passed over, and
-// the ends light their side instead of moving.
-func TestSearch_ArrowsSwitchTypeAndPassOverEmptyOnes(t *testing.T) {
+// Case: tab and shift+tab through the types. The empty tracks are passed
+// over, and the ends light their side instead of moving.
+func TestSearch_TabSwitchesTypeAndPassesOverEmptyOnes(t *testing.T) {
 	s := searchContent{listView: listView[sonoscloud.Result]{rows: 20, width: 80}}.found("bowie", sampleResults())
 
 	s = pressOnSearch(s, "tab")
 	assert.Equal(t, sonoscloud.TypeProgram, s.kind, "the empty tracks were not passed over")
-	s = pressOnSearch(s, "right")
+	s = pressOnSearch(s, "tab")
 	assert.Equal(t, sonoscloud.TypeProgram, s.kind)
 	assert.Equal(t, bumpRight, s.edge)
 	s = pressOnSearch(s, "shift+tab")
 	assert.Equal(t, sonoscloud.TypeAlbum, s.kind)
-	s = pressOnSearch(s, "left")
+	s = pressOnSearch(s, "shift+tab")
 	assert.Equal(t, sonoscloud.TypeAlbum, s.kind)
 	assert.Equal(t, bumpLeft, s.edge, "the empty artists were not an end")
 }
@@ -384,10 +384,13 @@ func TestSearch_AFavouriteFromTheQueueIsTheSameOne(t *testing.T) {
 // fakeCloud stands in for the Sonos cloud. It knows one household and
 // answers every search with results, or with err.
 type fakeCloud struct {
-	signedIn bool
-	results  sonoscloud.SearchResults
-	err      error
-	queries  []string // what was searched for, in order
+	signedIn  bool
+	results   sonoscloud.SearchResults
+	err       error
+	queries   []string // what was searched for, in order
+	artist    sonoscloud.Artist
+	artistErr error
+	opened    []string // the artists opened, by id, in order
 }
 
 var _ musicCloud = &fakeCloud{}
@@ -401,6 +404,11 @@ func (f *fakeCloud) Household(context.Context, string) (sonoscloud.Household, er
 func (f *fakeCloud) Search(_ context.Context, _ string, _ int, query string) (sonoscloud.SearchResults, error) {
 	f.queries = append(f.queries, query)
 	return f.results, f.err
+}
+
+func (f *fakeCloud) OpenArtist(_ context.Context, _ string, _ int, objectID string) (sonoscloud.Artist, error) {
+	f.opened = append(f.opened, objectID)
+	return f.artist, f.artistErr
 }
 
 // searchModel is the sized app with cloud as its Sonos cloud, and the

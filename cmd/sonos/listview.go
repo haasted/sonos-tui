@@ -83,6 +83,7 @@ const (
 // it with keys and the wheel.
 type listView[T any] struct {
 	items []T
+	skip  func(T) bool // rows the cursor passes over, such as group headings; nil for none
 
 	cursor   int       // the row the reader is on, as an index into items
 	offset   int       // first visible item
@@ -112,6 +113,15 @@ type listView[T any] struct {
 	// all is the whole list while a filter narrows items to part of it, and
 	// nil otherwise. Read it through everything(), never directly.
 	all []T
+}
+
+// browseLevel is one step into an item, such as an artist opened from the
+// search. saved is the list it was opened from, as it was, cursor and filter
+// included, so going back finds it again.
+type browseLevel[T any] struct {
+	name  string // what the heading calls the item opened
+	saved listView[T]
+	gen   int // tells the answer to this opening from the answer to another
 }
 
 // headingPart is one run of a heading, drawn in its own style.
@@ -154,7 +164,7 @@ func (l listView[T]) navigate(key string) (listView[T], bool) {
 // moveToEnd, so what a move means is decided in two functions rather than in
 // each of eight bindings.
 func (l listView[T]) moveBy(delta int) listView[T] {
-	target := max(min(l.cursor+delta, l.lastRow()), 0)
+	target := l.landing(max(min(l.cursor+delta, l.lastRow()), 0), delta)
 	if target == l.cursor {
 		if delta < 0 {
 			return l.bump(bumpTop)
@@ -169,15 +179,35 @@ func (l listView[T]) moveBy(delta int) listView[T] {
 // rather than derived from the row it lands on, because a list of one item has
 // the same row at both ends and the two keys would then light the same border.
 func (l listView[T]) moveToEnd(edge bumpEdge) listView[T] {
-	target := 0
+	target, dir := 0, 1
 	if edge == bumpBottom {
-		target = l.lastRow()
+		target, dir = l.lastRow(), -1
 	}
+	target = l.landing(target, dir)
 	if target == l.cursor {
 		return l.bump(edge)
 	}
 	l.cursor = target
 	return l.follow()
+}
+
+// landing is the row nearest target that the cursor may stop on, looking in
+// the direction dir first and then back. With nothing to skip it is target.
+func (l listView[T]) landing(target, dir int) int {
+	if l.skip == nil || target >= len(l.items) {
+		return target
+	}
+	if dir == 0 {
+		dir = 1
+	}
+	for _, d := range []int{dir, -dir} {
+		for i := target; i >= 0 && i < len(l.items); i += d {
+			if !l.skip(l.items[i]) {
+				return i
+			}
+		}
+	}
+	return target
 }
 
 // click puts the cursor on the row drawn on a line of the list, counted from
@@ -186,7 +216,7 @@ func (l listView[T]) moveToEnd(edge bumpEdge) listView[T] {
 func (l listView[T]) click(line int, at time.Time) (listView[T], int, bool, bool) {
 	first, last := l.window()
 	row := first + line - listHeaderRows
-	if line < listHeaderRows || row >= last {
+	if line < listHeaderRows || row >= last || (l.skip != nil && l.skip(l.items[row])) {
 		return l, 0, false, false
 	}
 

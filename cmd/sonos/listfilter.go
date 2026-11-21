@@ -87,6 +87,8 @@ func (l listView[T]) filterKey(rule listFilter[T], key string) listView[T] {
 		return l
 	case "backspace":
 		return l.typeFilter(rule, "backspace")
+	case "space":
+		return l.typeFilter(rule, " ")
 	}
 	if len([]rune(key)) == 1 {
 		return l.typeFilter(rule, key)

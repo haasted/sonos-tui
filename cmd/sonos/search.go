@@ -48,8 +48,9 @@ type searchActionMsg struct {
 }
 
 // searchContent is the search modal: a box for the query, a row of the result
-// types, and the results of the type in view. listView's filtering flag says
-// the box has the keys; the list's own filter is not used.
+// types, and the results of the type in view, or an artist stepped into from
+// them. At the results, listView's filtering flag says the query box has the
+// keys; inside an artist it is the filter over its albums, as in the lists.
 type searchContent struct {
 	listView[sonoscloud.Result]
 
@@ -59,6 +60,10 @@ type searchContent struct {
 	kind    sonoscloud.ResultType                         // the type in view; empty with no results
 	running bool                                          // a search is on its way
 	problem string                                        // why there are no results, said in the body
+
+	levels       []browseLevel[sonoscloud.Result] // what was stepped into, the last on top; none at the results
+	opening      bool                             // the level on top waits for what it holds
+	levelProblem string                           // why the level on top has nothing to show
 }
 
 var _ listContent = searchContent{}
@@ -66,7 +71,8 @@ var _ listContent = searchContent{}
 func (searchContent) Init() tea.Cmd { return nil }
 
 // Update types into the box while it has the keys, and otherwise moves
-// through the results, switches type, and goes back to the box with /.
+// through the list, steps into an artist and back, switches type, and acts
+// on the result under the cursor.
 func (s searchContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.MouseWheelMsg:
@@ -81,8 +87,15 @@ func (s searchContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		s.listView, _, _, _ = s.click(msg.line, msg.at)
 		return s, nil
 	case tea.KeyMsg:
-		if s.filtering {
+		key := msg.String()
+		switch {
+		case s.filtering && len(s.levels) == 0:
 			return s.boxKey(msg)
+		// tab and shift+tab type nothing, so they switch type with the filter
+		// box open, as in the favourites.
+		case s.filtering && key != "tab" && key != "shift+tab":
+			s.listView = s.filterKey(artistFilter, key)
+			return s, nil
 		}
 		return s.listKey(msg)
 	}
@@ -126,13 +139,31 @@ func (s searchContent) listKey(msg tea.KeyMsg) (searchContent, tea.Cmd) {
 		return s, nil
 	}
 	switch msg.String() {
-	case "tab", "right":
-		s = s.switchKind(1)
-	case "shift+tab", "left":
-		s = s.switchKind(-1)
+	// Inside an artist, tab leaves it first, then switches type.
+	case "tab":
+		s = s.leaveAll().switchKind(1)
+	case "shift+tab":
+		s = s.leaveAll().switchKind(-1)
+	case "right", "l":
+		return s.open()
+	case "left", "h":
+		s = s.back()
 	case "/":
-		s.filtering = true
+		if len(s.levels) > 0 {
+			s.listView = s.openFilter(artistFilter)
+		} else {
+			s.filtering = true
+		}
+	case "esc":
+		if s.listView.ClaimsEsc() {
+			s.listView = s.closeFilter(artistFilter)
+		} else {
+			s = s.back()
+		}
 	case "enter":
+		if s.onBackRow() {
+			return s.back(), nil
+		}
 		return s, s.ask(startPlay)
 	case "shift+enter":
 		return s, s.ask(startPlayShuffled)
@@ -149,6 +180,7 @@ func (s searchContent) listKey(msg tea.KeyMsg) (searchContent, tea.Cmd) {
 // searching shows that a search for query is on its way. The results of the
 // last one go, so they are not taken for the new one's.
 func (s searchContent) searching(query string) searchContent {
+	s = s.leaveAll()
 	s.running, s.problem, s.asked = true, "", query
 	s.byType, s.kind = nil, ""
 	return s.show()
@@ -156,6 +188,7 @@ func (s searchContent) searching(query string) searchContent {
 
 // failed says why a search has no results.
 func (s searchContent) failed(problem string) searchContent {
+	s = s.leaveAll()
 	s.running, s.problem = false, problem
 	s.byType, s.kind = nil, ""
 	return s.show()
@@ -164,6 +197,7 @@ func (s searchContent) failed(problem string) searchContent {
 // found shows a search's results, on the first type that has any. A type the
 // row does not name is left out.
 func (s searchContent) found(query string, results sonoscloud.SearchResults) searchContent {
+	s = s.leaveAll()
 	s.running, s.problem, s.asked = false, "", query
 	s.byType, s.kind = map[sonoscloud.ResultType][]sonoscloud.Result{}, ""
 	for _, group := range results.Groups {
@@ -225,13 +259,19 @@ func (s searchContent) resized(rows, width int) tea.Model {
 }
 
 func (s searchContent) View() tea.View {
-	first, second := s.columns(func(r sonoscloud.Result) string { return r.Name }, resultDetail)
+	first, second := s.columns(s.shownName, s.shownDetail)
 	list := s.render(s.typeRow(), s.note(), func(index int, r sonoscloud.Result, arrow string) string {
+		if isHeading(r) {
+			return s.drawHeading(r.Name, [2]int{first, second}, arrow)
+		}
+		// The back row is drawn quiet, as an unavailable result is: it is a
+		// way out, not one more entry.
 		style := queueRowStyle()
-		if unavailable(r) {
+		if unavailable(r) || r.Type == rowBack {
 			style = style.Foreground(themedGoingColor())
 		}
-		return s.drawRow(index, r.Name, resultDetail(r), [2]int{first, second}, style, arrow, s.filtering)
+		hideCursor := s.filtering && len(s.levels) == 0 // the query box has the keys
+		return s.drawRow(index, s.shownName(r), s.shownDetail(r), [2]int{first, second}, style, arrow, hideCursor)
 	})
 	return tea.NewView(s.boxLine() + "\n" + list)
 }
@@ -239,7 +279,7 @@ func (s searchContent) View() tea.View {
 // ask is the command a key sends for the result under the cursor, or nil when
 // the list has none.
 func (s searchContent) ask(action startAction) tea.Cmd {
-	if s.cursor >= len(s.items) {
+	if !s.onResult() {
 		return nil
 	}
 	r := s.items[s.cursor]
@@ -249,23 +289,39 @@ func (s searchContent) ask(action startAction) tea.Cmd {
 // mark is the command a asks for the result under the cursor, or nil when the
 // list has none.
 func (s searchContent) mark() tea.Cmd {
-	if s.cursor >= len(s.items) {
+	if !s.onResult() {
 		return nil
 	}
 	r := s.items[s.cursor]
 	return func() tea.Msg { return searchMarkMsg{result: r} }
 }
 
+// onResult reports the cursor on a result, not on the back row or a heading.
+func (s searchContent) onResult() bool {
+	if s.cursor >= len(s.items) {
+		return false
+	}
+	t := s.items[s.cursor].Type
+	return t != rowBack && t != rowHeading
+}
+
 // unavailable reports a result the service says cannot be played, such as one
 // not offered in the account's country. An artist is never playable as such,
 // so it is not one.
 func unavailable(r sonoscloud.Result) bool {
-	return !r.Playable && r.Type != sonoscloud.TypeArtist
+	switch r.Type {
+	case sonoscloud.TypeArtist, rowBack, rowHeading:
+		return false
+	}
+	return !r.Playable
 }
 
 // boxLine is the line above the list: the modal's name and the query. While
 // the box has the keys, / is its prompt, as in the filter box.
 func (s searchContent) boxLine() string {
+	if len(s.levels) > 0 {
+		return s.levelLine()
+	}
 	parts := []headingPart{{text: searchTitle, style: searchHeadingStyle()}}
 	switch {
 	case s.filtering:
@@ -275,6 +331,23 @@ func (s searchContent) boxLine() string {
 			headingPart{text: s.query, style: searchHeadingStyle()})
 	case s.query != "":
 		parts = append(parts, headingPart{text: headingSeparator + s.query, style: searchHeadingStyle(), shrink: true})
+	}
+	var b strings.Builder
+	for _, part := range fitHeading(parts, s.width) {
+		b.WriteString(part.style.Render(part.text))
+	}
+	return b.String()
+}
+
+// levelLine is the line above the list inside an artist: its name, and the
+// filter over its albums, as the favourites draw theirs.
+func (s searchContent) levelLine() string {
+	parts := []headingPart{{text: s.levels[len(s.levels)-1].name, style: searchHeadingStyle()}}
+	if s.filtering || s.filter != "" {
+		parts = append(parts,
+			headingPart{text: headingSeparator, style: searchHeadingStyle()},
+			headingPart{text: "/", style: queueFilterPromptStyle()},
+			headingPart{text: s.filter, style: searchHeadingStyle()})
 	}
 	var b strings.Builder
 	for _, part := range fitHeading(parts, s.width) {
@@ -333,6 +406,8 @@ func (s searchContent) typeStyle(kind sonoscloud.ResultType) lipgloss.Style {
 // note is the whole body when there are no rows to draw, and empty otherwise.
 func (s searchContent) note() string {
 	switch {
+	case len(s.levels) > 0:
+		return s.levelNote()
 	case s.running:
 		return fmt.Sprintf(searchRunningFmt, s.asked)
 	case s.problem != "":

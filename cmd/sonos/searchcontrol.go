@@ -47,6 +47,7 @@ type musicCloud interface {
 	SignedIn() bool
 	Household(ctx context.Context, localID string) (sonoscloud.Household, error)
 	Search(ctx context.Context, household string, service int, query string) (sonoscloud.SearchResults, error)
+	OpenArtist(ctx context.Context, household string, service int, objectID string) (sonoscloud.Artist, error)
 }
 
 var _ musicCloud = &sonoscloud.Client{}
@@ -182,6 +183,63 @@ func (m appModel) applySearchAction(msg searchActionMsg) (tea.Model, tea.Cmd) {
 		*slot.pulse, *slot.hint = nextGen(), nextGen()
 	}
 	return m, startPlayable(speaker, playable, action, false)
+}
+
+// applySearchOpen reads the artist the search stepped into, in the
+// background. The answer goes to the level it was asked for, if that is still
+// open; going back leaves it with no level to land in.
+func (m appModel) applySearchOpen(msg searchOpenMsg) (tea.Model, tea.Cmd) {
+	content, ok := m.search.Content.(searchContent)
+	if !ok {
+		return m, nil
+	}
+	switch {
+	case m.cloud == nil:
+		m.search.Content = content.openFailed(msg.gen, searchNoCloud)
+		return m, nil
+	case !m.cloud.SignedIn():
+		m.search.Content = content.openFailed(msg.gen, searchSignedOut)
+		return m, nil
+	}
+	var device *sonos.Device
+	if speaker, ok := m.activeSpeaker(); ok {
+		device = speaker.device
+	}
+	return m, openArtist(m.ctx, m.cloud, device, m.localHousehold, msg.result.ID.ObjectID, msg.gen)
+}
+
+// applyArtistOpened shows an artist's albums, or why there are none.
+func (m appModel) applyArtistOpened(msg artistOpenedMsg) (tea.Model, tea.Cmd) {
+	if msg.localID != "" {
+		m.localHousehold = msg.localID
+	}
+	content, ok := m.search.Content.(searchContent)
+	if !ok {
+		return m, nil
+	}
+	if msg.err != nil {
+		m.search.Content = content.openFailed(msg.gen, searchProblem(msg.err))
+		return m, nil
+	}
+	content = content.opened(msg.gen, msg.artist)
+	m.search.Content = content
+	if m.search.IsOpen() && content.overflows() {
+		return m, restartListChain(m.searchSlot())
+	}
+	return m, nil
+}
+
+// openArtist reads an artist of Apple Music and its albums, finding the
+// household first if the startup lookup has not.
+func openArtist(ctx context.Context, cloud musicCloud, device *sonos.Device, localID, objectID string, gen int) tea.Cmd {
+	return func() tea.Msg {
+		localID, household, err := findHousehold(ctx, cloud, device, localID)
+		if err != nil {
+			return artistOpenedMsg{gen: gen, localID: localID, err: err}
+		}
+		artist, err := cloud.OpenArtist(ctx, household.ID, sonoscloud.AppleMusic, objectID)
+		return artistOpenedMsg{gen: gen, localID: localID, artist: artist, err: err}
+	}
 }
 
 // applySearchMark stores a result as a favourite, as a does in the queue, and
