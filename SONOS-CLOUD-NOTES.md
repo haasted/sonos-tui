@@ -366,6 +366,42 @@ another page size.
 - Whether play.sonos.com or the content API behind it rounds the offset is
   not known. Search takes an offset too, and is not measured.
 
+### An album's tracks
+
+Measured on 2026-11-21 on "J.S. Bach: Complete Edition, Vol. 1/10"
+(album:922870318, 294 tracks):
+
+- **The album page gives at most 100 tracks.** `albums/{id}/browse` with
+  `count=50` (the web app's) gives tracks 1–50; `count=100` or more gives
+  1–100. `tracks.total` is the whole album (294).
+- **The rest comes from the album's own track list**, which the page's
+  `nextUri` names:
+
+  ```
+  GET /api/content/v2/households/{household}/services/52231/accounts/2/albums/album%253A922870318/tracks?count=100&offset=100&filterExplicit=false&muse2=true
+  ```
+
+  The id may be escaped once or twice; both answer. Each entry has the
+  album page's fields, and its `ordinal` is its place on the whole album
+  (101–200 on the second page), not a number within a disc.
+- **The same rounding:** the offset goes up to the next multiple of 100,
+  whatever the `count`. offset=50&count=50 gives tracks 101–150, and
+  offset=60&count=20 gives 101–120. So tracks 51–100 come only from offset 0
+  with a count of 100.
+- **The page's `nextUri` skips tracks.** After the page's 50 it says
+  offset=100, which gives 101–200: tracks 51–100 are never asked for. After
+  an offset that is not a multiple of 100 it gives the requested offset plus
+  the items seen (offset=150 gave 94 items and then offset=244). Do not
+  follow it; compute the offsets.
+- **An offset at or past the end answers 500**, not an empty page (offset
+  250 and 294 here, both rounded to 300). So ask only while the offset is
+  below `total`.
+- **The container list works for an album too** (`containers/{id}/resources`,
+  the same 100 rule), but its entries have `ordinal` 0. The album's own track
+  list is the better source.
+- So to read a whole album: `tracks` with `count=100` at offset 0, 100, 200…
+  while the offset is below `total`; a 431-track box set is 5 requests.
+
 ## Versions
 
 Content answers carry a response header **`x-sonos-api-version`**, `0.91.3`

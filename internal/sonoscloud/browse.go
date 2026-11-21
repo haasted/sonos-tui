@@ -25,6 +25,12 @@ const (
 
 	// albumCount is how many tracks an album page asks for, as the web app does.
 	albumCount = "50"
+
+	// firstAlbumTracks is how many tracks opening an album reads; RestOfAlbum
+	// reads the rest, up to maxAlbumTracks, so a huge box set is never read
+	// whole without the reader asking.
+	firstAlbumTracks = 150
+	maxAlbumTracks   = 1000
 )
 
 // The kinds of album that Apple Music marks in a title.
@@ -45,7 +51,7 @@ type Album struct {
 	Summary  string // "Genre - Year"
 	ImageURL string
 	Tracks   []Track
-	Total    int // tracks the album holds; more than len(Tracks) when it was cut off
+	Total    int // tracks the album holds; more than len(Tracks) when it was cut off, as a long one is
 }
 
 // Track is one track of an opened album.
@@ -136,9 +142,9 @@ type wireAction struct {
 	Resource wireResource `json:"resource"`
 }
 
-// OpenAlbum opens an album of a service, such as "album:1676286487", with
-// its tracks. The album is kept for pageLife and given again without a
-// request.
+// OpenAlbum opens an album of a service, such as "album:1676286487", with up
+// to firstAlbumTracks of its tracks; RestOfAlbum reads the rest. The album is
+// kept for pageLife and given again without a request.
 func (c *Client) OpenAlbum(ctx context.Context, household string, service int, objectID string) (Album, error) {
 	key := pageKey(household, service, objectID)
 	if album, ok := c.albums.get(key, c.now()); ok {
@@ -166,10 +172,60 @@ func (c *Client) openAlbum(ctx context.Context, household string, service int, o
 		Summary: d.Summary, ImageURL: cmp.Or(page.Images.Tile, d.ImageURL), Total: page.Tracks.Total,
 	}
 	checkSummary(album.ID, album.Summary)
-	for _, e := range page.Tracks.Items {
-		album.Tracks = append(album.Tracks, e.track())
+	if album.Total <= len(page.Tracks.Items) {
+		for _, e := range page.Tracks.Items {
+			album.Tracks = append(album.Tracks, e.track())
+		}
+		return album, nil
 	}
+
+	// The page holds the first 50; the album's track list gives up to
+	// firstAlbumTracks, the first 50 again among them.
+	tracks, err := c.albumTracks(ctx, household, service, objectID, 0, min(album.Total, firstAlbumTracks))
+	if err != nil {
+		return Album{}, err
+	}
+	album.Tracks = tracks
 	return album, nil
+}
+
+// RestOfAlbum reads the tracks an opened album was cut off before, up to
+// maxAlbumTracks in all, and gives the album with every track read. The whole
+// album is kept in place of the part, as OpenAlbum keeps one.
+func (c *Client) RestOfAlbum(ctx context.Context, household string, service int, album Album) (Album, error) {
+	rest, err := c.albumTracks(ctx, household, service, album.ID.ObjectID, len(album.Tracks), min(album.Total, maxAlbumTracks))
+	if err != nil {
+		return Album{}, err
+	}
+	album.Tracks = append(slices.Clone(album.Tracks), rest...)
+	c.albums.put(pageKey(household, service, album.ID.ObjectID), album, c.now())
+	return album, nil
+}
+
+// albumTracks reads an album's tracks at the places from up to to, counted
+// from 0, from its track list. The list rounds an offset up to a multiple of
+// pageSize, so each request starts on one and the tracks before from are left
+// out. It never asks at or past the end, which the API answers with a 500.
+func (c *Client) albumTracks(ctx context.Context, household string, service int, objectID string, from, to int) ([]Track, error) {
+	var tracks []Track
+	for offset := from / pageSize * pageSize; offset < to; offset += pageSize {
+		var list wireEntryList
+		if err := c.getPage(ctx, household, service, "albums/"+pathID(objectID)+"/tracks", url.Values{
+			"count": {strconv.Itoa(min(pageSize, to-offset))}, "offset": {strconv.Itoa(offset)},
+			"filterExplicit": {"false"}, "muse2": {"true"},
+		}, &list); err != nil {
+			return nil, err
+		}
+		for i, e := range list.Items {
+			if offset+i >= from {
+				tracks = append(tracks, e.track())
+			}
+		}
+		if len(list.Items) == 0 {
+			break
+		}
+	}
+	return tracks, nil
 }
 
 // OpenArtist opens an artist of a service, such as "artist:551695", with its

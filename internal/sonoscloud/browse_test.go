@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -153,10 +155,69 @@ type fakeBrowse struct {
 	album, artist  []byte
 	containerPages int  // how many container pages have entries, each with a nextUri but the last
 	gone           bool // answer every request 410
+	longAlbum      int  // the tracks a made-up long album holds; 0 serves the Blackstar fixture
 
 	mu      sync.Mutex
 	paths   []string
 	queries []string
+}
+
+// Case: an album of 294 tracks opened. Its first 150 are read: the page
+// asks for 50 as the web app does, then the track list from offset 0, where
+// offsets start on a multiple of 100.
+func TestOpenAlbum_ALongAlbumStopsAt150(t *testing.T) {
+	f := newFakeBrowse(t)
+	f.longAlbum = 294
+
+	album, err := f.client(t).OpenAlbum(t.Context(), "Sonos_home.cloud", 52231, "album:900")
+
+	require.NoError(t, err)
+	assert.Equal(t, 294, album.Total)
+	require.Len(t, album.Tracks, 150)
+	assert.Equal(t, 1, album.Tracks[0].Ordinal)
+	assert.Equal(t, 150, album.Tracks[149].Ordinal)
+	assert.Equal(t, []string{"0+100", "100+50"}, f.tracksAsked())
+}
+
+// Case: the rest of that album read. Every track comes once and in order,
+// though offset 150 is not a multiple of 100, and nothing is asked at or past
+// the end. Opening it again gives the whole album without a request.
+func TestRestOfAlbum_ReadsEveryTrackOnce(t *testing.T) {
+	f := newFakeBrowse(t)
+	f.longAlbum = 294
+	c := f.client(t)
+	album, err := c.OpenAlbum(t.Context(), "Sonos_home.cloud", 52231, "album:900")
+	require.NoError(t, err)
+
+	whole, err := c.RestOfAlbum(t.Context(), "Sonos_home.cloud", 52231, album)
+
+	require.NoError(t, err)
+	require.Len(t, whole.Tracks, 294)
+	for i, track := range whole.Tracks {
+		require.Equal(t, i+1, track.Ordinal, "track %d", i)
+	}
+	assert.Equal(t, []string{"0+100", "100+50", "100+100", "200+94"}, f.tracksAsked())
+
+	asked := len(f.paths)
+	again, err := c.OpenAlbum(t.Context(), "Sonos_home.cloud", 52231, "album:900")
+	require.NoError(t, err)
+	assert.Len(t, again.Tracks, 294)
+	assert.Len(t, f.paths, asked, "the whole album was not kept")
+}
+
+// Case: an album longer than maxAlbumTracks. The rest stops at 1000 tracks.
+func TestRestOfAlbum_StopsAt1000(t *testing.T) {
+	f := newFakeBrowse(t)
+	f.longAlbum = 1500
+	c := f.client(t)
+	album, err := c.OpenAlbum(t.Context(), "Sonos_home.cloud", 52231, "album:900")
+	require.NoError(t, err)
+
+	whole, err := c.RestOfAlbum(t.Context(), "Sonos_home.cloud", 52231, album)
+
+	require.NoError(t, err)
+	assert.Len(t, whole.Tracks, 1000)
+	assert.Equal(t, 1500, whole.Total)
 }
 
 // Case: an artist opened, again at once, and again once pageLife has passed.
@@ -222,6 +283,10 @@ func newFakeBrowse(t *testing.T) *fakeBrowse {
 		switch {
 		case f.gone:
 			w.WriteHeader(http.StatusGone)
+		case strings.HasSuffix(r.URL.EscapedPath(), "/tracks"):
+			f.writeTracks(w, r.URL.Query())
+		case strings.Contains(r.URL.EscapedPath(), "/albums/") && f.longAlbum > 0:
+			w.Write(f.longAlbumPage())
 		case strings.Contains(r.URL.EscapedPath(), "/albums/"):
 			w.Write(f.album)
 		case strings.Contains(r.URL.EscapedPath(), "/artists/"):
@@ -261,6 +326,58 @@ func (f *fakeBrowse) clientAt(t *testing.T, now func() time.Time) *sonoscloud.Cl
 	t.Helper()
 	return newClient(t, f.srv, &memStore{session: validSession(sessionName)},
 		sonoscloud.WithAccount(sonoscloud.AppleMusic, 2), sonoscloud.WithClock(now))
+}
+
+// writeTracks answers an album's track list as the API does: from offset
+// rounded up to a multiple of 100, at most count and 100 tracks, and a 500
+// at or past the end. The fixture's album gives its own tracks.
+func (f *fakeBrowse) writeTracks(w http.ResponseWriter, query url.Values) {
+	offset, _ := strconv.Atoi(query.Get("offset"))
+	count, _ := strconv.Atoi(query.Get("count"))
+	if f.longAlbum == 0 {
+		var page struct {
+			Tracks json.RawMessage `json:"tracks"`
+		}
+		json.Unmarshal(f.album, &page)
+		w.Write(page.Tracks)
+		return
+	}
+	from := (offset + 99) / 100 * 100
+	if from >= f.longAlbum {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Write(madeUpTracks(from, min(from+min(count, 100), f.longAlbum), f.longAlbum))
+}
+
+// longAlbumPage is the page of the made-up long album: its first 50 tracks.
+func (f *fakeBrowse) longAlbumPage() []byte {
+	return []byte(`{"title":"Complete Edition","resource":{"type":"ALBUM","id":{"objectId":"album%3A900","serviceId":"52231","accountId":"2"}},` +
+		`"tracks":` + string(madeUpTracks(0, 50, f.longAlbum)) + `}`)
+}
+
+// madeUpTracks is a track list of tracks from up to to, of an album of total.
+func madeUpTracks(from, to, total int) []byte {
+	var items []string
+	for n := from; n < to; n++ {
+		items = append(items, fmt.Sprintf(`{"title":"Track %d","ordinal":%d,"actions":["ACTION_PLAY"],`+
+			`"resource":{"type":"TRACK","id":{"objectId":"song%%3A%d","serviceId":"52231","accountId":"2"}}}`, n+1, n+1, n+1))
+	}
+	return []byte(fmt.Sprintf(`{"items":[%s],"total":%d}`, strings.Join(items, ","), total))
+}
+
+// tracksAsked is the offset and count of each request for the track list.
+func (f *fakeBrowse) tracksAsked() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var asked []string
+	for i, path := range f.paths {
+		if strings.HasSuffix(path, "/tracks") {
+			q, _ := url.ParseQuery(f.queries[i])
+			asked = append(asked, q.Get("offset")+"+"+q.Get("count"))
+		}
+	}
+	return asked
 }
 
 // containerPage is 100 made-up albums from offset, with a nextUri unless it
