@@ -15,6 +15,7 @@ type SettingKey string
 const (
 	SettingSelectedSpeaker SettingKey = "speaker.selected" // RINCON id of the tab selected at exit
 	SettingFavouritesKind  SettingKey = "favourites.kind"  // the media type the favourites modal showed last
+	SettingCloudSession    SettingKey = "cloud.session"    // the Sonos cloud session as JSON; a secret, never logged
 )
 
 // Settings is the handle on the setting table: single remembered values,
@@ -53,6 +54,24 @@ func (s *Settings) Set(ctx context.Context, key SettingKey, value string) error 
 		string(key), value)
 	if err != nil {
 		return fmt.Errorf("writing setting %s: %w", key, err)
+	}
+	return nil
+}
+
+// Delete removes a setting, so a later Get gives the fallback. It then moves
+// the write-ahead log into the file and empties it, so with secure_delete no
+// copy of the old value stays on disk.
+func (s *Settings) Delete(ctx context.Context, key SettingKey) error {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM setting WHERE key = ?`, string(key)); err != nil {
+		return fmt.Errorf("deleting setting %s: %w", key, err)
+	}
+	var busy, logFrames, checkpointed int
+	err := s.db.QueryRowContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`).Scan(&busy, &logFrames, &checkpointed)
+	if err != nil {
+		return fmt.Errorf("deleted setting %s, but emptying the log failed: %w", key, err)
+	}
+	if busy != 0 {
+		return fmt.Errorf("deleted setting %s, but the log is in use and keeps the old value", key)
 	}
 	return nil
 }

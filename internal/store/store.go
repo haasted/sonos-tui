@@ -6,6 +6,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -33,7 +34,18 @@ var pragmas = []string{
 	"busy_timeout(5000)",  // wait for a held write lock instead of failing
 	"synchronous(NORMAL)", // safe against a crash under WAL, not against power loss
 	"foreign_keys(ON)",    // off by default in SQLite, for compatibility
+	"secure_delete(ON)",   // overwrite deleted rows with zeros, as one holds a secret
 }
+
+// fileMode and dirMode keep the database for the reader alone, as it holds
+// the cloud session. SQLite gives the -wal and -shm files the database's mode.
+const (
+	fileMode os.FileMode = 0o600
+	dirMode  os.FileMode = 0o700
+)
+
+// sidecars are the files SQLite keeps next to the database in WAL mode.
+var sidecars = []string{"-wal", "-shm"}
 
 // Store is an open database, migrated to the schema this build knows.
 type Store struct {
@@ -57,8 +69,11 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("locating %s: %w", path, err)
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), dirMode); err != nil {
 		return nil, fmt.Errorf("creating database directory: %w", err)
+	}
+	if err := makePrivate(path); err != nil {
+		return nil, err
 	}
 
 	db, err := sql.Open(driverName, dsn(path))
@@ -91,6 +106,25 @@ func (s *Store) Version(ctx context.Context) (int, error) {
 // clear cached data, and it reaches no table but its own.
 func (s *Store) Cache() *Cache {
 	return &Cache{db: s.db}
+}
+
+// makePrivate creates the database file for the reader alone before SQLite
+// does, and narrows a file an older build made, with its -wal and -shm files.
+func makePrivate(path string) error {
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, fileMode)
+	if err != nil {
+		return fmt.Errorf("creating %s: %w", path, err)
+	}
+	defer f.Close()
+	if err := f.Chmod(fileMode); err != nil {
+		return fmt.Errorf("making %s private: %w", path, err)
+	}
+	for _, suffix := range sidecars {
+		if err := os.Chmod(path+suffix, fileMode); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("making %s private: %w", path+suffix, err)
+		}
+	}
+	return nil
 }
 
 // dsn builds the connection string. _txlock=immediate takes the write lock
