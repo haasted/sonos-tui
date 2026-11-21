@@ -437,6 +437,8 @@ type fakeCloud struct {
 	artist    sonoscloud.Artist
 	artistErr error
 	album     sonoscloud.Album
+	whole     sonoscloud.Album // what RestOfAlbum gives
+	restErr   error
 	opened    []string // the artists and albums opened, by id, in order
 }
 
@@ -461,6 +463,10 @@ func (f *fakeCloud) OpenArtist(_ context.Context, _ string, _ int, objectID stri
 func (f *fakeCloud) OpenAlbum(_ context.Context, _ string, _ int, objectID string) (sonoscloud.Album, error) {
 	f.opened = append(f.opened, objectID)
 	return f.album, nil
+}
+
+func (f *fakeCloud) RestOfAlbum(context.Context, string, int, sonoscloud.Album) (sonoscloud.Album, error) {
+	return f.whole, f.restErr
 }
 
 // searchModel is the sized app with cloud as its Sonos cloud, and the

@@ -66,7 +66,8 @@ type searchContent struct {
 	levels       []browseLevel[sonoscloud.Result] // what was stepped into, the last on top; none at the results
 	opening      bool                             // the level on top waits for what it holds
 	levelProblem string                           // why the level on top has nothing to show
-	levelTotal   int                              // the tracks the album on top holds, shown or not
+	levelAlbum   sonoscloud.Album                 // the album on top, as read so far
+	loadingMore  bool                             // the rest of the album on top is on its way
 }
 
 var _ listContent = searchContent{}
@@ -168,6 +169,8 @@ func (s searchContent) listKey(msg tea.KeyMsg) (searchContent, tea.Cmd) {
 		switch {
 		case s.onBackRow():
 			return s.back(), nil
+		case s.cursor < len(s.items) && s.items[s.cursor].Type == rowMore:
+			return s.loadMore()
 		// An artist cannot be played, so enter does what the reader most
 		// likely wants of it: it opens it, as → does.
 		case s.cursor < len(s.items) && s.items[s.cursor].Type == sonoscloud.TypeArtist:
@@ -273,10 +276,10 @@ func (s searchContent) View() tea.View {
 		if isHeading(r) {
 			return s.drawHeading(r.Name, [2]int{first, second}, arrow)
 		}
-		// The back row is drawn quiet, as an unavailable result is: it is a
-		// way out, not one more entry.
+		// The back row and the row that loads the rest are drawn quiet, as an
+		// unavailable result is: they are not entries.
 		style := queueRowStyle()
-		if unavailable(r) || r.Type == rowBack {
+		if unavailable(r) || r.Type == rowBack || r.Type == rowMore {
 			style = style.Foreground(themedGoingColor())
 		}
 		hideCursor := s.filtering && len(s.levels) == 0 // the query box has the keys
@@ -322,7 +325,7 @@ func (s searchContent) onResult() bool {
 		return false
 	}
 	t := s.items[s.cursor].Type
-	return t != rowBack && t != rowHeading
+	return t != rowBack && t != rowHeading && t != rowMore
 }
 
 // unavailable reports a result the service says cannot be played, such as one
@@ -330,7 +333,7 @@ func (s searchContent) onResult() bool {
 // so it is not one.
 func unavailable(r sonoscloud.Result) bool {
 	switch r.Type {
-	case sonoscloud.TypeArtist, rowBack, rowHeading:
+	case sonoscloud.TypeArtist, rowBack, rowHeading, rowMore:
 		return false
 	}
 	return !r.Playable
@@ -368,10 +371,10 @@ func (s searchContent) levelLine() string {
 			headingPart{text: headingSeparator, style: searchHeadingStyle()},
 			headingPart{text: "/", style: queueFilterPromptStyle()},
 			headingPart{text: s.filter, style: searchHeadingStyle()})
-	} else if shown := len(s.items) - 1; s.levelTotal > shown && shown > 0 {
-		// An album longer than one page is cut short, and says so.
+	} else if shown := len(s.levelAlbum.Tracks); s.levelAlbum.Total > shown && shown > 0 {
+		// A long album is cut off, and says so.
 		parts = append(parts, headingPart{
-			text: fmt.Sprintf("%s%d of %d", headingSeparator, shown, s.levelTotal), style: searchHeadingStyle(),
+			text: fmt.Sprintf("%s%d of %d", headingSeparator, shown, s.levelAlbum.Total), style: searchHeadingStyle(),
 		})
 	}
 	var b strings.Builder

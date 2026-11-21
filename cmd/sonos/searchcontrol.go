@@ -36,6 +36,7 @@ const (
 	searchArtistNotMarked  = "an artist cannot be marked yet"
 	searchNotAvailable     = "not available to play"
 	searchNotStarted       = "could not start it"
+	searchMoreFailed       = "could not load the rest of the album"
 )
 
 // errNoSpeaker says there is no speaker to ask for its household.
@@ -49,6 +50,7 @@ type musicCloud interface {
 	Search(ctx context.Context, household string, service int, query string) (sonoscloud.SearchResults, error)
 	OpenArtist(ctx context.Context, household string, service int, objectID string) (sonoscloud.Artist, error)
 	OpenAlbum(ctx context.Context, household string, service int, objectID string) (sonoscloud.Album, error)
+	RestOfAlbum(ctx context.Context, household string, service int, album sonoscloud.Album) (sonoscloud.Album, error)
 }
 
 var _ musicCloud = &sonoscloud.Client{}
@@ -248,6 +250,59 @@ func (m appModel) applyAlbumOpened(msg albumOpenedMsg) (tea.Model, tea.Cmd) {
 		return m, restartListChain(m.searchSlot())
 	}
 	return m, nil
+}
+
+// applySearchMore reads the rest of a cut-off album, in the background.
+func (m appModel) applySearchMore(msg searchMoreMsg) (tea.Model, tea.Cmd) {
+	content, ok := m.search.Content.(searchContent)
+	if !ok {
+		return m, nil
+	}
+	if m.cloud == nil || !m.cloud.SignedIn() {
+		m.search.Content = content.moreFailed(msg.gen)
+		return m, notify(panes.NoticeWarn, searchMoreFailed)
+	}
+	var device *sonos.Device
+	if speaker, ok := m.activeSpeaker(); ok {
+		device = speaker.device
+	}
+	return m, readRestOfAlbum(m.ctx, m.cloud, device, m.localHousehold, msg.album, msg.gen)
+}
+
+// applyAlbumMore shows the whole album, or says the rest could not be read
+// and leaves the row to try again.
+func (m appModel) applyAlbumMore(msg albumMoreMsg) (tea.Model, tea.Cmd) {
+	if msg.localID != "" {
+		m.localHousehold = msg.localID
+	}
+	content, ok := m.search.Content.(searchContent)
+	if !ok {
+		return m, nil
+	}
+	if msg.err != nil {
+		slog.Warn("reading the rest of an album", "err", msg.err)
+		m.search.Content = content.moreFailed(msg.gen)
+		return m, notify(panes.NoticeWarn, searchMoreFailed)
+	}
+	content = content.moreLoaded(msg.gen, msg.album)
+	m.search.Content = content
+	if m.search.IsOpen() && content.overflows() {
+		return m, restartListChain(m.searchSlot())
+	}
+	return m, nil
+}
+
+// readRestOfAlbum reads a cut-off album to its end, finding the household
+// first if the startup lookup has not.
+func readRestOfAlbum(ctx context.Context, cloud musicCloud, device *sonos.Device, localID string, album sonoscloud.Album, gen int) tea.Cmd {
+	return func() tea.Msg {
+		localID, household, err := findHousehold(ctx, cloud, device, localID)
+		if err != nil {
+			return albumMoreMsg{gen: gen, localID: localID, err: err}
+		}
+		whole, err := cloud.RestOfAlbum(ctx, household.ID, sonoscloud.AppleMusic, album)
+		return albumMoreMsg{gen: gen, localID: localID, album: whole, err: err}
+	}
 }
 
 // openAlbum reads an album of Apple Music and its tracks, finding the

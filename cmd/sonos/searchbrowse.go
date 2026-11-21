@@ -20,9 +20,14 @@ import (
 const (
 	rowBack    sonoscloud.ResultType = "back"    // the first row of a level, which goes back
 	rowHeading sonoscloud.ResultType = "heading" // a group heading, which the cursor passes over
+	rowMore    sonoscloud.ResultType = "more"    // the last row of a cut-off album, which loads the rest
 )
 
-const searchOpeningFmt = "Opening %s…"
+const (
+	searchOpeningFmt  = "Opening %s…"
+	searchMoreFmt     = "%d more tracks · enter loads them"
+	searchLoadingMore = "Loading the rest of the album…"
+)
 
 // backRow is the row at the top of a level. It matches every filter, so it is
 // always there.
@@ -37,12 +42,13 @@ var artistGroups = []struct {
 	{"Singles & EPs", []sonoscloud.AlbumKind{sonoscloud.KindSingle, sonoscloud.KindEP}},
 }
 
-// levelFilter matches an album or a track by its name. The back row matches
-// every filter and the headings none, so a filter flattens the groups.
+// levelFilter matches an album or a track by its name. The back row and the
+// row that loads the rest match every filter, so a filtered album still says
+// it is cut off; the headings match none, so a filter flattens the groups.
 var levelFilter = listFilter[sonoscloud.Result]{
 	match: func(r sonoscloud.Result, text string) bool {
 		switch r.Type {
-		case rowBack:
+		case rowBack, rowMore:
 			return true
 		case rowHeading:
 			return false
@@ -50,6 +56,9 @@ var levelFilter = listFilter[sonoscloud.Result]{
 		return anyContains(text, r.Name)
 	},
 	same: func(a, b sonoscloud.Result) bool {
+		if a.Type == rowMore {
+			return b.Type == rowMore // its text changes while it loads
+		}
 		return a.Type == b.Type && a.ID.ObjectID == b.ID.ObjectID && a.Name == b.Name
 	},
 }
@@ -79,6 +88,22 @@ type (
 		album   sonoscloud.Album
 		err     error
 	}
+
+	// searchMoreMsg asks for the rest of a cut-off album, for the level
+	// opened with gen.
+	searchMoreMsg struct {
+		album sonoscloud.Album
+		gen   int
+	}
+
+	// albumMoreMsg is a cut-off album read to its end, for the level opened
+	// with gen.
+	albumMoreMsg struct {
+		gen     int
+		localID string
+		album   sonoscloud.Album
+		err     error
+	}
 )
 
 // albumStart is an album to play from one of its tracks.
@@ -102,7 +127,7 @@ func (s searchContent) open() (searchContent, tea.Cmd) {
 	s.levels = append(slices.Clone(s.levels), browseLevel[sonoscloud.Result]{name: row.Name, item: row, saved: s.listView, gen: gen})
 	s.items, s.all, s.filter, s.filtering = []sonoscloud.Result{backRow}, nil, "", false
 	s.cursor, s.offset, s.skip = 0, 0, isHeading
-	s.opening, s.levelProblem, s.levelTotal = true, "", 0
+	s.opening, s.levelProblem, s.levelAlbum, s.loadingMore = true, "", sonoscloud.Album{}, false
 	return s, func() tea.Msg { return searchOpenMsg{result: row, gen: gen} }
 }
 
@@ -120,11 +145,79 @@ func (s searchContent) openedAlbum(gen int, album sonoscloud.Album) searchConten
 	}
 	top := &s.levels[len(s.levels)-1]
 	top.item.Artists = []sonoscloud.Ref{{Name: album.Artist}}
-	s.opening, s.levelTotal = false, album.Total
-	s.items, s.all = albumRows(album), nil
+	s.opening, s.levelAlbum = false, album
+	s.items, s.all = albumRows(album, len(album.Tracks) < album.Total), nil
 	s.cursor, s.offset = min(1, len(s.items)-1), 0
 	s.listView = s.follow()
 	return s
+}
+
+// loadMore asks for the rest of the album on top. The row says it is loading
+// until the rest comes.
+func (s searchContent) loadMore() (searchContent, tea.Cmd) {
+	if s.loadingMore || s.openedType() != sonoscloud.TypeAlbum {
+		return s, nil
+	}
+	s.loadingMore = true
+	s = s.relabelMore(searchLoadingMore)
+	album, gen := s.levelAlbum, s.levels[len(s.levels)-1].gen
+	return s, func() tea.Msg { return searchMoreMsg{album: album, gen: gen} }
+}
+
+// moreLoaded shows the whole album, if the level on top is still the one it
+// was asked for. The tracks come below those already shown, so the cursor
+// stays where it is; on the row that loaded them, it is on the first new one.
+func (s searchContent) moreLoaded(gen int, album sonoscloud.Album) searchContent {
+	if !s.loadingMore || len(s.levels) == 0 || s.levels[len(s.levels)-1].gen != gen {
+		return s
+	}
+	s.loadingMore, s.levelAlbum = false, album
+	rows := albumRows(album, false)
+	if s.all == nil {
+		s.items = rows
+	} else {
+		at, onMore := s.cursor, s.items[s.cursor].Type == rowMore
+		s.all = rows
+		s.listView = s.applyFilter(levelFilter)
+		if onMore {
+			s.cursor = min(at, s.lastRow())
+		}
+	}
+	s.listView = s.follow()
+	return s
+}
+
+// moreFailed puts the row back as it was, so the reader can try again.
+func (s searchContent) moreFailed(gen int) searchContent {
+	if !s.loadingMore || len(s.levels) == 0 || s.levels[len(s.levels)-1].gen != gen {
+		return s
+	}
+	s.loadingMore = false
+	return s.relabelMore(moreRow(s.levelAlbum).Name)
+}
+
+// relabelMore gives the row that loads the rest new text, in the whole list
+// and in what a filter shows of it.
+func (s searchContent) relabelMore(text string) searchContent {
+	relabel := func(rows []sonoscloud.Result) []sonoscloud.Result {
+		rows = slices.Clone(rows)
+		for i := range rows {
+			if rows[i].Type == rowMore {
+				rows[i].Name = text
+			}
+		}
+		return rows
+	}
+	s.items = relabel(s.items)
+	if s.all != nil {
+		s.all = relabel(s.all)
+	}
+	return s
+}
+
+// moreRow is the last row of a cut-off album: how many tracks are left.
+func moreRow(album sonoscloud.Album) sonoscloud.Result {
+	return sonoscloud.Result{Type: rowMore, Name: fmt.Sprintf(searchMoreFmt, album.Total-len(album.Tracks))}
 }
 
 // opened shows an artist's albums, if the level on top is still the one they
@@ -173,7 +266,7 @@ func (s searchContent) leave() searchContent {
 	saved := s.levels[len(s.levels)-1].saved
 	saved.rows, saved.width = s.rows, s.width // the box may have been resized meanwhile
 	s.listView, s.levels = saved, s.levels[:len(s.levels)-1]
-	s.opening, s.levelProblem, s.levelTotal = false, "", 0
+	s.opening, s.levelProblem, s.levelAlbum, s.loadingMore = false, "", sonoscloud.Album{}, false
 	return s
 }
 
@@ -227,9 +320,11 @@ func artistRows(artist sonoscloud.Artist) []sonoscloud.Result {
 	return rows
 }
 
-// albumRows is an album's tracks for the list, after the back row. A track is
-// a result, so the keys that act on a search result act on it.
-func albumRows(album sonoscloud.Album) []sonoscloud.Result {
+// albumRows is an album's tracks for the list, after the back row, and with
+// more, the row that loads the rest last of all: at the bottom, so the reader
+// loads a long album only on purpose. A track is a result, so the keys that
+// act on a search result act on it.
+func albumRows(album sonoscloud.Album, more bool) []sonoscloud.Result {
 	rows := []sonoscloud.Result{backRow}
 	for _, track := range album.Tracks {
 		rows = append(rows, sonoscloud.Result{
@@ -237,6 +332,9 @@ func albumRows(album sonoscloud.Album) []sonoscloud.Result {
 			Album: &sonoscloud.Ref{ID: album.ID, Name: album.Name}, Playable: track.Playable,
 			Ordinal: track.Ordinal, Duration: track.Duration, MimeType: track.MimeType,
 		})
+	}
+	if more {
+		rows = append(rows, moreRow(album))
 	}
 	return rows
 }
@@ -299,7 +397,7 @@ func (s searchContent) shownDetail(r sonoscloud.Result) string {
 		_, year, _ := r.GenreYear()
 		return year
 	case sonoscloud.TypeAlbum:
-		if artist := artistNames(r); artist != artistNames(s.levels[len(s.levels)-1].item) {
+		if artist := artistNames(r); r.Type == sonoscloud.TypeTrack && artist != artistNames(s.levels[len(s.levels)-1].item) {
 			return artist
 		}
 		return ""

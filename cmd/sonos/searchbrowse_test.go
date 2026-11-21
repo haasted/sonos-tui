@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -162,8 +163,8 @@ func TestSearchBrowse_RightOnWhatCannotOpenLightsTheEdge(t *testing.T) {
 
 // Case: → on an album of the artist's page. Its tracks show, numbered, after
 // the back row, the cursor on the first; the heading names the album and says
-// the list is cut short. A track's artist shows only where it is not the
-// album's.
+// the list is cut short, as the last row does. A track's artist shows only
+// where it is not the album's.
 func TestSearchBrowse_RightOpensAnAlbum(t *testing.T) {
 	s, cmd := pressOnSearchCmd(openedBowie(t), "right")
 	require.NotNil(t, cmd)
@@ -172,7 +173,7 @@ func TestSearchBrowse_RightOpensAnAlbum(t *testing.T) {
 
 	s = s.openedAlbum(open.gen, blackstar())
 
-	assert.Equal(t, []string{"← back", "Blackstar", "'Tis a Pity She Was a Whore", "Lazarus"}, resultNames(s))
+	assert.Equal(t, []string{"← back", "Blackstar", "'Tis a Pity She Was a Whore", "Lazarus", "4 more tracks · enter loads them"}, resultNames(s))
 	assert.Equal(t, "Blackstar", s.items[s.cursor].Name)
 	view := plain(s.View().Content)
 	assert.Contains(t, view, "Blackstar · 3 of 7\n")
@@ -295,6 +296,90 @@ func TestSearchBrowse_AlbumsAreNewestFirst(t *testing.T) {
 	}, resultNames(searchContent{listView: listView[sonoscloud.Result]{items: artistRows(artist)}}))
 }
 
+// Case: enter on the last row of a cut-off album. It asks for the rest of
+// that album and says it is loading; the keys that act on a track do nothing
+// on it.
+func TestSearchBrowse_TheLastRowLoadsTheRest(t *testing.T) {
+	s := pressOnSearch(openedBlackstar(t), "end")
+	require.Equal(t, rowMore, s.items[s.cursor].Type, "the last row is not the one that loads the rest")
+	for _, key := range []string{"n", "N", "a"} {
+		_, cmd := s.Update(keyMsgFor(key))
+		assert.Nil(t, cmd, "%s acted on the row that loads the rest", key)
+	}
+
+	s, cmd := pressOnSearchCmd(s, "enter")
+
+	require.NotNil(t, cmd)
+	msg := cmd().(searchMoreMsg)
+	assert.Len(t, msg.album.Tracks, 3)
+	assert.Equal(t, searchLoadingMore, s.items[s.cursor].Name)
+}
+
+// Case: the rest of the album arrives. Its tracks come below the others, the
+// cursor on the first of them, and the album no longer says it is cut off.
+func TestSearchBrowse_TheRestComesBelow(t *testing.T) {
+	s, cmd := pressOnSearchCmd(pressOnSearch(openedBlackstar(t), "end"), "enter")
+	gen := cmd().(searchMoreMsg).gen
+
+	s = s.moreLoaded(gen, wholeBlackstar())
+
+	assert.Len(t, s.items, 8, "the back row and the seven tracks")
+	assert.Equal(t, "Girl Loves Me", s.items[s.cursor].Name, "the cursor is not on the first new track")
+	assert.NotContains(t, resultNames(s), searchLoadingMore)
+	assert.NotContains(t, plain(s.View().Content), "of 7")
+}
+
+// Case: a filter on a cut-off album, then the rest loaded. The row that
+// loads the rest stays while filtering, and the filter then covers the new
+// tracks too.
+func TestSearchBrowse_AFilterKeepsTheLastRow(t *testing.T) {
+	s := pressOnSearch(openedBlackstar(t), "/", "l", "o", "enter")
+	assert.Equal(t, []string{"← back", "4 more tracks · enter loads them"}, resultNames(s))
+
+	s, cmd := pressOnSearchCmd(pressOnSearch(s, "end"), "enter")
+	s = s.moreLoaded(cmd().(searchMoreMsg).gen, wholeBlackstar())
+
+	assert.Equal(t, []string{"← back", "Girl Loves Me"}, resultNames(s))
+	assert.Equal(t, "lo", s.filter)
+}
+
+// Case: the rest cannot be read, in the app. The reader is told, and the row
+// is back as it was, to try again.
+func TestSearchBrowse_AFailedLoadCanBeTriedAgain(t *testing.T) {
+	cloud := &fakeCloud{signedIn: true, results: artistResults(), artist: bowie(), album: blackstar(), restErr: errors.New("timeout")}
+	m := openUnderCursor(t, openUnderCursor(t, pressKey(searchFor(t, searchModel(t, cloud), "bowie"), "down")))
+	m = pressKey(m, "end")
+
+	model, cmd := m.Update(keyMsgFor("enter"))
+	m = model.(appModel)
+	var notices []string
+	for _, msg := range flatten(cmd) {
+		model, answer := m.Update(msg)
+		m = model.(appModel)
+		for _, done := range flatten(answer) {
+			model, after := m.Update(done)
+			m = model.(appModel)
+			notices = append(notices, noticeTexts(flatten(after))...)
+		}
+	}
+
+	assert.Contains(t, notices, searchMoreFailed)
+	s := searchOf(m)
+	assert.Equal(t, "4 more tracks · enter loads them", s.items[s.cursor].Name)
+}
+
+// Case: the rest arrives after the reader has gone back. No album waits for
+// it, so the artist's page stays as it was.
+func TestSearchBrowse_ALateRestIsIgnored(t *testing.T) {
+	s, cmd := pressOnSearchCmd(pressOnSearch(openedBlackstar(t), "end"), "enter")
+	gen := cmd().(searchMoreMsg).gen
+
+	s = pressOnSearch(s, "left").moreLoaded(gen, wholeBlackstar())
+
+	assert.Len(t, s.levels, 1)
+	assert.Equal(t, "Blackstar", s.items[s.cursor].Name)
+}
+
 // openUnderCursor presses → on the app's search, then runs the opening and
 // delivers its answer.
 func openUnderCursor(t *testing.T, m appModel) appModel {
@@ -358,6 +443,18 @@ func blackstar() sonoscloud.Album {
 			Artists: []sonoscloud.Ref{{Name: "David Bowie & Donny McCaslin"}}},
 		{ID: appleMusicID("song:3"), Name: "Lazarus", Artists: bowie, Ordinal: 3, Playable: true},
 	}}
+}
+
+// wholeBlackstar is that album with all seven of its tracks.
+func wholeBlackstar() sonoscloud.Album {
+	album := blackstar()
+	bowie := []sonoscloud.Ref{{Name: "David Bowie"}}
+	for i, name := range []string{"Girl Loves Me", "Dollar Days", "I Can't Give Everything Away", "Sue (Or in a Season of Crime)"} {
+		album.Tracks = append(album.Tracks, sonoscloud.Track{
+			ID: appleMusicID(fmt.Sprintf("song:%d", i+4)), Name: name, Artists: bowie, Ordinal: i + 4, Playable: true,
+		})
+	}
+	return album
 }
 
 // openedBowie is the artist's page with its albums shown.
