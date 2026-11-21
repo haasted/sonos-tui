@@ -68,7 +68,7 @@ func run() error {
 
 	model := newAppModel(ctx, events, cached, selected)
 	model.db = db
-	if cloud := openCloud(); cloud != nil {
+	if cloud := openCloud(ctx, db); cloud != nil {
 		model.cloud = cloud
 	}
 	if row, ok := startRow(); ok {
@@ -121,10 +121,10 @@ func openStore(ctx context.Context) (*store.Store, error) {
 	return db, nil
 }
 
-// openCloud makes the client for the Sonos cloud. A failure is logged and
-// leaves the app without it: the cloud is optional, and nothing else needs it.
-func openCloud() *sonoscloud.Client {
-	client, err := sonoscloud.New()
+// openCloud makes the client for the Sonos cloud, with the session kept in db.
+// A failure is logged and leaves the app without it: the cloud is optional.
+func openCloud(ctx context.Context, db *store.Store) *sonoscloud.Client {
+	client, err := sonoscloud.New(sonoscloud.WithSessionStore(cloudSession{ctx: ctx, settings: db.Settings()}))
 	if err != nil {
 		slog.Warn("making the cloud client", "err", err)
 		return nil

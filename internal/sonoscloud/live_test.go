@@ -1,6 +1,7 @@
 package sonoscloud_test
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"log/slog"
@@ -11,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/haasted/sonos-tui/internal/sonoscloud"
+	"github.com/haasted/sonos-tui/internal/store"
 )
 
 // live gates tests that reach the real Sonos cloud with the reader's saved
@@ -107,20 +109,30 @@ func liveClient(t *testing.T) *sonoscloud.Client {
 		t.Skip("needs -live")
 	}
 	logRequestsTo(t)
-	path, err := sonoscloud.DefaultSessionPath()
-	require.NoError(t, err)
-	store := sonoscloud.FileStore{Path: path}
-	saved, err := store.Load()
+	sessions := openLiveSessions(t)
+	saved, err := sessions.Load()
 	require.NoError(t, err)
 	if !saved.Valid(time.Now()) {
 		t.Skip("no valid session saved; sign in first")
 	}
-	c, err := sonoscloud.New(sonoscloud.WithSessionStore(store))
+	c, err := sonoscloud.New(sonoscloud.WithSessionStore(sessions))
 	require.NoError(t, err)
 	if _, err := c.Session(t.Context()); errors.Is(err, sonoscloud.ErrSignedOut) {
 		t.Skip("the server no longer takes the saved session; sign in first")
 	}
 	return c
+}
+
+// openLiveSessions opens the application database where the app keeps it,
+// for the session the sign-in saved there.
+func openLiveSessions(t *testing.T) liveSessions {
+	t.Helper()
+	path, err := store.DefaultPath()
+	require.NoError(t, err)
+	db, err := store.Open(t.Context(), path)
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+	return liveSessions{t: t, settings: db.Settings()}
 }
 
 // logRequestsTo shows the package's debug log in the test's output for the
@@ -131,10 +143,43 @@ func logRequestsTo(t *testing.T) {
 	t.Cleanup(func() { slog.SetDefault(previous) })
 }
 
+// liveSessions keeps the session in the application database, in the same
+// setting and format as the app. A test cannot import the app's own adapter.
+type liveSessions struct {
+	t        *testing.T
+	settings *store.Settings
+}
+
+var _ sonoscloud.SessionStore = liveSessions{}
+
 // testWriter writes each log line to the test's own output.
 type testWriter struct{ t *testing.T }
 
 func (w testWriter) Write(p []byte) (int, error) {
 	w.t.Log(strings.TrimRight(string(p), "\n"))
 	return len(p), nil
+}
+
+func (l liveSessions) Load() (sonoscloud.Session, error) {
+	value, err := l.settings.Get(l.t.Context(), store.SettingCloudSession, "")
+	if err != nil || value == "" {
+		return sonoscloud.Session{}, err
+	}
+	var cookies []sonoscloud.Cookie
+	if err := json.Unmarshal([]byte(value), &cookies); err != nil {
+		return sonoscloud.Session{}, errors.New("the saved session is not valid; sign in again")
+	}
+	return sonoscloud.Session{Cookies: cookies}, nil
+}
+
+func (l liveSessions) Save(s sonoscloud.Session) error {
+	data, err := json.Marshal(s.Cookies)
+	if err != nil {
+		return err
+	}
+	return l.settings.Set(l.t.Context(), store.SettingCloudSession, string(data))
+}
+
+func (l liveSessions) Clear() error {
+	return l.settings.Delete(l.t.Context(), store.SettingCloudSession)
 }
