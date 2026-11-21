@@ -133,6 +133,7 @@ var helpLayers = map[string]struct {
 var helpLayersWithoutAPopup = map[string]string{
 	"grouping.go":    "the grouping modal has no table of its own, and takes ? before the player's handler sees it",
 	"markchooser.go": "the chooser is two rows, moved with the queue's keys and closed with enter or esc",
+	"signin.go":      "the sign-in names its two keys in a hint in its border, and its fields take ? as text",
 }
 
 // helpAliases maps a binding to the text that documents it, where the two

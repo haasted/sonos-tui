@@ -20,7 +20,7 @@ import (
 // What the search modal says when a search cannot run or fails.
 const (
 	searchNoCloud     = "The Sonos cloud is not available."
-	searchSignedOut   = "Not signed in to the Sonos cloud. Sign in with make sonos-web, then start again."
+	searchSignedOut   = "Not signed in to Sonos cloud services."
 	searchNoHousehold = "The Sonos cloud does not know this household."
 	searchNoSpeaker   = "No speaker has loaded yet."
 	searchFailed      = "The Sonos cloud did not answer."
@@ -47,6 +47,7 @@ var errNoSpeaker = errors.New("no speaker loaded")
 type musicCloud interface {
 	SignedIn() bool
 	Household(ctx context.Context, localID string) (sonoscloud.Household, error)
+	SignIn(ctx context.Context, username, password string) error
 	Search(ctx context.Context, household string, service int, query string) (sonoscloud.SearchResults, error)
 	OpenArtist(ctx context.Context, household string, service int, objectID string) (sonoscloud.Artist, error)
 	OpenAlbum(ctx context.Context, household string, service int, objectID string) (sonoscloud.Album, error)
@@ -77,6 +78,10 @@ type (
 // openSearch opens the search modal. It shows the last search again, or
 // opens with the box ready when there has been none.
 func (m appModel) openSearch() (tea.Model, tea.Cmd) {
+	// With no valid session, the sign-in comes first; the search opens after.
+	if m.cloud != nil && !m.cloud.SignedIn() {
+		return m.openSignIn()
+	}
 	m.search = m.search.Open()
 	content, _ := m.search.Content.(searchContent)
 	content.listView.openedAt = time.Now()
@@ -84,8 +89,6 @@ func (m appModel) openSearch() (tea.Model, tea.Cmd) {
 	switch {
 	case m.cloud == nil:
 		content = content.failed(searchNoCloud)
-	case !m.cloud.SignedIn():
-		content = content.failed(searchSignedOut)
 	case content.asked == "" || content.problem != "":
 		content.filtering, content.problem = true, ""
 	}
@@ -112,7 +115,7 @@ func (m appModel) applySearchAsk(msg searchAskMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case !m.cloud.SignedIn():
 		m.search.Content = content.failed(searchSignedOut)
-		return m, nil
+		return m.openSignIn()
 	}
 
 	var device *sonos.Device
@@ -138,7 +141,7 @@ func (m appModel) applySearchDone(msg searchDoneMsg) (tea.Model, tea.Cmd) {
 	m.searchCancel = nil
 	if msg.err != nil {
 		m.search.Content = content.failed(searchProblem(msg.err))
-		return m, nil
+		return m.signInWhenSignedOut(msg.err)
 	}
 	content = content.found(msg.query, msg.results)
 	m.search.Content = content
@@ -219,7 +222,7 @@ func (m appModel) applySearchOpen(msg searchOpenMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case !m.cloud.SignedIn():
 		m.search.Content = content.openFailed(msg.gen, searchSignedOut)
-		return m, nil
+		return m.openSignIn()
 	}
 	var device *sonos.Device
 	if speaker, ok := m.activeSpeaker(); ok {
@@ -242,7 +245,7 @@ func (m appModel) applyAlbumOpened(msg albumOpenedMsg) (tea.Model, tea.Cmd) {
 	}
 	if msg.err != nil {
 		m.search.Content = content.openFailed(msg.gen, searchProblem(msg.err))
-		return m, nil
+		return m.signInWhenSignedOut(msg.err)
 	}
 	content = content.openedAlbum(msg.gen, msg.album)
 	m.search.Content = content
@@ -258,9 +261,13 @@ func (m appModel) applySearchMore(msg searchMoreMsg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	if m.cloud == nil || !m.cloud.SignedIn() {
+	switch {
+	case m.cloud == nil:
 		m.search.Content = content.moreFailed(msg.gen)
 		return m, notify(panes.NoticeWarn, searchMoreFailed)
+	case !m.cloud.SignedIn():
+		m.search.Content = content.moreFailed(msg.gen)
+		return m.openSignIn()
 	}
 	var device *sonos.Device
 	if speaker, ok := m.activeSpeaker(); ok {
@@ -280,8 +287,11 @@ func (m appModel) applyAlbumMore(msg albumMoreMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if msg.err != nil {
-		slog.Warn("reading the rest of an album", "err", msg.err)
 		m.search.Content = content.moreFailed(msg.gen)
+		if errors.Is(msg.err, sonoscloud.ErrSignedOut) {
+			return m.openSignIn()
+		}
+		slog.Warn("reading the rest of an album", "err", msg.err)
 		return m, notify(panes.NoticeWarn, searchMoreFailed)
 	}
 	content = content.moreLoaded(msg.gen, msg.album)
@@ -329,7 +339,7 @@ func (m appModel) applyArtistOpened(msg artistOpenedMsg) (tea.Model, tea.Cmd) {
 	}
 	if msg.err != nil {
 		m.search.Content = content.openFailed(msg.gen, searchProblem(msg.err))
-		return m, nil
+		return m.signInWhenSignedOut(msg.err)
 	}
 	content = content.opened(msg.gen, msg.artist)
 	m.search.Content = content
@@ -370,6 +380,15 @@ func (m appModel) applySearchMark(msg searchMarkMsg) (tea.Model, tea.Cmd) {
 		return m, notify(panes.NoticeWarn, favouriteMarkFailed)
 	}
 	return m, storeFavourites(m.ctx, m.db, []store.Favourite{fav}, 1, 0)
+}
+
+// signInWhenSignedOut opens the sign-in when err says the server no longer
+// takes the session, as one that has run out or been signed out elsewhere.
+func (m appModel) signInWhenSignedOut(err error) (tea.Model, tea.Cmd) {
+	if errors.Is(err, sonoscloud.ErrSignedOut) {
+		return m.openSignIn()
+	}
+	return m, nil
 }
 
 // lookUpHousehold finds the household in the Sonos cloud once, in the

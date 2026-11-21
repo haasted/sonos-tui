@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"charm.land/bubbles/v2/cursor"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
@@ -57,7 +58,8 @@ type appModel struct {
 	marking       panes.Modal  // asks whether a mark in the queue is for the track or its playlist or album
 	db            *store.Store // the database; nil only in tests
 	search        panes.Modal
-	cloud         musicCloud // the Sonos cloud; nil when its client could not be made
+	signIn        panes.Modal // asks for the Sonos account when the cloud needs it and there is no valid session
+	cloud         musicCloud  // the Sonos cloud; nil when its client could not be made
 
 	sized bool // a size has arrived; until then fits refuses nothing
 
@@ -108,6 +110,8 @@ type appModel struct {
 	searchCancel   context.CancelFunc // stops the search still running; nil when none is
 	cloudAsked     bool               // the startup household lookup has started
 	localHousehold string             // the speakers' own household id, once read
+
+	signInGen int // the sign-in border's chain: the hint's wait, then a notice's frames
 }
 
 // newAppModel builds the model, seeding tabs straight from the cache so the
@@ -138,6 +142,12 @@ func newAppModel(ctx context.Context, events *sonos.EventManager, cached []sonos
 	search.Mode = panes.ModalFixed
 	search.Color = searchBorderColor()
 
+	// Hovering, as it holds two fields, and in the search's colour: it signs
+	// in to the cloud the search uses.
+	signIn := panes.NewModal(signInContent{})
+	signIn.Mode = panes.ModalHover
+	signIn.Color = searchBorderColor()
+
 	// Hovering, not fixed: it lists a handful of rooms and has nothing that
 	// changes under the reader, so it can fit itself to what it holds.
 	grouping := panes.NewModal(groupContent{})
@@ -150,7 +160,7 @@ func newAppModel(ctx context.Context, events *sonos.EventManager, cached []sonos
 	marking.Color = favouritesBorderColor()
 
 	m := appModel{ctx: ctx, tabs: tabs, eventManager: events, fromCache: len(cached) > 0,
-		help: help, queue: queue, favourites: favourites, search: search, grouping: grouping, marking: marking,
+		help: help, queue: queue, favourites: favourites, search: search, signIn: signIn, grouping: grouping, marking: marking,
 		cachedStates: map[string]cachedState{}, found: map[string]bool{},
 		screenTop: math.MaxInt} // the bottom, until main says where the cursor was
 	for _, speaker := range cached {
@@ -282,7 +292,7 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // closing a modal would leave a copy of it behind, once per cycle.
 func (m appModel) growFrame() appModel {
 	needed := playerHeightRows
-	for _, modal := range []panes.Modal{m.help, m.queue, m.favourites, m.search, m.grouping, m.marking} {
+	for _, modal := range []panes.Modal{m.help, m.queue, m.favourites, m.search, m.signIn, m.grouping, m.marking} {
 		if !modal.IsOpen() {
 			continue
 		}
@@ -405,15 +415,16 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.help = m.help.SetSize(msg.Width, msg.Height)
 		m.grouping = m.grouping.SetSize(msg.Width, msg.Height)
 		m.marking = m.marking.SetSize(msg.Width, msg.Height)
+		m.signIn = m.signIn.SetSize(msg.Width, msg.Height)
 		m = m.resizeLists(msg.Width, msg.Height)
 	case tea.KeyMsg:
 		m.hintDone = true // the user has found the keyboard; nothing left to hint
 
 		// Quitting is global and comes before any modal, so the help's promise
-		// of q holds everywhere. Only an open filter box takes q, as text.
+		// of q holds everywhere. Only a box that takes text takes q, as text.
 		switch key := msg.String(); key {
 		case "q", "ctrl+c":
-			if key == "ctrl+c" || !m.listTyping() {
+			if key == "ctrl+c" || (!m.listTyping() && !m.signIn.IsOpen()) {
 				m.quitting = true
 				return m, tea.Sequence(tea.ClearScreen, tea.Quit)
 			}
@@ -423,6 +434,12 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// the reader cannot see.
 		if !m.fits() {
 			return m, nil
+		}
+
+		// The sign-in hovers over everything else, the search included, and its
+		// fields take every key that types text, ? too.
+		if m.signIn.IsOpen() {
+			return m.updateSignIn(msg)
 		}
 
 		// An open modal owns the keyboard: without this the arrow keys would
@@ -555,6 +572,19 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.applySearchMore(msg)
 	case albumMoreMsg:
 		return m.applyAlbumMore(msg)
+	case signInAskMsg:
+		return m.applySignInAsk(msg)
+	case signInDoneMsg:
+		return m.applySignInDone(msg)
+	case signInHintDueMsg:
+		return m.applySignInHintDue(msg)
+	case signInTickMsg:
+		return m.applySignInTick(msg)
+	case cursor.BlinkMsg:
+		if m.signIn.IsOpen() {
+			return m.updateSignIn(msg)
+		}
+		return m, nil
 	case cloudHouseholdMsg:
 		return m.applyCloudHousehold(msg)
 	case favouriteKindChosenMsg:
@@ -803,7 +833,7 @@ func (m appModel) View() tea.View {
 	}
 	// Help draws over a list, not under it. The two can be open together:
 	// "?" inside the queue explains the queue.
-	view := tea.NewView(m.help.ViewOver(m.marking.ViewOver(m.grouping.ViewOver(framed))))
+	view := tea.NewView(m.help.ViewOver(m.signIn.ViewOver(m.marking.ViewOver(m.grouping.ViewOver(framed)))))
 	if m.listTakesTheWheel() {
 		view.MouseMode = tea.MouseModeCellMotion
 	}

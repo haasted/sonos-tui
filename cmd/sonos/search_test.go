@@ -110,17 +110,17 @@ func TestSearch_NothingFoundIsSaid(t *testing.T) {
 	assert.Contains(t, plain(searchOf(m).View().Content), "Nothing found for “zzzz”.")
 }
 
-// Case: no saved session. s says how to sign in, and enter asks the cloud
-// nothing.
-func TestSearch_SignedOutSaysHowToSignIn(t *testing.T) {
+// Case: no saved session. s opens the sign-in, not the search, and a search
+// asked for anyway asks the cloud nothing.
+func TestSearch_SignedOutOpensTheSignIn(t *testing.T) {
 	cloud := &fakeCloud{}
 	m := pressKey(searchModel(t, cloud), "s")
-	assert.Contains(t, plain(searchOf(m).View().Content), searchSignedOut)
+	assert.True(t, m.signIn.IsOpen(), "s did not open the sign-in")
+	assert.False(t, m.search.IsOpen(), "the search opened without a session")
 
 	m = deliver(m, searchAskMsg{query: "bowie"})
 
 	assert.Empty(t, cloud.queries)
-	assert.Contains(t, plain(searchOf(m).View().Content), searchSignedOut)
 }
 
 // Case: no cloud client at all. s says the cloud is not there.
@@ -438,6 +438,8 @@ type fakeCloud struct {
 	artistErr error
 	album     sonoscloud.Album
 	whole     sonoscloud.Album // what RestOfAlbum gives
+	signInErr error
+	signIns   []string // the usernames signed in with, in order
 	restErr   error
 	opened    []string // the artists and albums opened, by id, in order
 }
@@ -445,6 +447,16 @@ type fakeCloud struct {
 var _ musicCloud = &fakeCloud{}
 
 func (f *fakeCloud) SignedIn() bool { return f.signedIn }
+
+// SignIn signs in unless signInErr is set, and records who signed in.
+func (f *fakeCloud) SignIn(_ context.Context, username, _ string) error {
+	f.signIns = append(f.signIns, username)
+	if f.signInErr != nil {
+		return f.signInErr
+	}
+	f.signedIn = true
+	return nil
+}
 
 func (f *fakeCloud) Household(context.Context, string) (sonoscloud.Household, error) {
 	return sonoscloud.Household{ID: "Sonos_HOUSEHOLD.PLACEHOLDER"}, nil
