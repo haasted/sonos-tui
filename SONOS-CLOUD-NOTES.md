@@ -77,8 +77,8 @@ after that search. The web app's backend renews it, probably with the refresh
 token that `offline_access` gives. So only the 10-day session counts: a
 session used at least once in 10 days never needs the password again.
 
-The experiment keeps the cookie in `~/.config/sonos-tui/web-session`
-(mode 0600), outside the repository. The cookie is a sign-in to the Sonos
+The experiment and the client keep the cookie in the application database
+(`sonos.db`, mode 0600, in a folder of mode 0700), outside the repository. The cookie is a sign-in to the Sonos
 account: do not print it, log it or commit it.
 
 ## The household id
