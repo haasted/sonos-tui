@@ -38,6 +38,12 @@ const (
 // searchAskMsg asks the application to run a search for query.
 type searchAskMsg struct{ query string }
 
+// searchActionMsg asks for a result to start on the speaker in view.
+type searchActionMsg struct {
+	result sonoscloud.Result
+	action startAction
+}
+
 // searchContent is the search modal: a box for the query, a row of the result
 // types, and the results of the type in view. listView's filtering flag says
 // the box has the keys; the list's own filter is not used.
@@ -123,6 +129,10 @@ func (s searchContent) listKey(msg tea.KeyMsg) (searchContent, tea.Cmd) {
 		s = s.switchKind(-1)
 	case "/":
 		s.filtering = true
+	case "n":
+		return s, s.ask(startPlayNext)
+	case "N":
+		return s, s.ask(startAddToQueue)
 	}
 	return s, nil
 }
@@ -208,9 +218,30 @@ func (s searchContent) resized(rows, width int) tea.Model {
 func (s searchContent) View() tea.View {
 	first, second := s.columns(func(r sonoscloud.Result) string { return r.Name }, resultDetail)
 	list := s.render(s.typeRow(), s.note(), func(index int, r sonoscloud.Result, arrow string) string {
-		return s.drawRow(index, r.Name, resultDetail(r), [2]int{first, second}, queueRowStyle(), arrow, s.filtering)
+		style := queueRowStyle()
+		if unavailable(r) {
+			style = style.Foreground(themedGoingColor())
+		}
+		return s.drawRow(index, r.Name, resultDetail(r), [2]int{first, second}, style, arrow, s.filtering)
 	})
 	return tea.NewView(s.boxLine() + "\n" + list)
+}
+
+// ask is the command a key sends for the result under the cursor, or nil when
+// the list has none.
+func (s searchContent) ask(action startAction) tea.Cmd {
+	if s.cursor >= len(s.items) {
+		return nil
+	}
+	r := s.items[s.cursor]
+	return func() tea.Msg { return searchActionMsg{result: r, action: action} }
+}
+
+// unavailable reports a result the service says cannot be played, such as one
+// not offered in the account's country. An artist is never playable as such,
+// so it is not one.
+func unavailable(r sonoscloud.Result) bool {
+	return !r.Playable && r.Type != sonoscloud.TypeArtist
 }
 
 // boxLine is the line above the list: the modal's name and the query. While

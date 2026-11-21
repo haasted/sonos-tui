@@ -182,8 +182,8 @@ func TestFavourites_KeysAskForTheFavouriteUnderTheCursor(t *testing.T) {
 	model, _ := f.Update(keyMsgFor("down"))
 	f = model.(favouritesContent)
 
-	for key, want := range map[string]favouriteAction{
-		"enter": favouritePlay, "shift+enter": favouritePlayShuffled, "n": favouritePlayNext, "N": favouriteAddToQueue,
+	for key, want := range map[string]startAction{
+		"enter": startPlay, "shift+enter": startPlayShuffled, "n": startPlayNext, "N": startAddToQueue,
 	} {
 		_, cmd := f.Update(keyMsgFor(key))
 		require.NotNil(t, cmd, key)
@@ -211,7 +211,7 @@ func TestFavourites_AStationCannotBeQueued(t *testing.T) {
 	m := pressKey(sizedModel(t), "f")
 	station := store.Favourite{Kind: store.FavouriteStation, Title: "DR P1"}
 
-	model, cmd := m.Update(favouriteActionMsg{favourite: station, action: favouritePlayNext})
+	model, cmd := m.Update(favouriteActionMsg{favourite: station, action: startPlayNext})
 
 	require.NotNil(t, cmd)
 	notice, ok := cmd().(panes.NoticeMsg)
@@ -226,7 +226,7 @@ func TestFavourites_OnlyAnAlbumOrPlaylistShuffles(t *testing.T) {
 	m := pressKey(sizedModel(t), "f")
 
 	for _, kind := range []store.FavouriteKind{store.FavouriteTrack, store.FavouriteStation} {
-		model, cmd := m.Update(favouriteActionMsg{favourite: store.Favourite{Kind: kind, Title: "x"}, action: favouritePlayShuffled})
+		model, cmd := m.Update(favouriteActionMsg{favourite: store.Favourite{Kind: kind, Title: "x"}, action: startPlayShuffled})
 
 		require.NotNil(t, cmd, kind)
 		assert.Equal(t, favouriteNotShuffled, cmd().(panes.NoticeMsg).Text, kind)
@@ -238,7 +238,7 @@ func TestFavourites_OnlyAnAlbumOrPlaylistShuffles(t *testing.T) {
 func TestFavourites_ShiftEnterClosesTheModal(t *testing.T) {
 	m := pressKey(sizedModel(t), "f")
 
-	model, cmd := m.Update(favouriteActionMsg{favourite: sampleFavourites()[1], action: favouritePlayShuffled})
+	model, cmd := m.Update(favouriteActionMsg{favourite: sampleFavourites()[1], action: startPlayShuffled})
 
 	assert.NotNil(t, cmd)
 	assert.False(t, model.(appModel).favourites.IsOpen())
@@ -252,7 +252,7 @@ func TestFavourites_AShuffledStartTellsTheSpeakerToShuffle(t *testing.T) {
 	speaker := speakerModel{ctx: t.Context(), device: device}
 	playable := sonos.Playable{URI: "x-rincon-cpcontainer:00060000libraryplaylist%3ap.X?sid=204&flags=0&sn=2", Metadata: "<DIDL-Lite/>", Title: "X"}
 
-	startFavourite(speaker, playable, favouritePlayShuffled, false)()
+	startPlayable(speaker, playable, startPlayShuffled, false)()
 
 	actions := strings.Join(heard(), " ")
 	assert.Contains(t, actions, "#SetPlayMode")
@@ -263,7 +263,7 @@ func TestFavourites_AShuffledStartTellsTheSpeakerToShuffle(t *testing.T) {
 func TestFavourites_EnterClosesTheModal(t *testing.T) {
 	m := pressKey(sizedModel(t), "f")
 
-	model, cmd := m.Update(favouriteActionMsg{favourite: sampleFavourites()[1], action: favouritePlay})
+	model, cmd := m.Update(favouriteActionMsg{favourite: sampleFavourites()[1], action: startPlay})
 
 	assert.NotNil(t, cmd)
 	assert.False(t, model.(appModel).favourites.IsOpen())

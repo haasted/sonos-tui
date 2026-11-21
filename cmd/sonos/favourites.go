@@ -44,16 +44,6 @@ const favouritesCountFloor = 7
 // itself is done at the press, so nothing waits on it.
 const favouriteRemoveFade = 400 * time.Millisecond
 
-// favouriteAction is what a key asks to do with the favourite under the cursor.
-type favouriteAction int
-
-const (
-	favouritePlay         favouriteAction = iota // replace the queue and play; a station just plays
-	favouritePlayNext                            // put it after the playing track
-	favouriteAddToQueue                          // put it at the end of the queue
-	favouritePlayShuffled                        // replace the queue and play it shuffled; an album or playlist only
-)
-
 type (
 	// favouritesLoadedMsg carries the favourites read for the modal, and the
 	// media type it showed last.
@@ -90,7 +80,7 @@ type (
 	// favouriteActionMsg asks for a favourite to start on the speaker in view.
 	favouriteActionMsg struct {
 		favourite store.Favourite
-		action    favouriteAction
+		action    startAction
 	}
 )
 
@@ -155,13 +145,13 @@ func (f favouritesContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "right":
 		return f.switchKind(1)
 	case "enter":
-		return f, f.ask(favouritePlay)
+		return f, f.ask(startPlay)
 	case "shift+enter":
-		return f, f.ask(favouritePlayShuffled)
+		return f, f.ask(startPlayShuffled)
 	case "n":
-		return f, f.ask(favouritePlayNext)
+		return f, f.ask(startPlayNext)
 	case "N":
-		return f, f.ask(favouriteAddToQueue)
+		return f, f.ask(startAddToQueue)
 	case "x", "delete":
 		return f.remove()
 	case "X":
@@ -432,7 +422,7 @@ func (f favouritesContent) has(kind store.FavouriteKind) bool {
 
 // ask is the command a key sends for the favourite under the cursor, or nil
 // when the list has none.
-func (f favouritesContent) ask(action favouriteAction) tea.Cmd {
+func (f favouritesContent) ask(action startAction) tea.Cmd {
 	if f.cursor >= len(f.items) || f.isGoing(f.items[f.cursor]) {
 		return nil
 	}

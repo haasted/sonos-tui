@@ -13,6 +13,7 @@ import (
 
 	"github.com/haasted/sonos-tui/internal/sonos"
 	"github.com/haasted/sonos-tui/internal/sonoscloud"
+	"github.com/haasted/sonos-tui/internal/ui/panes"
 )
 
 // What the search modal says when a search cannot run or fails.
@@ -22,6 +23,14 @@ const (
 	searchNoHousehold = "The Sonos cloud does not know this household."
 	searchNoSpeaker   = "No speaker has loaded yet."
 	searchFailed      = "The Sonos cloud did not answer."
+)
+
+// What n and N on a search result answer when nothing is sent. A station
+// answers as it does in the favourites.
+const (
+	searchArtistNotQueued = "an artist cannot be queued"
+	searchNotAvailable    = "not available to play"
+	searchNotStarted      = "could not start it"
 )
 
 // errNoSpeaker says there is no speaker to ask for its household.
@@ -128,6 +137,30 @@ func (m appModel) applySearchDone(msg searchDoneMsg) (tea.Model, tea.Cmd) {
 		return m, restartListChain(m.searchSlot())
 	}
 	return m, nil
+}
+
+// applySearchAction starts a result on the speaker in view, as the favourites
+// start theirs. What cannot be queued is said, and nothing is sent.
+func (m appModel) applySearchAction(msg searchActionMsg) (tea.Model, tea.Cmd) {
+	speaker, ok := m.activeSpeaker()
+	if !ok {
+		return m, nil
+	}
+	r := msg.result
+	switch {
+	case r.Type == sonoscloud.TypeProgram:
+		return m, notify(panes.NoticeInfo, favouriteStationNotQueued)
+	case r.Type == sonoscloud.TypeArtist:
+		return m, notify(panes.NoticeInfo, searchArtistNotQueued)
+	case unavailable(r):
+		return m, notify(panes.NoticeInfo, searchNotAvailable)
+	}
+	playable, err := resultPlayable(r)
+	if err != nil {
+		slog.Warn("starting a search result", "err", err)
+		return m, notify(panes.NoticeWarn, searchNotStarted)
+	}
+	return m, startPlayable(speaker, playable, msg.action, false)
 }
 
 // lookUpHousehold finds the household in the Sonos cloud once, in the

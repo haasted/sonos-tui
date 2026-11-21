@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/haasted/sonos-tui/internal/sonoscloud"
+	"github.com/haasted/sonos-tui/internal/ui/panes"
 )
 
 // Case: s on the player. The search opens with the box ready for a query.
@@ -179,6 +180,76 @@ func TestSearch_EachTypeHasItsOwnDetail(t *testing.T) {
 		"station": {sonoscloud.Result{Type: sonoscloud.TypeProgram, Summary: "Bowie and similar"}, "Bowie and similar"},
 	} {
 		assert.Equal(t, tc.want, resultDetail(tc.result), name)
+	}
+}
+
+// Case: n and N on the list. Each asks for the result under the cursor, with
+// its own action, as in the favourites.
+func TestSearch_NAndShiftNAskForTheResultUnderTheCursor(t *testing.T) {
+	s := searchContent{listView: listView[sonoscloud.Result]{rows: 20, width: 80}}.found("bowie", sampleResults())
+	s = pressOnSearch(s, "down")
+
+	for key, want := range map[string]startAction{"n": startPlayNext, "N": startAddToQueue} {
+		_, cmd := s.Update(keyMsgFor(key))
+		require.NotNil(t, cmd, key)
+		msg := cmd().(searchActionMsg)
+		assert.Equal(t, "Heroes", msg.result.Name, key)
+		assert.Equal(t, want, msg.action, key)
+	}
+}
+
+// Case: n on what cannot be queued: a station, an artist, and a track the
+// service says is not available. The reader is told, nothing is sent, and the
+// search stays open.
+func TestSearch_WhatCannotBeQueuedIsSaid(t *testing.T) {
+	m := pressKey(searchModel(t, &fakeCloud{signedIn: true}), "s")
+
+	for name, tc := range map[string]struct {
+		result sonoscloud.Result
+		want   string
+	}{
+		"station":       {sonoscloud.Result{Type: sonoscloud.TypeProgram, Playable: true}, favouriteStationNotQueued},
+		"artist":        {sonoscloud.Result{Type: sonoscloud.TypeArtist}, searchArtistNotQueued},
+		"not available": {sonoscloud.Result{Type: sonoscloud.TypeTrack, ID: appleMusicID("song:1")}, searchNotAvailable},
+	} {
+		model, cmd := m.Update(searchActionMsg{result: tc.result, action: startPlayNext})
+
+		require.NotNil(t, cmd, name)
+		notice, ok := cmd().(panes.NoticeMsg)
+		require.True(t, ok, "%s: expected a notice", name)
+		assert.Equal(t, tc.want, notice.Text, name)
+		assert.True(t, model.(appModel).search.IsOpen(), name)
+	}
+}
+
+// Case: N on a track found by search. The speaker is asked to add the
+// track's URI to its queue.
+func TestSearch_ATrackIsAddedToTheQueue(t *testing.T) {
+	device, heard := recordingDevice(t)
+	speaker := speakerModel{ctx: t.Context(), device: device}
+	playable, err := resultPlayable(sonoscloud.Result{
+		ID: appleMusicID("song:1774570881"), Type: sonoscloud.TypeTrack, Name: "/=/", Playable: true,
+	})
+	require.NoError(t, err)
+
+	startPlayable(speaker, playable, startAddToQueue, false)()
+
+	assert.Contains(t, strings.Join(heard(), " "), "#AddURIToQueue")
+}
+
+// Case: which results are drawn as not available. An artist never plays as
+// such, so only a track, an album or a station the service refuses is one.
+func TestSearch_UnavailableResults(t *testing.T) {
+	for name, tc := range map[string]struct {
+		result sonoscloud.Result
+		want   bool
+	}{
+		"playable track":    {sonoscloud.Result{Type: sonoscloud.TypeTrack, Playable: true}, false},
+		"unplayable track":  {sonoscloud.Result{Type: sonoscloud.TypeTrack}, true},
+		"unplayable album":  {sonoscloud.Result{Type: sonoscloud.TypeAlbum}, true},
+		"unplayable artist": {sonoscloud.Result{Type: sonoscloud.TypeArtist}, false},
+	} {
+		assert.Equal(t, tc.want, unavailable(tc.result), name)
 	}
 }
 

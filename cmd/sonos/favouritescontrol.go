@@ -14,7 +14,6 @@ import (
 
 	"github.com/haasted/sonos-tui/internal/sonos"
 	"github.com/haasted/sonos-tui/internal/store"
-	"github.com/haasted/sonos-tui/internal/ui/nowplaying"
 	"github.com/haasted/sonos-tui/internal/ui/panes"
 )
 
@@ -151,19 +150,19 @@ func (m appModel) applyFavouriteAction(msg favouriteActionMsg) (tea.Model, tea.C
 	station := fav.Kind == store.FavouriteStation
 	container := fav.Kind == store.FavouriteAlbum || fav.Kind == store.FavouritePlaylist
 	switch {
-	case msg.action == favouritePlayShuffled && !container:
+	case msg.action == startPlayShuffled && !container:
 		return m, notify(panes.NoticeInfo, favouriteNotShuffled)
-	case station && msg.action != favouritePlay:
+	case station && msg.action != startPlay:
 		return m, notify(panes.NoticeInfo, favouriteStationNotQueued)
 	}
 
 	playable := sonos.Playable{URI: fav.URI, Metadata: fav.Metadata, Title: fav.Title}
-	if msg.action == favouritePlay || msg.action == favouritePlayShuffled {
+	if msg.action == startPlay || msg.action == startPlayShuffled {
 		m.favourites = m.favourites.Close()
 		slot := m.favouritesSlot()
 		*slot.pulse, *slot.hint = nextGen(), nextGen()
 	}
-	return m, startFavourite(speaker, playable, msg.action, station)
+	return m, startPlayable(speaker, playable, msg.action, station)
 }
 
 // applyFavouriteMark stores the tracks the queue asked for as favourites, in
@@ -491,31 +490,4 @@ func chooseWithQueueArtist(speaker speakerModel, track sonos.TrackMetadata, sour
 func markableSource(source sonos.QueueSource) bool {
 	_, ok := sourceFavourite(source, time.Time{})
 	return ok
-}
-
-// startFavourite sends a favourite to the speaker that owns playback, and
-// says what happened.
-func startFavourite(speaker speakerModel, playable sonos.Playable, action favouriteAction, station bool) tea.Cmd {
-	return func() tea.Msg {
-		device := speaker.transport()
-		var err error
-		var said string
-		switch {
-		case action == favouritePlay && station:
-			err, said = device.PlayStation(speaker.ctx, playable), "playing "+playable.Title
-		case action == favouritePlay:
-			err, said = device.ReplaceQueue(speaker.ctx, playable, sonos.PlayModeNormal), "playing "+playable.Title
-		case action == favouritePlayShuffled:
-			err, said = device.ReplaceQueue(speaker.ctx, playable, sonos.PlayModeShuffleNoRepeat), "playing "+playable.Title+" shuffled"
-		case action == favouritePlayNext:
-			err, said = device.PlayNext(speaker.ctx, playable), playable.Title+" plays next"
-		default:
-			err, said = device.AddToQueue(speaker.ctx, playable), "added "+playable.Title+" to the queue"
-		}
-		if err != nil {
-			slog.Warn("starting a favourite failed", "speaker", speaker.device.Speaker, "favourite", playable.Title, "err", err)
-			return speaker.failed(err)
-		}
-		return withConfirmation(speaker.to(nowplaying.TrackMsg{Track: trackFromState(speaker.shown())}), said)
-	}
 }

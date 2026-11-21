@@ -144,6 +144,8 @@ var searchHelp = helpTable{
 			{"end  G", "to the end"},
 			{"→  tab", "next type"},
 			{"←  ⇧tab", "previous type"},
+			{"n", "play next"},
+			{"N", "add to the end of the queue"},
 			{"esc", "leave the box, then close"},
 		}},
 	},
