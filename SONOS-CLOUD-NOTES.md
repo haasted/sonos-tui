@@ -239,7 +239,12 @@ search with. The ids in the results are not specific to a household:
   and `sn=` in a playable URI say which of the household's linked accounts
   to use. The same Apple Music account can have another number in another
   household. To play a result, use the local household's `sn`, not a fixed
-  number.
+  number. Measured on 2026-11-21: a result's own `accountId` is that `sn`.
+  An album queued from the Sonos app gave queue rows with `sn=2`, and the
+  content API gave the same album, and each of its tracks, `accountId` "2"
+  and the same song ids. A catalogue song's URI is
+  `x-sonos-http:song%3a{id}.mp4?sid=204&flags=8232&sn={account}`; a track
+  from the reader's own library carries other flags (73768 seen).
 - **Results follow the account's country.** The search uses the linked
   account's Apple Music storefront. Catalogue ids are mostly the same across
   countries, but what is available, and what the search returns, can differ.

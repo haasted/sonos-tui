@@ -18,6 +18,10 @@ const trackFileSuffix = ".mp4"
 // trackClass is the upnp:class of a single track.
 const trackClass = "object.item.audioItem.musicTrack"
 
+// trackFlags is what a speaker's queue row of a catalogue song carries in its
+// URI. A track from the reader's own library carries other flags.
+const trackFlags = 8232
+
 // artwork matches the artwork element of a DIDL, which a stored copy leaves
 // out: some services sign the URL to expire within a day.
 var artwork = regexp.MustCompile(`<upnp:albumArtURI>[^<]*</upnp:albumArtURI>`)
@@ -28,6 +32,18 @@ type Playable struct {
 	URI      string
 	Metadata string
 	Title    string
+}
+
+// ServiceTrack is one track on a music service, kept as the values that
+// differ from one to the next, as ServiceContainer keeps a container. Its URI
+// is the form Apple Music's tracks take; other services are untested.
+type ServiceTrack struct {
+	ID      string // the service's own id, e.g. "song:1774570881"
+	Title   string
+	Artist  string
+	Album   string
+	Service int // sid: 204 is Apple Music
+	Account int // sn: which account on the service, as this household numbers them
 }
 
 // ServiceRef is what a music-service URI says about the item it names. Two
@@ -80,23 +96,50 @@ func StripArtwork(didl string) string {
 }
 
 // TrackPlayable makes a single track playable from a queue row. A queue row
-// carries no desc, so the DIDL is built: the service is read from the URI,
-// and the item id is the track prefix and the id without its .mp4.
+// carries no desc, so the DIDL is built from what its URI says; the URI is
+// kept as the speaker wrote it.
 func TrackPlayable(track TrackMetadata) (Playable, error) {
 	ref, ok := ParseServiceURI(track.URI)
 	if !ok {
 		return Playable{}, fmt.Errorf("describing %q: %q is not from a music service", track.Title, track.URI)
 	}
-
-	metadata, err := marshalDIDL(didlItem{
-		ID:      trackItemPrefix + escapeID(strings.TrimSuffix(ref.ItemID, trackFileSuffix)),
+	metadata, err := ServiceTrack{
+		ID:      strings.TrimSuffix(ref.ItemID, trackFileSuffix),
 		Title:   track.Title,
-		Class:   trackClass,
-		Creator: track.Artist,
+		Artist:  track.Artist,
 		Album:   track.Album,
-	}, ref.Service)
+		Service: ref.Service,
+		Account: ref.Account,
+	}.Metadata()
 	if err != nil {
 		return Playable{}, err
 	}
 	return Playable{URI: track.URI, Metadata: metadata, Title: track.Title}, nil
+}
+
+// URI is what a speaker takes to play or queue the track.
+func (t ServiceTrack) URI() string {
+	return fmt.Sprintf("x-sonos-http:%s%s?sid=%d&flags=%d&sn=%d",
+		escapeID(t.ID), trackFileSuffix, t.Service, trackFlags, t.Account)
+}
+
+// Metadata is the DIDL that goes with URI: the track prefix and the id, without
+// the .mp4 the URI adds.
+func (t ServiceTrack) Metadata() (string, error) {
+	return marshalDIDL(didlItem{
+		ID:      trackItemPrefix + escapeID(t.ID),
+		Title:   t.Title,
+		Class:   trackClass,
+		Creator: t.Artist,
+		Album:   t.Album,
+	}, t.Service)
+}
+
+// Playable is the track as a speaker is given it.
+func (t ServiceTrack) Playable() (Playable, error) {
+	metadata, err := t.Metadata()
+	if err != nil {
+		return Playable{}, err
+	}
+	return Playable{URI: t.URI(), Metadata: metadata, Title: t.Title}, nil
 }

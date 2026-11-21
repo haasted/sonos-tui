@@ -87,6 +87,37 @@ func TestTrackPlayable_BuildsTheDIDLAQueueRowLacks(t *testing.T) {
 		`</item></DIDL-Lite>`, playable.Metadata)
 }
 
+// Case: a catalogue song from the content API, as Soveværelse queued it from
+// the Sonos app. The URI must be the queue row's own.
+func TestServiceTrack_MatchesTheQueueRow(t *testing.T) {
+	track := sonos.ServiceTrack{
+		ID:      "song:1774570881",
+		Title:   "/=/",
+		Artist:  "Andrew Bird",
+		Album:   "The Mysterious Production of Eggs",
+		Service: 204,
+		Account: 2,
+	}
+
+	playable, err := track.Playable()
+	require.NoError(t, err)
+
+	assert.Equal(t, "x-sonos-http:song%3a1774570881.mp4?sid=204&flags=8232&sn=2", playable.URI)
+	assert.Equal(t, "/=/", playable.Title)
+	assert.Equal(t, `<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" `+
+		`xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" `+
+		`xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" `+
+		`xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/">`+
+		`<item id="10032020song%3a1774570881" parentID="-1" restricted="true">`+
+		`<dc:title>/=/</dc:title>`+
+		`<upnp:class>object.item.audioItem.musicTrack</upnp:class>`+
+		`<dc:creator>Andrew Bird</dc:creator>`+
+		`<upnp:album>The Mysterious Production of Eggs</upnp:album>`+
+		`<desc id="cdudn" nameSpace="urn:schemas-rinconnetworks-com:metadata-1-0/">`+
+		`SA_RINCON52231_X_#Svc52231-0-Token</desc>`+
+		`</item></DIDL-Lite>`, playable.Metadata)
+}
+
 // Case: a track that is no music-service item, which cannot be described.
 func TestTrackPlayable_RefusesATrackWithNoService(t *testing.T) {
 	_, err := sonos.TrackPlayable(sonos.TrackMetadata{URI: "x-file-cifs://nas/music/a.flac", Title: "a"})

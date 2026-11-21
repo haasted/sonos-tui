@@ -299,11 +299,7 @@ func (s searchContent) note() string {
 // resultDetail is a result's second column: a track's artist and album, an
 // album's artist and year, a station's summary.
 func resultDetail(r sonoscloud.Result) string {
-	var artists []string
-	for _, a := range r.Artists {
-		artists = append(artists, a.Name)
-	}
-	artist := strings.Join(artists, ", ")
+	artist := artistNames(r)
 
 	switch r.Type {
 	case sonoscloud.TypeTrack:
