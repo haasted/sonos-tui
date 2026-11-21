@@ -129,6 +129,10 @@ func (s searchContent) listKey(msg tea.KeyMsg) (searchContent, tea.Cmd) {
 		s = s.switchKind(-1)
 	case "/":
 		s.filtering = true
+	case "enter":
+		return s, s.ask(startPlay)
+	case "shift+enter":
+		return s, s.ask(startPlayShuffled)
 	case "n":
 		return s, s.ask(startPlayNext)
 	case "N":

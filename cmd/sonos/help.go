@@ -134,7 +134,8 @@ var favouritesHelp = helpTable{
 var searchHelp = helpTable{
 	{
 		{"Search", []helpKey{
-			{"enter", "search for what the box holds"},
+			{"enter", "search; on a result, play it, replacing the queue"},
+			{"⇧enter", "play an album shuffled, replacing the queue"},
 			{"/", "back to the box"},
 			{"↑ ↓  k j", "move a row"},
 			{"pgup  F", "page up"},

@@ -183,14 +183,20 @@ func TestSearch_EachTypeHasItsOwnDetail(t *testing.T) {
 	}
 }
 
-// Case: n and N on the list. Each asks for the result under the cursor, with
-// its own action, as in the favourites.
-func TestSearch_NAndShiftNAskForTheResultUnderTheCursor(t *testing.T) {
+// Case: the keys that act on the list. Each asks for the result under the
+// cursor, with its own action, as in the favourites.
+func TestSearch_KeysAskForTheResultUnderTheCursor(t *testing.T) {
 	s := searchContent{listView: listView[sonoscloud.Result]{rows: 20, width: 80}}.found("bowie", sampleResults())
 	s = pressOnSearch(s, "down")
 
-	for key, want := range map[string]startAction{"n": startPlayNext, "N": startAddToQueue} {
-		_, cmd := s.Update(keyMsgFor(key))
+	for key, want := range map[string]startAction{
+		"enter": startPlay, "shift+enter": startPlayShuffled, "n": startPlayNext, "N": startAddToQueue,
+	} {
+		var press tea.Msg = keyMsgFor(key)
+		if key == "shift+enter" {
+			press = tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift}
+		}
+		_, cmd := s.Update(press)
 		require.NotNil(t, cmd, key)
 		msg := cmd().(searchActionMsg)
 		assert.Equal(t, "Heroes", msg.result.Name, key)
@@ -198,21 +204,28 @@ func TestSearch_NAndShiftNAskForTheResultUnderTheCursor(t *testing.T) {
 	}
 }
 
-// Case: n on what cannot be queued: a station, an artist, and a track the
-// service says is not available. The reader is told, nothing is sent, and the
-// search stays open.
-func TestSearch_WhatCannotBeQueuedIsSaid(t *testing.T) {
+// Case: a key on what cannot be started: a station, an artist, and a track the
+// service says is not available, each played and queued. The reader is told,
+// nothing is sent, and the search stays open.
+func TestSearch_WhatCannotBeStartedIsSaid(t *testing.T) {
 	m := pressKey(searchModel(t, &fakeCloud{signedIn: true}), "s")
+	station := sonoscloud.Result{Type: sonoscloud.TypeProgram, Playable: true}
+	artist := sonoscloud.Result{Type: sonoscloud.TypeArtist}
+	unplayable := sonoscloud.Result{Type: sonoscloud.TypeTrack, ID: appleMusicID("song:1")}
 
 	for name, tc := range map[string]struct {
 		result sonoscloud.Result
+		action startAction
 		want   string
 	}{
-		"station":       {sonoscloud.Result{Type: sonoscloud.TypeProgram, Playable: true}, favouriteStationNotQueued},
-		"artist":        {sonoscloud.Result{Type: sonoscloud.TypeArtist}, searchArtistNotQueued},
-		"not available": {sonoscloud.Result{Type: sonoscloud.TypeTrack, ID: appleMusicID("song:1")}, searchNotAvailable},
+		"station played":       {station, startPlay, searchStationNotPlayed},
+		"station queued":       {station, startPlayNext, favouriteStationNotQueued},
+		"artist played":        {artist, startPlayShuffled, searchArtistNotPlayed},
+		"artist queued":        {artist, startAddToQueue, searchArtistNotQueued},
+		"not available played": {unplayable, startPlay, searchNotAvailable},
+		"not available queued": {unplayable, startPlayNext, searchNotAvailable},
 	} {
-		model, cmd := m.Update(searchActionMsg{result: tc.result, action: startPlayNext})
+		model, cmd := m.Update(searchActionMsg{result: tc.result, action: tc.action})
 
 		require.NotNil(t, cmd, name)
 		notice, ok := cmd().(panes.NoticeMsg)
@@ -220,6 +233,37 @@ func TestSearch_WhatCannotBeQueuedIsSaid(t *testing.T) {
 		assert.Equal(t, tc.want, notice.Text, name)
 		assert.True(t, model.(appModel).search.IsOpen(), name)
 	}
+}
+
+// Case: enter and n on a track. Enter plays it and closes the search, as in
+// the favourites; n queues it and leaves the search open.
+func TestSearch_EnterClosesAndNLeavesOpen(t *testing.T) {
+	m := pressKey(searchModel(t, &fakeCloud{signedIn: true}), "s")
+	track := sonoscloud.Result{ID: appleMusicID("song:1774570881"), Type: sonoscloud.TypeTrack, Name: "/=/", Playable: true}
+
+	played, cmd := m.Update(searchActionMsg{result: track, action: startPlay})
+	assert.NotNil(t, cmd)
+	assert.False(t, played.(appModel).search.IsOpen(), "enter left the search open")
+
+	queued, cmd := m.Update(searchActionMsg{result: track, action: startPlayNext})
+	assert.NotNil(t, cmd)
+	assert.True(t, queued.(appModel).search.IsOpen(), "n closed the search")
+}
+
+// Case: shift+enter on a track. One track has nothing to shuffle, so it plays
+// in order, from its start, as enter plays it.
+func TestSearch_ShiftEnterPlaysATrackInOrder(t *testing.T) {
+	device, heard := recordingDevice(t)
+	device.Speaker.USN = "uuid:RINCON_TEST01400::urn:schemas-upnp-org:device:ZonePlayer:1" // selecting the queue needs the id
+	m := pressKey(searchModel(t, &fakeCloud{signedIn: true}), "s")
+	m.tabs.Items[m.tabs.Active].Content = speakerModel{ctx: t.Context(), device: device}
+	track := sonoscloud.Result{ID: appleMusicID("song:1774570881"), Type: sonoscloud.TypeTrack, Name: "/=/", Playable: true}
+
+	_, cmd := m.Update(searchActionMsg{result: track, action: startPlayShuffled})
+	flatten(cmd)
+
+	// Only an in-order start goes to track 1; a shuffled one does not.
+	assert.Contains(t, strings.Join(heard(), " "), "#Seek", "the track was shuffled")
 }
 
 // Case: N on a track found by search. The speaker is asked to add the

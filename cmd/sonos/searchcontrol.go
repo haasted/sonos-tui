@@ -25,12 +25,14 @@ const (
 	searchFailed      = "The Sonos cloud did not answer."
 )
 
-// What n and N on a search result answer when nothing is sent. A station
-// answers as it does in the favourites.
+// What a key on a search result answers when nothing is sent. A station that
+// is queued answers as it does in the favourites.
 const (
-	searchArtistNotQueued = "an artist cannot be queued"
-	searchNotAvailable    = "not available to play"
-	searchNotStarted      = "could not start it"
+	searchStationNotPlayed = "a station cannot be played yet"
+	searchArtistNotPlayed  = "an artist cannot be played"
+	searchArtistNotQueued  = "an artist cannot be queued"
+	searchNotAvailable     = "not available to play"
+	searchNotStarted       = "could not start it"
 )
 
 // errNoSpeaker says there is no speaker to ask for its household.
@@ -140,16 +142,22 @@ func (m appModel) applySearchDone(msg searchDoneMsg) (tea.Model, tea.Cmd) {
 }
 
 // applySearchAction starts a result on the speaker in view, as the favourites
-// start theirs. What cannot be queued is said, and nothing is sent.
+// start theirs, and closes the search after a play. What cannot be started is
+// said, and nothing is sent.
 func (m appModel) applySearchAction(msg searchActionMsg) (tea.Model, tea.Cmd) {
 	speaker, ok := m.activeSpeaker()
 	if !ok {
 		return m, nil
 	}
-	r := msg.result
+	r, action := msg.result, msg.action
+	plays := action == startPlay || action == startPlayShuffled
 	switch {
+	case r.Type == sonoscloud.TypeProgram && plays:
+		return m, notify(panes.NoticeInfo, searchStationNotPlayed)
 	case r.Type == sonoscloud.TypeProgram:
 		return m, notify(panes.NoticeInfo, favouriteStationNotQueued)
+	case r.Type == sonoscloud.TypeArtist && plays:
+		return m, notify(panes.NoticeInfo, searchArtistNotPlayed)
 	case r.Type == sonoscloud.TypeArtist:
 		return m, notify(panes.NoticeInfo, searchArtistNotQueued)
 	case unavailable(r):
@@ -160,7 +168,17 @@ func (m appModel) applySearchAction(msg searchActionMsg) (tea.Model, tea.Cmd) {
 		slog.Warn("starting a search result", "err", err)
 		return m, notify(panes.NoticeWarn, searchNotStarted)
 	}
-	return m, startPlayable(speaker, playable, msg.action, false)
+
+	// One track has nothing to shuffle, so shift+enter plays it as enter does.
+	if action == startPlayShuffled && r.Type == sonoscloud.TypeTrack {
+		action = startPlay
+	}
+	if plays {
+		m.search = m.search.Close()
+		slot := m.searchSlot()
+		*slot.pulse, *slot.hint = nextGen(), nextGen()
+	}
+	return m, startPlayable(speaker, playable, action, false)
 }
 
 // lookUpHousehold finds the household in the Sonos cloud once, in the
