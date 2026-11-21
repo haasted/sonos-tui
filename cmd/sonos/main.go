@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -27,10 +28,17 @@ var dbFlag = flag.String("db", "", "path to the application database; empty mean
 
 func main() {
 	flag.Parse()
-
-	if why, ok := preflight(); !ok {
-		fmt.Fprintln(os.Stderr, why)
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
+	}
+}
+
+// run is the whole program. It returns the reason it could not start or run,
+// and main prints it, so every deferred clean-up runs before the exit.
+func run() error {
+	if why, ok := preflight(); !ok {
+		return errors.New(why)
 	}
 
 	dumpLogs := log.CaptureLogs(*logsFlag, slog.LevelDebug)
@@ -42,14 +50,14 @@ func main() {
 	db, err := openStore(ctx)
 	if err != nil {
 		slog.Error("opening the database", "err", err)
-		return
+		return err
 	}
 	defer db.Close()
 
 	events, err := sonos.NewEventManager()
 	if err != nil {
 		slog.Error("starting event listener", "err", err)
-		return
+		return fmt.Errorf("cannot start the listener for speaker events: %w", err)
 	}
 
 	cached := loadCachedSpeakers(ctx, db.Cache())
@@ -83,10 +91,9 @@ func main() {
 	shutdownCancel()
 
 	if runErr != nil {
-		fmt.Fprintln(os.Stderr, "bubbletea error:", runErr)
-		os.Exit(1)
+		return fmt.Errorf("bubbletea error: %w", runErr)
 	}
-
+	return nil
 }
 
 // openStore opens the application database, creating it on a first run.
@@ -97,13 +104,13 @@ func openStore(ctx context.Context) (*store.Store, error) {
 	if path == "" {
 		var err error
 		if path, err = store.DefaultPath(); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("cannot find the default database location: %w", err)
 		}
 	}
 
 	db, err := store.Open(ctx, path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cannot open the database at %s: %w", path, err)
 	}
 
 	version, err := db.Version(ctx)
