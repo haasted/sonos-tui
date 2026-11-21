@@ -147,6 +147,7 @@ var searchHelp = helpTable{
 			{"←  ⇧tab", "previous type"},
 			{"n", "play next"},
 			{"N", "add to the end of the queue"},
+			{"a", "mark as a favourite"},
 			{"esc", "leave the box, then close"},
 		}},
 	},

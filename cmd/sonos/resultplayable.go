@@ -1,14 +1,17 @@
-// How a result from the Sonos cloud becomes something a speaker plays. The
-// two libraries know nothing of each other, so the step between them is here.
+// How a result from the Sonos cloud becomes something a speaker plays, and a
+// favourite. The two libraries know nothing of each other, so the step
+// between them is here.
 package main
 
 import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/haasted/sonos-tui/internal/sonos"
 	"github.com/haasted/sonos-tui/internal/sonoscloud"
+	"github.com/haasted/sonos-tui/internal/store"
 )
 
 // serviceTypeOffset is what the content API's service type adds to the sid
@@ -38,6 +41,38 @@ func resultPlayable(r sonoscloud.Result) (sonos.Playable, error) {
 	default:
 		return sonos.Playable{}, fmt.Errorf("playing %q: a %s cannot be played yet", r.Name, strings.ToLower(string(r.Type)))
 	}
+}
+
+// resultFavourite is a search result as a favourite. The service, account and
+// item id are read from the URI it plays by, as for a favourite marked from
+// the queue, so the same track or album is the same favourite either way.
+func resultFavourite(r sonoscloud.Result, now time.Time) (store.Favourite, error) {
+	playable, err := resultPlayable(r)
+	if err != nil {
+		return store.Favourite{}, err
+	}
+	ref, ok := sonos.ParseServiceURI(playable.URI)
+	if !ok {
+		return store.Favourite{}, fmt.Errorf("marking %q: %q names no service item", r.Name, playable.URI)
+	}
+	fav := store.Favourite{
+		Kind:     store.FavouriteAlbum,
+		Title:    r.Name,
+		Artist:   artistNames(r),
+		URI:      playable.URI,
+		Metadata: playable.Metadata,
+		Service:  ref.Service,
+		Account:  ref.Account,
+		ItemID:   ref.ItemID,
+		AddedAt:  now,
+	}
+	if r.Type == sonoscloud.TypeTrack {
+		fav.Kind = store.FavouriteTrack
+		if r.Album != nil {
+			fav.Album = r.Album.Name
+		}
+	}
+	return fav, nil
 }
 
 // speakerService is a result's service as the speakers number it (sid), and

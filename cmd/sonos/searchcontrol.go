@@ -13,6 +13,7 @@ import (
 
 	"github.com/haasted/sonos-tui/internal/sonos"
 	"github.com/haasted/sonos-tui/internal/sonoscloud"
+	"github.com/haasted/sonos-tui/internal/store"
 	"github.com/haasted/sonos-tui/internal/ui/panes"
 )
 
@@ -31,6 +32,8 @@ const (
 	searchStationNotPlayed = "a station cannot be played yet"
 	searchArtistNotPlayed  = "an artist cannot be played"
 	searchArtistNotQueued  = "an artist cannot be queued"
+	searchStationNotMarked = "a station cannot be marked yet"
+	searchArtistNotMarked  = "an artist cannot be marked yet"
 	searchNotAvailable     = "not available to play"
 	searchNotStarted       = "could not start it"
 )
@@ -179,6 +182,26 @@ func (m appModel) applySearchAction(msg searchActionMsg) (tea.Model, tea.Cmd) {
 		*slot.pulse, *slot.hint = nextGen(), nextGen()
 	}
 	return m, startPlayable(speaker, playable, action, false)
+}
+
+// applySearchMark stores a result as a favourite, as a does in the queue, and
+// says whether it was one already. What cannot be marked is said instead.
+func (m appModel) applySearchMark(msg searchMarkMsg) (tea.Model, tea.Cmd) {
+	r := msg.result
+	switch {
+	case r.Type == sonoscloud.TypeProgram:
+		return m, notify(panes.NoticeInfo, searchStationNotMarked)
+	case r.Type == sonoscloud.TypeArtist:
+		return m, notify(panes.NoticeInfo, searchArtistNotMarked)
+	case unavailable(r):
+		return m, notify(panes.NoticeInfo, searchNotAvailable)
+	}
+	fav, err := resultFavourite(r, time.Now())
+	if err != nil {
+		slog.Warn("marking a search result", "err", err)
+		return m, notify(panes.NoticeWarn, favouriteMarkFailed)
+	}
+	return m, storeFavourites(m.ctx, m.db, []store.Favourite{fav}, 1, 0)
 }
 
 // lookUpHousehold finds the household in the Sonos cloud once, in the

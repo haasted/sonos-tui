@@ -38,6 +38,9 @@ const (
 // searchAskMsg asks the application to run a search for query.
 type searchAskMsg struct{ query string }
 
+// searchMarkMsg asks for a result to be marked as a favourite.
+type searchMarkMsg struct{ result sonoscloud.Result }
+
 // searchActionMsg asks for a result to start on the speaker in view.
 type searchActionMsg struct {
 	result sonoscloud.Result
@@ -137,6 +140,8 @@ func (s searchContent) listKey(msg tea.KeyMsg) (searchContent, tea.Cmd) {
 		return s, s.ask(startPlayNext)
 	case "N":
 		return s, s.ask(startAddToQueue)
+	case "a":
+		return s, s.mark()
 	}
 	return s, nil
 }
@@ -239,6 +244,16 @@ func (s searchContent) ask(action startAction) tea.Cmd {
 	}
 	r := s.items[s.cursor]
 	return func() tea.Msg { return searchActionMsg{result: r, action: action} }
+}
+
+// mark is the command a asks for the result under the cursor, or nil when the
+// list has none.
+func (s searchContent) mark() tea.Cmd {
+	if s.cursor >= len(s.items) {
+		return nil
+	}
+	r := s.items[s.cursor]
+	return func() tea.Msg { return searchMarkMsg{result: r} }
 }
 
 // unavailable reports a result the service says cannot be played, such as one

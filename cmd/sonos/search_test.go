@@ -5,12 +5,15 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/haasted/sonos-tui/internal/sonos"
 	"github.com/haasted/sonos-tui/internal/sonoscloud"
+	"github.com/haasted/sonos-tui/internal/store"
 	"github.com/haasted/sonos-tui/internal/ui/panes"
 )
 
@@ -297,6 +300,87 @@ func TestSearch_UnavailableResults(t *testing.T) {
 	}
 }
 
+// Case: a on the list. It asks for the result under the cursor to be marked.
+func TestSearch_AAsksToMarkTheResultUnderTheCursor(t *testing.T) {
+	s := searchContent{listView: listView[sonoscloud.Result]{rows: 20, width: 80}}.found("bowie", sampleResults())
+	s = pressOnSearch(s, "down")
+
+	_, cmd := s.Update(keyMsgFor("a"))
+
+	require.NotNil(t, cmd)
+	assert.Equal(t, "Heroes", cmd().(searchMarkMsg).result.Name)
+}
+
+// Case: a on what cannot be marked: a station, an artist, and a track the
+// service says is not available. The reader is told and nothing is stored.
+func TestSearch_WhatCannotBeMarkedIsSaid(t *testing.T) {
+	m := pressKey(searchModel(t, &fakeCloud{signedIn: true}), "s")
+	m.db = openTestStore(t)
+
+	for name, tc := range map[string]struct {
+		result sonoscloud.Result
+		want   string
+	}{
+		"station":       {sonoscloud.Result{Type: sonoscloud.TypeProgram, Playable: true}, searchStationNotMarked},
+		"artist":        {sonoscloud.Result{Type: sonoscloud.TypeArtist}, searchArtistNotMarked},
+		"not available": {sonoscloud.Result{Type: sonoscloud.TypeTrack, ID: appleMusicID("song:1")}, searchNotAvailable},
+	} {
+		_, cmd := m.Update(searchMarkMsg{result: tc.result})
+
+		require.NotNil(t, cmd, name)
+		assert.Equal(t, tc.want, cmd().(panes.NoticeMsg).Text, name)
+	}
+	assert.Zero(t, favouriteCount(t, m.db))
+}
+
+// Case: a on a track and on an album. Each is stored with what the
+// favourites need to play it, and a second a says it is a favourite already.
+func TestSearch_AMarksATrackAndAnAlbum(t *testing.T) {
+	m := pressKey(searchModel(t, &fakeCloud{signedIn: true}), "s")
+	m.db = openTestStore(t)
+
+	assert.Equal(t, favouriteMarked, markResult(t, m, eggsTrack()))
+	assert.Equal(t, favouriteMarked, markResult(t, m, eggsAlbum()))
+	assert.Equal(t, favouriteMarkedNot, markResult(t, m, eggsTrack()))
+
+	stored, err := m.db.Favourites().List(t.Context())
+	require.NoError(t, err)
+	require.Len(t, stored, 2)
+	byKind := map[store.FavouriteKind]store.Favourite{}
+	for _, fav := range stored {
+		byKind[fav.Kind] = fav
+	}
+	track, album := byKind[store.FavouriteTrack], byKind[store.FavouriteAlbum]
+	assert.Equal(t, "x-sonos-http:song%3a1774570881.mp4?sid=204&flags=8232&sn=2", track.URI)
+	assert.Equal(t, "Andrew Bird", track.Artist)
+	assert.Equal(t, "The Mysterious Production of Eggs", track.Album)
+	assert.Equal(t, "album:1774570638", album.ItemID)
+	assert.Equal(t, "Andrew Bird", album.Artist)
+}
+
+// Case: a track and an album marked from the queue first, then found by
+// search. a on each says it is a favourite already: both ways name the same
+// service, account and item.
+func TestSearch_AFavouriteFromTheQueueIsTheSameOne(t *testing.T) {
+	m := pressKey(searchModel(t, &fakeCloud{signedIn: true}), "s")
+	m.db = openTestStore(t)
+	fromQueue, err := trackFavourite(sonos.TrackMetadata{
+		URI: "x-sonos-http:song%3a1774570881.mp4?sid=204&flags=8232&sn=2", Title: "/=/", Artist: "Andrew Bird",
+	}, time.Now())
+	require.NoError(t, err)
+	albumFromQueue, ok := sourceFavourite(sonos.QueueSource{
+		Title: "The Mysterious Production of Eggs", Class: "object.container.album.musicAlbum",
+		URI: "x-rincon-cpcontainer:1004206calbum%3a1774570638?sid=204&flags=8300&sn=2",
+	}, time.Now())
+	require.True(t, ok)
+	_, err = m.db.Favourites().Add(t.Context(), fromQueue, albumFromQueue)
+	require.NoError(t, err)
+
+	assert.Equal(t, favouriteMarkedNot, markResult(t, m, eggsTrack()))
+	assert.Equal(t, favouriteMarkedNot, markResult(t, m, eggsAlbum()))
+	assert.Equal(t, 2, favouriteCount(t, m.db))
+}
+
 // fakeCloud stands in for the Sonos cloud. It knows one household and
 // answers every search with results, or with err.
 type fakeCloud struct {
@@ -395,4 +479,29 @@ func sampleResults() sonoscloud.SearchResults {
 		{Name: "PLAYLISTS", Results: []sonoscloud.Result{{Type: sonoscloud.TypePlaylist, Name: "Bowie Essentials"}}},
 		{Name: "PROGRAMS", Results: []sonoscloud.Result{{Type: sonoscloud.TypeProgram, Name: "Bowie Radio"}}},
 	}}
+}
+
+// markResult presses a on result and returns what the notice says.
+func markResult(t *testing.T, m appModel, result sonoscloud.Result) string {
+	t.Helper()
+	_, cmd := m.Update(searchMarkMsg{result: result})
+	require.NotNil(t, cmd)
+	return cmd().(panes.NoticeMsg).Text
+}
+
+// eggsTrack is the first track of the album queued on Soveværelse, as the
+// content API found it.
+func eggsTrack() sonoscloud.Result {
+	return sonoscloud.Result{
+		ID: appleMusicID("song:1774570881"), Type: sonoscloud.TypeTrack, Name: "/=/", Playable: true,
+		Artists: []sonoscloud.Ref{{Name: "Andrew Bird"}}, Album: &sonoscloud.Ref{Name: "The Mysterious Production of Eggs"},
+	}
+}
+
+// eggsAlbum is that album, as the content API found it.
+func eggsAlbum() sonoscloud.Result {
+	return sonoscloud.Result{
+		ID: appleMusicID("album:1774570638"), Type: sonoscloud.TypeAlbum, Name: "The Mysterious Production of Eggs",
+		Playable: true, Artists: []sonoscloud.Ref{{Name: "Andrew Bird"}},
+	}
 }
