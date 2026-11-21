@@ -220,18 +220,34 @@ func TestFavourites_AStationCannotBeQueued(t *testing.T) {
 	assert.True(t, model.(appModel).favourites.IsOpen())
 }
 
-// Case: shift+enter on a track or a station. Neither has anything to shuffle,
-// so the reader is told, nothing is sent, and the modal stays open.
-func TestFavourites_OnlyAnAlbumOrPlaylistShuffles(t *testing.T) {
+// Case: shift+enter on a station. A stream has nothing to shuffle, so the
+// reader is told, nothing is sent, and the modal stays open.
+func TestFavourites_AStationDoesNotShuffle(t *testing.T) {
 	m := pressKey(sizedModel(t), "f")
+	station := store.Favourite{Kind: store.FavouriteStation, Title: "DR P1"}
 
-	for _, kind := range []store.FavouriteKind{store.FavouriteTrack, store.FavouriteStation} {
-		model, cmd := m.Update(favouriteActionMsg{favourite: store.Favourite{Kind: kind, Title: "x"}, action: startPlayShuffled})
+	model, cmd := m.Update(favouriteActionMsg{favourite: station, action: startPlayShuffled})
 
-		require.NotNil(t, cmd, kind)
-		assert.Equal(t, favouriteNotShuffled, cmd().(panes.NoticeMsg).Text, kind)
-		assert.True(t, model.(appModel).favourites.IsOpen(), kind)
-	}
+	require.NotNil(t, cmd)
+	assert.Equal(t, favouriteNotShuffled, cmd().(panes.NoticeMsg).Text)
+	assert.True(t, model.(appModel).favourites.IsOpen())
+}
+
+// Case: shift+enter on a track. One track has nothing to shuffle, so it plays
+// in order, from its start, and the modal closes, as enter does.
+func TestFavourites_ShiftEnterPlaysATrackInOrder(t *testing.T) {
+	device, heard := recordingDevice(t)
+	device.Speaker.USN = "uuid:RINCON_TEST01400::urn:schemas-upnp-org:device:ZonePlayer:1" // selecting the queue needs the id
+	m := pressKey(sizedModel(t), "f")
+	m.tabs.Items[m.tabs.Active].Content = speakerModel{ctx: t.Context(), device: device}
+	track := store.Favourite{Kind: store.FavouriteTrack, Title: "/=/", URI: "x-sonos-http:song%3a1774570881.mp4?sid=204&flags=8232&sn=2", Metadata: "<DIDL-Lite/>"}
+
+	model, cmd := m.Update(favouriteActionMsg{favourite: track, action: startPlayShuffled})
+	flatten(cmd)
+
+	assert.False(t, model.(appModel).favourites.IsOpen())
+	// Only an in-order start goes to track 1; a shuffled one does not.
+	assert.Contains(t, strings.Join(heard(), " "), "#Seek", "the track was shuffled")
 }
 
 // Case: shift+enter on a playlist. It closes the modal, as enter does.

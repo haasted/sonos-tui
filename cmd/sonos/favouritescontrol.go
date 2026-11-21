@@ -25,8 +25,8 @@ var errNoStore = errors.New("no database")
 // place of the queue, and cannot be put into it.
 const favouriteStationNotQueued = "a station cannot be queued"
 
-// favouriteNotShuffled answers shift+enter on a track or a station: one
-// track, or a stream, has nothing to shuffle.
+// favouriteNotShuffled answers shift+enter on a station: a stream has nothing
+// to shuffle. A track has nothing either, but shift+enter plays it.
 const favouriteNotShuffled = "only an album or a playlist can be shuffled"
 
 // What marking a track as a favourite answers. The reader can see the track
@@ -146,23 +146,26 @@ func (m appModel) applyFavouriteAction(msg favouriteActionMsg) (tea.Model, tea.C
 	if !ok {
 		return m, nil
 	}
-	fav := msg.favourite
+	fav, action := msg.favourite, msg.action
 	station := fav.Kind == store.FavouriteStation
-	container := fav.Kind == store.FavouriteAlbum || fav.Kind == store.FavouritePlaylist
 	switch {
-	case msg.action == startPlayShuffled && !container:
+	case action == startPlayShuffled && station:
 		return m, notify(panes.NoticeInfo, favouriteNotShuffled)
-	case station && msg.action != startPlay:
+	case station && action != startPlay:
 		return m, notify(panes.NoticeInfo, favouriteStationNotQueued)
 	}
 
+	// One track has nothing to shuffle, so shift+enter plays it as enter does.
+	if action == startPlayShuffled && fav.Kind == store.FavouriteTrack {
+		action = startPlay
+	}
 	playable := sonos.Playable{URI: fav.URI, Metadata: fav.Metadata, Title: fav.Title}
-	if msg.action == startPlay || msg.action == startPlayShuffled {
+	if action == startPlay || action == startPlayShuffled {
 		m.favourites = m.favourites.Close()
 		slot := m.favouritesSlot()
 		*slot.pulse, *slot.hint = nextGen(), nextGen()
 	}
-	return m, startPlayable(speaker, playable, msg.action, station)
+	return m, startPlayable(speaker, playable, action, station)
 }
 
 // applyFavouriteMark stores the tracks the queue asked for as favourites, in
