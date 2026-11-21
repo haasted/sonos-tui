@@ -159,6 +159,58 @@ type fakeBrowse struct {
 	queries []string
 }
 
+// Case: an artist opened, again at once, and again once pageLife has passed.
+// The second open asks nothing and gives the same artist; the third asks.
+func TestOpenArtist_IsKeptForAWhile(t *testing.T) {
+	f := newFakeBrowse(t)
+	f.containerPages = 0
+	now := time.Now()
+	c := f.clientAt(t, func() time.Time { return now })
+
+	first, err := c.OpenArtist(t.Context(), "Sonos_home.cloud", 52231, "artist:551695")
+	require.NoError(t, err)
+	second, err := c.OpenArtist(t.Context(), "Sonos_home.cloud", 52231, "artist:551695")
+	require.NoError(t, err)
+
+	assert.Equal(t, first, second)
+	assert.Equal(t, 1, f.pagesAsked(), "the second open asked again")
+
+	now = now.Add(31 * time.Minute)
+	_, err = c.OpenArtist(t.Context(), "Sonos_home.cloud", 52231, "artist:551695")
+	require.NoError(t, err)
+	assert.Equal(t, 2, f.pagesAsked(), "an artist older than pageLife was given again")
+}
+
+// Case: an album opened twice. The second open asks nothing.
+func TestOpenAlbum_IsKeptForAWhile(t *testing.T) {
+	f := newFakeBrowse(t)
+	c := f.client(t)
+
+	_, err := c.OpenAlbum(t.Context(), "Sonos_home.cloud", 52231, "album:1676286487")
+	require.NoError(t, err)
+	_, err = c.OpenAlbum(t.Context(), "Sonos_home.cloud", 52231, "album:1676286487")
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, f.pagesAsked())
+}
+
+// Case: an open that fails, then succeeds. The failure is not kept, so the
+// second open asks again.
+func TestOpenArtist_AFailureIsNotKept(t *testing.T) {
+	f := newFakeBrowse(t)
+	f.containerPages = 0
+	c := f.client(t)
+
+	f.gone = true
+	_, err := c.OpenArtist(t.Context(), "Sonos_home.cloud", 52231, "artist:551695")
+	require.Error(t, err)
+	f.gone = false
+	_, err = c.OpenArtist(t.Context(), "Sonos_home.cloud", 52231, "artist:551695")
+
+	require.NoError(t, err)
+	assert.Equal(t, 2, f.pagesAsked())
+}
+
 func newFakeBrowse(t *testing.T) *fakeBrowse {
 	t.Helper()
 	f := &fakeBrowse{album: readFixture(t, "album_blackstar.json"), artist: readFixture(t, "artist_bowie.json")}
@@ -188,6 +240,27 @@ func newFakeBrowse(t *testing.T) *fakeBrowse {
 func (f *fakeBrowse) client(t *testing.T) *sonoscloud.Client {
 	t.Helper()
 	return newClient(t, f.srv, &memStore{session: validSession(sessionName)}, sonoscloud.WithAccount(sonoscloud.AppleMusic, 2))
+}
+
+// pagesAsked counts the requests for an artist's or an album's page, leaving
+// out the requests for the rest of its list.
+func (f *fakeBrowse) pagesAsked() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := 0
+	for _, path := range f.paths {
+		if strings.HasSuffix(path, "/browse") {
+			n++
+		}
+	}
+	return n
+}
+
+// clientAt is client, reading the time from now.
+func (f *fakeBrowse) clientAt(t *testing.T, now func() time.Time) *sonoscloud.Client {
+	t.Helper()
+	return newClient(t, f.srv, &memStore{session: validSession(sessionName)},
+		sonoscloud.WithAccount(sonoscloud.AppleMusic, 2), sonoscloud.WithClock(now))
 }
 
 // containerPage is 100 made-up albums from offset, with a nextUri unless it

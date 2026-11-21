@@ -137,8 +137,22 @@ type wireAction struct {
 }
 
 // OpenAlbum opens an album of a service, such as "album:1676286487", with
-// its tracks.
+// its tracks. The album is kept for pageLife and given again without a
+// request.
 func (c *Client) OpenAlbum(ctx context.Context, household string, service int, objectID string) (Album, error) {
+	key := pageKey(household, service, objectID)
+	if album, ok := c.albums.get(key, c.now()); ok {
+		return album, nil
+	}
+	album, err := c.openAlbum(ctx, household, service, objectID)
+	if err == nil {
+		c.albums.put(key, album, c.now())
+	}
+	return album, err
+}
+
+// openAlbum is OpenAlbum without the cache.
+func (c *Client) openAlbum(ctx context.Context, household string, service int, objectID string) (Album, error) {
 	var page wirePage
 	if err := c.getPage(ctx, household, service, "albums/"+pathID(objectID)+"/browse",
 		url.Values{"muse2": {"true"}, "count": {albumCount}}, &page); err != nil {
@@ -159,8 +173,22 @@ func (c *Client) OpenAlbum(ctx context.Context, household string, service int, o
 }
 
 // OpenArtist opens an artist of a service, such as "artist:551695", with its
-// station and up to maxEntries of its albums.
+// station and up to maxEntries of its albums. The artist is kept for
+// pageLife and given again without a request.
 func (c *Client) OpenArtist(ctx context.Context, household string, service int, objectID string) (Artist, error) {
+	key := pageKey(household, service, objectID)
+	if artist, ok := c.artists.get(key, c.now()); ok {
+		return artist, nil
+	}
+	artist, err := c.openArtist(ctx, household, service, objectID)
+	if err == nil {
+		c.artists.put(key, artist, c.now())
+	}
+	return artist, err
+}
+
+// openArtist is OpenArtist without the cache.
+func (c *Client) openArtist(ctx context.Context, household string, service int, objectID string) (Artist, error) {
 	var page wirePage
 	if err := c.getPage(ctx, household, service, "artists/"+pathID(objectID)+"/browse",
 		url.Values{"muse2": {"true"}}, &page); err != nil {

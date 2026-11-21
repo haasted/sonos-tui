@@ -55,6 +55,8 @@ type Client struct {
 	store      SessionStore
 	households HouseholdStore // where the household is kept; in memory unless given
 	accounts   map[int]int    // the household's account on each service, as last seen
+	artists    pageCache[Artist]
+	albums     pageCache[Album]
 	now        func() time.Time
 
 	mu sync.Mutex // one request at a time, as a page does; guards accounts too
@@ -115,6 +117,11 @@ func withHTTPClient(hc *http.Client) option {
 // withSessionStore keeps the session in store instead of the default file.
 func withSessionStore(store SessionStore) option {
 	return func(c *Client) { c.store = store }
+}
+
+// withClock reads the time from now, so a test can move it.
+func withClock(now func() time.Time) option {
+	return func(c *Client) { c.now = now }
 }
 
 // withAccount says which account the household has on a service before an

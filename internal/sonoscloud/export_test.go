@@ -21,6 +21,7 @@ var (
 	WithSessionStore   = withSessionStore
 	WithHouseholdStore = withHouseholdStore
 	WithAccount        = withAccount
+	WithClock          = withClock
 )
 
 // DefaultSessionPath is the file New keeps the session in by default.
