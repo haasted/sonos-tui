@@ -203,8 +203,8 @@ func (s searchContent) onBackRow() bool {
 }
 
 // artistRows is an artist's albums for the list: the back row, then each
-// group that has albums under its heading. An album is a result, so the keys
-// that act on a search result act on it.
+// group that has albums under its heading, newest first. An album is a
+// result, so the keys that act on a search result act on it.
 func artistRows(artist sonoscloud.Artist) []sonoscloud.Result {
 	rows := []sonoscloud.Result{backRow}
 	for _, group := range artistGroups {
@@ -218,6 +218,7 @@ func artistRows(artist sonoscloud.Artist) []sonoscloud.Result {
 				})
 			}
 		}
+		slices.SortStableFunc(albums, newestFirst)
 		if len(albums) > 0 {
 			rows = append(rows, sonoscloud.Result{Type: rowHeading, Name: group.name})
 			rows = append(rows, albums...)
@@ -258,6 +259,21 @@ func (s searchContent) trackPosition(r sonoscloud.Result) int {
 		}
 	}
 	return 0
+}
+
+// newestFirst orders albums by year, the newest first and those with no year
+// last. Albums of one year compare equal, so a stable sort keeps the API's
+// order among them: the API gives the year, not the date.
+func newestFirst(a, b sonoscloud.Result) int {
+	_, yearA, okA := a.GenreYear()
+	_, yearB, okB := b.GenreYear()
+	switch {
+	case okA != okB && okA:
+		return -1
+	case okA != okB:
+		return 1
+	}
+	return strings.Compare(yearB, yearA) // four digits each, so text order is number order
 }
 
 // shownName is a row's name as the list draws it. On an artist's page an

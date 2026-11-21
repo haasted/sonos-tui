@@ -258,6 +258,29 @@ func TestSearchBrowse_AFailureIsSaid(t *testing.T) {
 	assert.Empty(t, searchOf(m).levels)
 }
 
+// Case: an artist whose albums the API sends out of order, one with no year
+// and two of the same year. Each group is sorted newest first, the album
+// with no year last, and the two of one year in the order the API sent them.
+func TestSearchBrowse_AlbumsAreNewestFirst(t *testing.T) {
+	album := func(id, name string, kind sonoscloud.AlbumKind, summary string) sonoscloud.AlbumEntry {
+		return sonoscloud.AlbumEntry{ID: appleMusicID(id), Name: name, Kind: kind, Summary: summary, Playable: true}
+	}
+	artist := sonoscloud.Artist{Name: "David Bowie", Albums: []sonoscloud.AlbumEntry{
+		album("album:1", "Low", sonoscloud.KindAlbum, "Rock - 1977"),
+		album("album:2", "Live Somewhere", sonoscloud.KindAlbum, "Rock"),
+		album("album:3", "Blackstar", sonoscloud.KindAlbum, "Rock - 2016"),
+		album("album:4", "Heroes", sonoscloud.KindAlbum, "Rock - 1977"),
+		album("album:5", "Lazarus - Single", sonoscloud.KindSingle, "Rock - 2015"),
+		album("album:6", "Blackstar - Single", sonoscloud.KindSingle, "Rock - 2016"),
+	}}
+
+	assert.Equal(t, []string{
+		"← back",
+		"Albums", "Blackstar", "Low", "Heroes", "Live Somewhere",
+		"Singles & EPs", "Blackstar - Single", "Lazarus - Single",
+	}, resultNames(searchContent{listView: listView[sonoscloud.Result]{items: artistRows(artist)}}))
+}
+
 // openUnderCursor presses → on the app's search, then runs the opening and
 // delivers its answer.
 func openUnderCursor(t *testing.T, m appModel) appModel {
