@@ -184,6 +184,14 @@ func (c *Client) Session(ctx context.Context) (SessionInfo, error) {
 	return SessionInfo{Expires: answer.Expires}, nil
 }
 
+// SignedIn reports whether a saved session has not run out. It asks the
+// server nothing, and the server may still refuse the session.
+func (c *Client) SignedIn() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.jar.current().Valid(c.now())
+}
+
 // get sends a GET that needs the session, and returns the answer's body. It
 // answers ErrSignedOut without a request when no valid session is saved.
 func (c *Client) get(ctx context.Context, path string, query url.Values) ([]byte, error) {

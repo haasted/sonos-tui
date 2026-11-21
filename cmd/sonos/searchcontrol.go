@@ -1,0 +1,203 @@
+// How the application drives the search modal: opening it, finding the
+// household in the Sonos cloud, and running a search. search.go holds the
+// modal itself.
+package main
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"time"
+
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/haasted/sonos-tui/internal/sonos"
+	"github.com/haasted/sonos-tui/internal/sonoscloud"
+)
+
+// What the search modal says when a search cannot run or fails.
+const (
+	searchNoCloud     = "The Sonos cloud is not available."
+	searchSignedOut   = "Not signed in to the Sonos cloud. Sign in with make sonos-web, then start again."
+	searchNoHousehold = "The Sonos cloud does not know this household."
+	searchNoSpeaker   = "No speaker has loaded yet."
+	searchFailed      = "The Sonos cloud did not answer."
+)
+
+// errNoSpeaker says there is no speaker to ask for its household.
+var errNoSpeaker = errors.New("no speaker loaded")
+
+// musicCloud is what the app needs of the Sonos cloud, so a test can stand in
+// for it.
+type musicCloud interface {
+	SignedIn() bool
+	Household(ctx context.Context, localID string) (sonoscloud.Household, error)
+	Search(ctx context.Context, household string, service int, query string) (sonoscloud.SearchResults, error)
+}
+
+var _ musicCloud = &sonoscloud.Client{}
+
+type (
+	// cloudHouseholdMsg is the household lookup made at startup: the
+	// speakers' own household id, and whether the cloud knew it.
+	cloudHouseholdMsg struct {
+		localID string
+		err     error
+	}
+
+	// searchDoneMsg is a search's answer. gen tells it from the answer to an
+	// older query.
+	searchDoneMsg struct {
+		gen     int
+		query   string
+		localID string
+		results sonoscloud.SearchResults
+		err     error
+	}
+)
+
+// openSearch opens the search modal. It shows the last search again, or
+// opens with the box ready when there has been none.
+func (m appModel) openSearch() (tea.Model, tea.Cmd) {
+	m.search = m.search.Open()
+	content, _ := m.search.Content.(searchContent)
+	content.listView.openedAt = time.Now()
+	content = content.resized(m.search.ContentRows(), m.search.ContentColumns()).(searchContent)
+	switch {
+	case m.cloud == nil:
+		content = content.failed(searchNoCloud)
+	case !m.cloud.SignedIn():
+		content = content.failed(searchSignedOut)
+	case content.asked == "" || content.problem != "":
+		content.filtering, content.problem = true, ""
+	}
+	m.search.Content = content
+
+	m, sweeping := m.restartSweepChain()
+	hint := restartListHint(m.searchSlot())
+	return m, tea.Batch(sweeping, hint)
+}
+
+// applySearchAsk starts a search, and stops the one still running: only the
+// last query's answer is shown.
+func (m appModel) applySearchAsk(msg searchAskMsg) (tea.Model, tea.Cmd) {
+	content, ok := m.search.Content.(searchContent)
+	if !ok {
+		return m, nil
+	}
+	if m.searchCancel != nil {
+		m.searchCancel()
+	}
+	switch {
+	case m.cloud == nil:
+		m.search.Content = content.failed(searchNoCloud)
+		return m, nil
+	case !m.cloud.SignedIn():
+		m.search.Content = content.failed(searchSignedOut)
+		return m, nil
+	}
+
+	var device *sonos.Device
+	if speaker, ok := m.activeSpeaker(); ok {
+		device = speaker.device
+	}
+	ctx, cancel := context.WithCancel(m.ctx)
+	m.searchCancel, m.searchRun = cancel, nextGen()
+	m.search.Content = content.searching(msg.query)
+	return m, runSearch(ctx, m.cloud, device, m.localHousehold, msg.query, m.searchRun)
+}
+
+// applySearchDone shows a search's answer, unless a later query has been
+// asked since.
+func (m appModel) applySearchDone(msg searchDoneMsg) (tea.Model, tea.Cmd) {
+	if msg.localID != "" {
+		m.localHousehold = msg.localID
+	}
+	content, ok := m.search.Content.(searchContent)
+	if !ok || msg.gen != m.searchRun {
+		return m, nil
+	}
+	m.searchCancel = nil
+	if msg.err != nil {
+		m.search.Content = content.failed(searchProblem(msg.err))
+		return m, nil
+	}
+	content = content.found(msg.query, msg.results)
+	m.search.Content = content
+	if m.search.IsOpen() && content.overflows() {
+		return m, restartListChain(m.searchSlot())
+	}
+	return m, nil
+}
+
+// lookUpHousehold finds the household in the Sonos cloud once, in the
+// background, from the first speaker that loads, so a search need not wait
+// for it. With no valid session the cloud is not asked at all.
+func (m appModel) lookUpHousehold(device *sonos.Device) (appModel, tea.Cmd) {
+	if m.cloudAsked || m.cloud == nil || device == nil || !m.cloud.SignedIn() {
+		return m, nil
+	}
+	m.cloudAsked = true
+	ctx, cloud := m.ctx, m.cloud
+	return m, func() tea.Msg {
+		localID, _, err := findHousehold(ctx, cloud, device, "")
+		return cloudHouseholdMsg{localID: localID, err: err}
+	}
+}
+
+// applyCloudHousehold keeps the speakers' household id the lookup read. The
+// cloud keeps the household itself.
+func (m appModel) applyCloudHousehold(msg cloudHouseholdMsg) (tea.Model, tea.Cmd) {
+	if msg.localID != "" {
+		m.localHousehold = msg.localID
+	}
+	if msg.err != nil {
+		slog.Warn("finding the household in the Sonos cloud", "err", msg.err)
+	}
+	return m, nil
+}
+
+// runSearch searches Apple Music for query, finding the household first if
+// the startup lookup has not.
+func runSearch(ctx context.Context, cloud musicCloud, device *sonos.Device, localID, query string, gen int) tea.Cmd {
+	return func() tea.Msg {
+		localID, household, err := findHousehold(ctx, cloud, device, localID)
+		if err != nil {
+			return searchDoneMsg{gen: gen, query: query, localID: localID, err: err}
+		}
+		results, err := cloud.Search(ctx, household.ID, sonoscloud.AppleMusic, query)
+		return searchDoneMsg{gen: gen, query: query, localID: localID, results: results, err: err}
+	}
+}
+
+// findHousehold finds the speakers' household in the cloud. localID is the
+// speakers' own household id; when it is empty, device is asked for it.
+func findHousehold(ctx context.Context, cloud musicCloud, device *sonos.Device, localID string) (string, sonoscloud.Household, error) {
+	if localID == "" {
+		if device == nil {
+			return "", sonoscloud.Household{}, errNoSpeaker
+		}
+		id, err := device.HouseholdID(ctx)
+		if err != nil {
+			return "", sonoscloud.Household{}, err
+		}
+		localID = id
+	}
+	household, err := cloud.Household(ctx, localID)
+	return localID, household, err
+}
+
+// searchProblem is what the modal says about a failed search.
+func searchProblem(err error) string {
+	switch {
+	case errors.Is(err, sonoscloud.ErrSignedOut):
+		return searchSignedOut
+	case errors.Is(err, sonoscloud.ErrHouseholdUnknown), errors.Is(err, sonoscloud.ErrWrongHousehold):
+		return searchNoHousehold
+	case errors.Is(err, errNoSpeaker):
+		return searchNoSpeaker
+	default:
+		slog.Warn("searching the Sonos cloud", "err", err)
+		return searchFailed
+	}
+}

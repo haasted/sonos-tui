@@ -11,7 +11,6 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/haasted/sonos-tui/internal/sonos"
-	"github.com/haasted/sonos-tui/internal/sonoscloud"
 	"github.com/haasted/sonos-tui/internal/store"
 	"github.com/haasted/sonos-tui/internal/ui/nowplaying"
 	"github.com/haasted/sonos-tui/internal/ui/panes"
@@ -55,9 +54,10 @@ type appModel struct {
 	queue         panes.Modal
 	favourites    panes.Modal
 	grouping      panes.Modal
-	marking       panes.Modal        // asks whether a mark in the queue is for the track or its playlist or album
-	db            *store.Store       // the database; nil only in tests
-	cloud         *sonoscloud.Client // the Sonos cloud; nil when its client could not be made
+	marking       panes.Modal  // asks whether a mark in the queue is for the track or its playlist or album
+	db            *store.Store // the database; nil only in tests
+	search        panes.Modal
+	cloud         musicCloud // the Sonos cloud; nil when its client could not be made
 
 	sized bool // a size has arrived; until then fits refuses nothing
 
@@ -101,6 +101,13 @@ type appModel struct {
 
 	favouritesGen     int // the favourites list's repaint chain, as queueGen
 	favouritesHintGen int // the favourites hint's chain, as queueHintGen
+
+	searchGen      int                // the search list's repaint chain, as queueGen
+	searchHintGen  int                // the search hint's chain, as queueHintGen
+	searchRun      int                // the generation of the last search asked
+	searchCancel   context.CancelFunc // stops the search still running; nil when none is
+	cloudAsked     bool               // the startup household lookup has started
+	localHousehold string             // the speakers' own household id, once read
 }
 
 // newAppModel builds the model, seeding tabs straight from the cache so the
@@ -126,6 +133,11 @@ func newAppModel(ctx context.Context, events *sonos.EventManager, cached []sonos
 	favourites.Mode = panes.ModalFixed
 	favourites.Color = favouritesBorderColor()
 
+	// Fixed, as the favourites are, and in its own colour.
+	search := panes.NewModal(searchContent{})
+	search.Mode = panes.ModalFixed
+	search.Color = searchBorderColor()
+
 	// Hovering, not fixed: it lists a handful of rooms and has nothing that
 	// changes under the reader, so it can fit itself to what it holds.
 	grouping := panes.NewModal(groupContent{})
@@ -138,7 +150,7 @@ func newAppModel(ctx context.Context, events *sonos.EventManager, cached []sonos
 	marking.Color = favouritesBorderColor()
 
 	m := appModel{ctx: ctx, tabs: tabs, eventManager: events, fromCache: len(cached) > 0,
-		help: help, queue: queue, favourites: favourites, grouping: grouping, marking: marking,
+		help: help, queue: queue, favourites: favourites, search: search, grouping: grouping, marking: marking,
 		cachedStates: map[string]cachedState{}, found: map[string]bool{},
 		screenTop: math.MaxInt} // the bottom, until main says where the cursor was
 	for _, speaker := range cached {
@@ -270,7 +282,7 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // closing a modal would leave a copy of it behind, once per cycle.
 func (m appModel) growFrame() appModel {
 	needed := playerHeightRows
-	for _, modal := range []panes.Modal{m.help, m.queue, m.favourites, m.grouping, m.marking} {
+	for _, modal := range []panes.Modal{m.help, m.queue, m.favourites, m.search, m.grouping, m.marking} {
 		if !modal.IsOpen() {
 			continue
 		}
@@ -457,6 +469,8 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.openQueue()
 		case "f":
 			return m.openFavourites()
+		case "s":
+			return m.openSearch()
 		case "a":
 			return m.markNowPlaying()
 		}
@@ -489,6 +503,10 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if ask != nil {
 			cmds = append(cmds, ask)
 		}
+		var lookUp tea.Cmd
+		if m, lookUp = m.lookUpHousehold(msg.speaker.device); lookUp != nil {
+			cmds = append(cmds, lookUp)
+		}
 		if msg.degraded != "" {
 			cmds = append(cmds, notify(panes.NoticeWarn, msg.degraded))
 		}
@@ -519,6 +537,12 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.applyHintTick()
 	case favouritesLoadedMsg:
 		return m.applyFavouritesLoaded(msg)
+	case searchAskMsg:
+		return m.applySearchAsk(msg)
+	case searchDoneMsg:
+		return m.applySearchDone(msg)
+	case cloudHouseholdMsg:
+		return m.applyCloudHousehold(msg)
 	case favouriteKindChosenMsg:
 		return m.applyFavouriteKindChosen(msg)
 	case favouriteActionMsg:
@@ -605,7 +629,8 @@ func (m appModel) applyVerified(msg speakerVerifiedMsg) (tea.Model, tea.Cmd) {
 		// A cached speaker never arrives as ready, so this is where one gets
 		// its turn to say how its household is grouped.
 		m, ask := m.readUncovered()
-		return m, tea.Batch(cmd, degraded, ask,
+		m, lookUp := m.lookUpHousehold(msg.speaker)
+		return m, tea.Batch(cmd, degraded, ask, lookUp,
 			refreshQueue(m.ctx, msg.speaker), waitForEvent(msg.speaker))
 	}
 	return m, nil

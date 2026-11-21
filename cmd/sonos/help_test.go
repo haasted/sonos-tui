@@ -125,6 +125,7 @@ var helpLayers = map[string]struct {
 	"tabs.go":       {"player", playerHelp},
 	"queue.go":      {"queue", queueHelp},
 	"favourites.go": {"favourites", favouritesHelp},
+	"search.go":     {"search", searchHelp},
 }
 
 // helpLayersWithoutAPopup are files whose bindings no popup documents yet,

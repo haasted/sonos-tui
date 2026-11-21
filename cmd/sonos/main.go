@@ -60,7 +60,9 @@ func main() {
 
 	model := newAppModel(ctx, events, cached, selected)
 	model.db = db
-	model.cloud = openCloud()
+	if cloud := openCloud(); cloud != nil {
+		model.cloud = cloud
+	}
 	if row, ok := startRow(); ok {
 		model.screenTop = row
 	}

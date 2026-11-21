@@ -69,7 +69,7 @@ func listHintTick(gen int, every time.Duration) tea.Cmd {
 
 // listSlots are every list modal, in the order they are drawn.
 func (m *appModel) listSlots() []listSlot {
-	return []listSlot{m.queueSlot(), m.favouritesSlot()}
+	return []listSlot{m.queueSlot(), m.favouritesSlot(), m.searchSlot()}
 }
 
 func (m *appModel) queueSlot() listSlot {
@@ -78,6 +78,10 @@ func (m *appModel) queueSlot() listSlot {
 
 func (m *appModel) favouritesSlot() listSlot {
 	return listSlot{modal: &m.favourites, pulse: &m.favouritesGen, hint: &m.favouritesHintGen, help: favouritesHelp}
+}
+
+func (m *appModel) searchSlot() listSlot {
+	return listSlot{modal: &m.search, pulse: &m.searchGen, hint: &m.searchHintGen, help: searchHelp}
 }
 
 // listSweeping reports whether the opening light is still going round any

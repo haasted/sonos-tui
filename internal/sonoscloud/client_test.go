@@ -93,6 +93,28 @@ func TestClient_NoValidSessionSendsNothing(t *testing.T) {
 	}
 }
 
+// Case: a valid session, none, and one that has run out. SignedIn says which
+// without a request.
+func TestClient_SignedInAsksNothing(t *testing.T) {
+	expired := validSession(sessionName)
+	expired.Cookies[0].Expires = time.Now().Add(-time.Minute)
+
+	for name, tc := range map[string]struct {
+		session sonoscloud.Session
+		want    bool
+	}{
+		"valid":   {validSession(sessionName), true},
+		"none":    {sonoscloud.Session{}, false},
+		"expired": {expired, false},
+	} {
+		var requests int
+		srv := fakeWebApp(t, func(w http.ResponseWriter, r *http.Request) { requests++ })
+
+		assert.Equal(t, tc.want, newClient(t, srv, &memStore{session: tc.session}).SignedIn(), name)
+		assert.Zero(t, requests, "%s: a request went out", name)
+	}
+}
+
 // Case: the server renews the session, as it does on every use. The new
 // value and its new expiry are saved at once.
 func TestClient_SavesARenewedSession(t *testing.T) {

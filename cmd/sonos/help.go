@@ -56,6 +56,7 @@ var playerHelp = helpTable{
 			{"enter", "show the queue"},
 			{"g", "group with"},
 			{"f", "favourites"},
+			{"s", "search Apple Music"},
 			{"a", "mark as a favourite"},
 		}},
 		{"Sound", []helpKey{
@@ -124,6 +125,26 @@ var favouritesHelp = helpTable{
 			{"X", "restore the last favourite removed"},
 			{"/", "filter the list"},
 			{"esc", "close"},
+		}},
+	},
+}
+
+// searchHelp is what "?" shows over the search. The box takes the keys while
+// it is open; the list moves with the queue's keys, and ← → tab switch type.
+var searchHelp = helpTable{
+	{
+		{"Search", []helpKey{
+			{"enter", "search for what the box holds"},
+			{"/", "back to the box"},
+			{"↑ ↓  k j", "move a row"},
+			{"pgup  F", "page up"},
+			{"pgdn f spc", "page down"},
+			{"^u  ^d", "half a page"},
+			{"home  g", "to the top"},
+			{"end  G", "to the end"},
+			{"→  tab", "next type"},
+			{"←  ⇧tab", "previous type"},
+			{"esc", "leave the box, then close"},
 		}},
 	},
 }
