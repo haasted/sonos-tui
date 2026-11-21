@@ -30,12 +30,6 @@ production code never imports from here.
   authentication type and endpoint. Marks the ones that stream here: no account
   needed, or an account seen in the favourites or the queue. Needs
   real speakers; see `make music-services` (`MUSIC_ARGS=-ip=<address>`).
-- `sonosweb/` — signs in to the Sonos web app, play.sonos.com, with Colly
-  (`github.com/gocolly/colly/v2`) as an ordinary browser would, and asks for
-  the account in the terminal. Keeps the session in the application
-  database, where the client reads it, and prints no secret. Needs
-  the internet, not speakers; see `make sonos-web` (`WEB_ARGS=-fresh`), and
-  `make sonos-search` to type one search after another and list the results.
 - `browse/` — a mock-up of the client's favourites modal, to try out browsing
   into a favourite before the real modal changes. The modal's code is copied
   from `cmd/sonos` (it is package `main` there and cannot be imported); the

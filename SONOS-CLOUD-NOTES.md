@@ -4,8 +4,8 @@ Findings about the Sonos cloud, as the Sonos web app (play.sonos.com) uses
 it. `SONOS-NOTES.md` holds the findings about the speakers on the local
 network; this file holds what needs the internet and a Sonos account.
 
-Everything here was measured with `experiments/sonosweb` (`make sonos-web`) in
-November 2026. These are unofficial, undocumented endpoints of Sonos's web
+Everything here was measured in November 2026, first with an experiment that
+has since been removed, then with `internal/sonoscloud` and its live tests. These are unofficial, undocumented endpoints of Sonos's web
 app. They can change or stop at any time, and to use them from a program is
 probably outside Sonos's terms. By the README's principles, a feature built on
 them must be optional: the program must work fully without them.

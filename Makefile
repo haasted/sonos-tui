@@ -1,4 +1,4 @@
-.PHONY: build fmt fmt-check vet tidy-check test test-verbose test-race test-live run run-logs run-nocache db queue-events notify-capture discover-probe music-services sonos-web sonos-search browse-mock demo-client uitest worktrees tidy adr-html help
+.PHONY: build fmt fmt-check vet tidy-check test test-verbose test-race test-live run run-logs run-nocache db queue-events notify-capture discover-probe music-services browse-mock demo-client uitest worktrees tidy adr-html help
 
 .DEFAULT_GOAL := help
 
@@ -69,12 +69,6 @@ music-services: ## List the music services one speaker offers (MUSIC_ARGS=-ip=<a
 demo-client: ## Record demos/client.gif from demos/client.tape with vhs (needs speakers)
 	@command -v vhs >/dev/null || { echo "vhs is not installed: https://github.com/charmbracelet/vhs"; exit 1; }
 	vhs demos/client.tape
-
-sonos-web: ## Sign in to the Sonos web app, asking for the account (WEB_ARGS=-fresh signs in again)
-	cd experiments && go run ./sonosweb $(WEB_ARGS)
-
-sonos-search: ## Search a music service through the Sonos web app, one query after another (SEARCH_ARGS=-account=2 by default)
-	cd experiments && go run ./sonosweb -interactive $(or $(SEARCH_ARGS),-account=2)
 
 browse-mock: ## A mock-up of the favourites modal with made-up favourites, to try out browsing into one
 	cd experiments && go run ./browse
