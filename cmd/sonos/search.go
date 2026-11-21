@@ -106,12 +106,13 @@ func (s searchContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // boxKey is one key while the box has the keys. Every key that types text is
-// text here, q and ? too.
+// text here, q and ? too. esc on an empty box does not get here: it closes
+// the search.
 func (s searchContent) boxKey(msg tea.KeyMsg) (searchContent, tea.Cmd) {
 	key := msg.String()
 	switch key {
-	case "esc":
-		s.filtering = false
+	case "esc", "ctrl+u":
+		s.query = ""
 	case "enter":
 		query := strings.TrimSpace(s.query)
 		if query == "" {

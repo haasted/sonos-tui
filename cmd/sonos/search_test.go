@@ -155,6 +155,52 @@ func TestSearch_SlashGoesBackToTheBox(t *testing.T) {
 	assert.Equal(t, "bowies", searchOf(m).query)
 }
 
+// Case: esc with text in the box. The text is cleared, and the box and the
+// search stay open.
+func TestSearch_EscClearsTheBox(t *testing.T) {
+	m := typeSearch(pressKey(searchModel(t, &fakeCloud{signedIn: true}), "s"), "b", "o")
+
+	m = pressKey(m, "esc")
+
+	require.True(t, m.search.IsOpen(), "esc closed the search")
+	assert.True(t, searchOf(m).filtering, "esc moved the keys from the box")
+	assert.Empty(t, searchOf(m).query)
+}
+
+// Case: esc with the box empty. The search closes.
+func TestSearch_EscOnAnEmptyBoxCloses(t *testing.T) {
+	m := typeSearch(pressKey(searchModel(t, &fakeCloud{signedIn: true}), "s"), "b", "esc")
+	require.True(t, m.search.IsOpen())
+
+	m = pressKey(m, "esc")
+
+	assert.False(t, m.search.IsOpen(), "esc on an empty box did not close the search")
+}
+
+// Case: ctrl+u with text in the box. The text is cleared, and the box keeps
+// the keys.
+func TestSearch_CtrlUClearsTheBox(t *testing.T) {
+	m := typeSearch(pressKey(searchModel(t, &fakeCloud{signedIn: true}), "s"), "b", "o")
+
+	m = pressKey(m, "ctrl+u")
+
+	require.True(t, m.search.IsOpen())
+	assert.True(t, searchOf(m).filtering, "ctrl+u moved the keys from the box")
+	assert.Empty(t, searchOf(m).query)
+}
+
+// Case: / after a search, then esc. The query is cleared and the box keeps
+// the keys, rather than the keys going back to the results.
+func TestSearch_EscAfterSlashClearsTheQuery(t *testing.T) {
+	m := searchFor(t, searchModel(t, &fakeCloud{signedIn: true, results: sampleResults()}), "bowie")
+
+	m = typeSearch(m, "/", "esc")
+
+	require.True(t, m.search.IsOpen(), "esc closed the search")
+	assert.True(t, searchOf(m).filtering, "esc moved the keys to the results")
+	assert.Empty(t, searchOf(m).query)
+}
+
 // Case: the startup lookup of the household, with and without a session.
 // With none, the cloud is never asked.
 func TestSearch_TheHouseholdIsLookedUpOnlyWithASession(t *testing.T) {

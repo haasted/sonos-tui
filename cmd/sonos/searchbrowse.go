@@ -185,10 +185,16 @@ func (s searchContent) leaveAll() searchContent {
 	return s
 }
 
-// ClaimsEsc keeps esc from closing the modal while it has a filter to clear
-// or a level to go back from.
+// ClaimsEsc keeps esc from closing the modal while it has a level to go back
+// from, a query in the open box, or a filter to clear.
 func (s searchContent) ClaimsEsc() bool {
-	return s.listView.ClaimsEsc() || len(s.levels) > 0
+	switch {
+	case len(s.levels) > 0:
+		return true
+	case s.filtering:
+		return s.query != ""
+	}
+	return s.listView.ClaimsEsc()
 }
 
 // onBackRow reports the cursor on the row that goes back.
