@@ -430,19 +430,21 @@ func TestSearch_AFavouriteFromTheQueueIsTheSameOne(t *testing.T) {
 // fakeCloud stands in for the Sonos cloud. It knows one household and
 // answers every search with results, or with err.
 type fakeCloud struct {
-	signedIn  bool
-	results   sonoscloud.SearchResults
-	err       error
-	queries   []string // what was searched for, in order
-	artist    sonoscloud.Artist
-	artistErr error
-	album     sonoscloud.Album
-	whole     sonoscloud.Album // what RestOfAlbum gives
-	signInErr error
-	ends      time.Time // when the session runs out, as its cookie says
-	signIns   []string  // the usernames signed in with, in order
-	restErr   error
-	opened    []string // the artists and albums opened, by id, in order
+	signedIn   bool
+	results    sonoscloud.SearchResults
+	err        error
+	queries    []string // what was searched for, in order
+	artist     sonoscloud.Artist
+	artistErr  error
+	album      sonoscloud.Album
+	whole      sonoscloud.Album // what RestOfAlbum gives
+	signInErr  error
+	ends       time.Time // when the session runs out, as its cookie says
+	signIns    []string  // the usernames signed in with, in order
+	restErr    error
+	opened     []string // the artists and albums opened, by id, in order
+	signOuts   int      // how many sign-outs were asked for
+	signOutErr error
 }
 
 var _ musicCloud = &fakeCloud{}
@@ -459,6 +461,13 @@ func (f *fakeCloud) SignIn(_ context.Context, username, _ string) error {
 	}
 	f.signedIn = true
 	return nil
+}
+
+// SignOut signs out, and answers signOutErr.
+func (f *fakeCloud) SignOut(context.Context) error {
+	f.signOuts++
+	f.signedIn = false
+	return f.signOutErr
 }
 
 func (f *fakeCloud) Household(context.Context, string) (sonoscloud.Household, error) {

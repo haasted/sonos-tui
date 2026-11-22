@@ -391,6 +391,14 @@ func (j *sessionJar) SetCookies(u *url.URL, cookies []*http.Cookie) {
 	}
 }
 
+// reset drops every cookie the jar holds, the session's and any other.
+func (j *sessionJar) reset() {
+	inner, _ := cookiejar.New(nil) // fails only with a bad public suffix list, and none is given
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.inner, j.session, j.changed = inner, map[string]Cookie{}, false
+}
+
 func (j *sessionJar) Cookies(u *url.URL) []*http.Cookie { return j.inner.Cookies(u) }
 
 // current is the session as the jar holds it now.

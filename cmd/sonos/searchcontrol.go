@@ -49,6 +49,7 @@ type musicCloud interface {
 	SessionEnds() time.Time
 	Household(ctx context.Context, localID string) (sonoscloud.Household, error)
 	SignIn(ctx context.Context, username, password string) error
+	SignOut(ctx context.Context) error
 	Search(ctx context.Context, household string, service int, query string) (sonoscloud.SearchResults, error)
 	OpenArtist(ctx context.Context, household string, service int, objectID string) (sonoscloud.Artist, error)
 	OpenAlbum(ctx context.Context, household string, service int, objectID string) (sonoscloud.Album, error)

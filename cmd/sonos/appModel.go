@@ -591,6 +591,8 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.applyAlbumMore(msg)
 	case settingsSignOutMsg:
 		return m.applySettingsSignOut(msg)
+	case settingsSignedOutMsg:
+		return m.applySettingsSignedOut(msg)
 	case settingsKeptMsg:
 		return m.applySettingsKept(msg)
 	case settingsSignInMsg:

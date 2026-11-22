@@ -1,12 +1,16 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/haasted/sonos-tui/internal/sonoscloud"
+	"github.com/haasted/sonos-tui/internal/ui/panes"
 )
 
 // Case: , on the player, signed in. The settings open on the cloud's section,
@@ -67,15 +71,45 @@ func TestSettings_AnyOtherKeyKeepsTheSession(t *testing.T) {
 	}
 }
 
-// Case: the sign-out asked for, before it is built. The border says so and
-// the session stays.
-func TestSettings_SignOutIsNotBuiltYet(t *testing.T) {
-	m := pressKey(searchModel(t, &fakeCloud{signedIn: true}), ",")
+// Case: the sign-out asked for, and done. The border says it is signing
+// out meanwhile; then the settings offer to sign in, the search's results
+// are gone and the border confirms it.
+func TestSettings_SigningOut(t *testing.T) {
+	cloud := &fakeCloud{signedIn: true}
+	m := pressKey(searchModel(t, cloud), ",")
+	m.search.Content = searchContent{asked: "bowie"}
 
-	m = deliver(m, settingsSignOutMsg{})
+	m, cmd := deliverCmd(m, settingsSignOutMsg{})
+	assert.True(t, m.settings.NoticeShowing(), "the border does not say it is signing out")
+	for _, msg := range flatten(cmd) {
+		m = deliver(m, msg)
+	}
 
+	assert.Equal(t, 1, cloud.signOuts)
+	require.True(t, m.settings.IsOpen())
 	assert.True(t, m.settings.NoticeShowing())
-	assert.Contains(t, plain(m.View().Content), listCursorGlyph+" "+settingsSignOut)
+	view := plain(m.View().Content)
+	assert.Contains(t, view, settingsSignedOut)
+	assert.Contains(t, view, listCursorGlyph+" "+settingsSignIn)
+	assert.Empty(t, searchOf(m).asked, "the search kept the old session's results")
+}
+
+// Case: each way a sign-out can end, and what the border says. Sonos not
+// told is a warning; a session left on the machine is an error.
+func TestSettings_WhatEachSignOutSays(t *testing.T) {
+	for name, tc := range map[string]struct {
+		err   error
+		text  string
+		level panes.NoticeLevel
+	}{
+		"done":        {nil, settingsSignedOutOK, panes.NoticeInfo},
+		"not told":    {fmt.Errorf("%w: offline", sonoscloud.ErrServerNotTold), settingsNotTold, panes.NoticeWarn},
+		"not deleted": {errors.Join(fmt.Errorf("%w: disk", sonoscloud.ErrNotDeleted), sonoscloud.ErrServerNotTold), settingsNotDeleted, panes.NoticeError},
+	} {
+		notice := signedOutNotice(tc.err)
+		assert.Equal(t, tc.text, notice.Text, name)
+		assert.Equal(t, tc.level, notice.Level, name)
+	}
 }
 
 // Case: "Sign in" in the settings, then a sign-in. The sign-in opens over the

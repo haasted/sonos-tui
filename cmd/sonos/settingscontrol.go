@@ -4,20 +4,26 @@
 package main
 
 import (
+	"errors"
+	"log/slog"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/haasted/sonos-tui/internal/sonoscloud"
 	"github.com/haasted/sonos-tui/internal/ui/panes"
 )
 
 // What the settings' bottom border says. The hint comes after listHintDelay
 // with no key, as in the list modals.
 const (
-	settingsHint       = "enter chooses · esc closes"
-	settingsKept       = "still signed in"
-	settingsSignedInOK = "signed in"
-	settingsNotBuilt   = "signing out is not built yet"
+	settingsHint        = "enter chooses · esc closes"
+	settingsKept        = "still signed in"
+	settingsSignedInOK  = "signed in"
+	settingsSigningOut  = "signing out…"
+	settingsSignedOutOK = "signed out"
+	settingsNotTold     = "signed out here; could not reach Sonos"
+	settingsNotDeleted  = "could not delete the saved session"
 )
 
 type (
@@ -26,6 +32,10 @@ type (
 	// tells them from those of an earlier notice or opening.
 	settingsHintDueMsg struct{ gen int }
 	settingsTickMsg    struct{ gen int }
+
+	// settingsSignedOutMsg is how a sign-out went. The local data is gone
+	// unless err says it could not be deleted.
+	settingsSignedOutMsg struct{ err error }
 )
 
 // openSettings opens the settings with the cloud as it is now.
@@ -64,13 +74,46 @@ func (m appModel) updateSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// applySettingsSignOut is where signing out goes. Until it is built, the
-// border says so and the session stays.
+// applySettingsSignOut signs out in the background and says so in the
+// border. The settings take no keys until it is done.
 func (m appModel) applySettingsSignOut(settingsSignOutMsg) (tea.Model, tea.Cmd) {
-	if content, ok := m.settings.Content.(settingsContent); ok {
-		m.settings.Content = content.showing(m.cloudState())
+	if m.cloud == nil {
+		return m, nil
 	}
-	return m.settingsNotify(panes.NoticeMsg{Level: panes.NoticeWarn, Text: settingsNotBuilt})
+	m, notice := m.settingsNotify(panes.NoticeMsg{Level: panes.NoticeInfo, Text: settingsSigningOut})
+	ctx, cloud := m.ctx, m.cloud
+	return m, tea.Batch(notice, func() tea.Msg { return settingsSignedOutMsg{err: cloud.SignOut(ctx)} })
+}
+
+// applySettingsSignedOut drops what the app holds from the cloud, shows the
+// settings signed out and says how the sign-out went.
+func (m appModel) applySettingsSignedOut(msg settingsSignedOutMsg) (tea.Model, tea.Cmd) {
+	if m.searchCancel != nil {
+		m.searchCancel()
+		m.searchCancel = nil
+	}
+	m.searchRun = nextGen() // an answer still on its way is for the old session
+	m.search.Content = searchContent{}
+	if !m.settings.IsOpen() {
+		return m, nil
+	}
+	content, _ := m.settings.Content.(settingsContent)
+	m.settings.Content = content.showing(m.cloudState())
+	return m.settingsNotify(signedOutNotice(msg.err))
+}
+
+// signedOutNotice is what the border says about a sign-out. A failure to
+// tell Sonos is a warning: nothing of the session is left here.
+func signedOutNotice(err error) panes.NoticeMsg {
+	switch {
+	case err == nil:
+		return panes.NoticeMsg{Level: panes.NoticeInfo, Text: settingsSignedOutOK, Confirmation: true}
+	case errors.Is(err, sonoscloud.ErrNotDeleted):
+		slog.Error("signing out of the Sonos cloud", "err", err)
+		return panes.NoticeMsg{Level: panes.NoticeError, Text: settingsNotDeleted}
+	}
+	slog.Warn("telling Sonos about the sign-out", "err", err)
+	return panes.NoticeMsg{Level: panes.NoticeWarn, Text: settingsNotTold}
 }
 
 // applySettingsKept says the sign-out asked for once was not done.

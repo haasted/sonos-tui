@@ -49,6 +49,13 @@ func (p *pageCache[T]) put(key string, value T, now time.Time) {
 	p.pages[key] = cached[T]{value: value, at: now}
 }
 
+// clear drops every page kept.
+func (p *pageCache[T]) clear() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	clear(p.pages)
+}
+
 // pageKey names a page of a household's service.
 func pageKey(household string, service int, objectID string) string {
 	return household + "/" + strconv.Itoa(service) + "/" + objectID

@@ -81,6 +81,50 @@ The experiment and the client keep the cookie in the application database
 (`sonos.db`, mode 0600, in a folder of mode 0700), outside the repository. The cookie is a sign-in to the Sonos
 account: do not print it, log it or commit it.
 
+## Signing out
+
+The web app signs out in two requests, traced in Chrome on 2026-11-22:
+
+1. `GET /api/auth/logout?_rsc={random}` with the session cookie, sent as a
+   fetch by the Next.js router. It answers 307 to the OAuth server's
+   sign-out.
+2. `GET https://oauth.ws.sonos.com/oauth/v4/meridian/logout?id_token_hint={token}&post_logout_redirect_uri=https%3A%2F%2Fplay.sonos.com%2Flogout`.
+   This is OpenID Connect's sign-out. It ends the session on the OAuth
+   server, so a copy of the cookie stops working.
+
+- **The token comes from the server.** The web app's server takes the ID
+  token out of the session and puts it in the redirect. The client keeps no
+  token and no cookie of `oauth.ws.sonos.com`: `id_token_hint` names the
+  session without them.
+- **The token is a secret.** It is a signed ID token, valid for 2 hours,
+  with the account's ids and an `srt` claim. Never log the address of the
+  second request.
+- **DevTools shows no status for step 2.** The router's fetch follows the 307
+  to another origin, and CORS blocks the answer. The request still arrives.
+  The router then loads the target as a page.
+
+What each step answers, measured from the client on 2026-11-22:
+
+- **Step 1** answers 307 from Vercel, with an empty body. `X-Matched-Path`
+  is `/api/auth/logout.rsc`. It clears the cookies `__Secure-next-auth.session-token`
+  and `callbackUrl` (`Max-Age=0`). `Vary` names `rsc`, `next-router-state-tree`,
+  `next-router-prefetch` and `next-router-segment-prefetch`. The client sends
+  only `RSC: 1` of these, and still gets the 307.
+- **Step 2** answers 302 from CloudFront to Okta's sign-out:
+  `https://login.sonos.com/oauth2/{authServer}/v1/logout?id_token_hint={token}&post_logout_redirect_uri=…&state=…`.
+  Its `Access-Control-Allow-Origin` is empty, which is why the browser's
+  fetch shows no status.
+- **Step 3**, Okta, answers 200 with an HTML page, not a redirect back to
+  the web app. It clears Okta's cookies (`sid`, `xids`, `JSESSIONID`, `t` and
+  others) and sets `DT`, Okta's device token, for 2 years.
+
+Not measured: whether the server refuses a copy of the cookie after the
+sign-out, and the browser's other headers on step 1.
+
+The client sends step 1 as a fetch with `RSC: 1` and a new random `_rsc`,
+without following the redirect. It follows the redirects only to
+`*.sonos.com` hosts over HTTPS, as page loads, and then drops every cookie.
+
 ## The household id
 
 A search address holds the household id. The sign-in pages, the session
