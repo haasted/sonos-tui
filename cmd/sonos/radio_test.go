@@ -107,9 +107,10 @@ func stateFromFixture(t *testing.T, name string) sonos.DeviceState {
 	require.NoError(t, err)
 
 	return sonos.DeviceState{
-		Transport: sonos.TransportInfo{State: event.TransportState},
-		Current:   event.Current,
-		Source:    event.Source,
-		RelTime:   "0:01:04",
+		Transport:  sonos.TransportInfo{State: event.TransportState},
+		Current:    event.Current,
+		TrackKnown: event.HasCurrent,
+		Source:     event.Source,
+		RelTime:    "0:01:04",
 	}
 }

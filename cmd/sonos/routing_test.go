@@ -138,6 +138,7 @@ func playingBody(title string) []byte {
 	return []byte(`<e:propertyset xmlns:e="urn:schemas-upnp-org:event-1-0"><e:property><LastChange>` +
 		`&lt;Event xmlns="urn:schemas-upnp-org:metadata-1-0/AVT/"&gt;&lt;InstanceID val="0"&gt;` +
 		`&lt;TransportState val="PLAYING"/&gt;&lt;RelativeTimePosition val="0:00:12"/&gt;` +
+		`&lt;CurrentTrackURI val="x-sonos-http:song%3a1.mp4"/&gt;` +
 		`&lt;CurrentTrackMetaData val="&amp;lt;DIDL-Lite&amp;gt;&amp;lt;item&amp;gt;&amp;lt;dc:title&amp;gt;` +
 		title + `&amp;lt;/dc:title&amp;gt;&amp;lt;/item&amp;gt;&amp;lt;/DIDL-Lite&amp;gt;"/&gt;` +
 		`&lt;/InstanceID&gt;&lt;/Event&gt;</LastChange></e:property></e:propertyset>`)

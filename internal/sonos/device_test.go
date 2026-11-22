@@ -114,6 +114,21 @@ func TestDevice_RefreshTrack(t *testing.T) {
 	assert.Equal(t, "0:01:15", state.RelTime)
 }
 
+// Case: a speaker before any read, then an event with no track loaded, as a
+// speaker with an empty queue sends. Only after the event is it empty.
+func TestDevice_EmptyOnlyOnceTheTrackIsRead(t *testing.T) {
+	srv := avTransportServer(t, "STOPPED")
+	defer srv.Close()
+	d := newTestDevice(t, srv)
+	assert.False(t, d.State().Empty(), "a speaker not read yet is empty")
+
+	body := notifyBody(`<TransportState val="STOPPED"/><CurrentTrackURI val=""/>` +
+		`<CurrentTrackMetaData val="NOT_IMPLEMENTED"/><CurrentTrackDuration val=""/>`)
+	require.NoError(t, d.HandleAVTransportEvent(context.Background(), body))
+
+	assert.True(t, d.State().Empty())
+}
+
 func notifyBody(inner string) []byte {
 	return []byte(`<?xml version="1.0"?>
 <e:propertyset xmlns:e="urn:schemas-upnp-org:event-1-0">

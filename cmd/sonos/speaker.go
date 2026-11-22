@@ -33,6 +33,11 @@ const (
 	// number of presses, so it caps the rate a held key ramps at rather than
 	// how finely a tap moves. Down is deliberately uncapped: it is the escape.
 	volumeUpMaxStep = 6
+
+	// What the panel says for a speaker with no track loaded, and the keys
+	// that load one from here.
+	emptyTitle = "Nothing queued"
+	emptyHint  = "f favourites · s search"
 )
 
 // confirmations are what each playback command says once it has happened. Play
@@ -95,6 +100,10 @@ func newSpeakerModel(ctx context.Context, device *sonos.Device) speakerModel {
 // slot, which for station playback is empty anyway; and the clock is replaced
 // by a label whenever the duration is meaningless.
 func trackFromState(state sonos.DeviceState) nowplaying.Track {
+	if state.Empty() {
+		return nowplaying.Track{Title: emptyTitle, Artist: emptyHint, Empty: true,
+			Playing: state.Playing(), Muted: state.Muted, Volume: state.Volume}
+	}
 	title := state.Current.Title
 	if title == "" {
 		title = state.Source.Name

@@ -1,10 +1,12 @@
 package nowplaying_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/haasted/sonos-tui/internal/ui/nowplaying"
 	"github.com/stretchr/testify/assert"
@@ -24,6 +26,20 @@ func TestModel_View_RendersTrack(t *testing.T) {
 	view := m.View()
 	assert.Contains(t, view, "Fortunate Son")
 	assert.Contains(t, view, "0:58 / 2:21")
+}
+
+// Case: a speaker with no track loaded. The message and hint show in the
+// title and artist rows, with no clock and no glyph, in the panel's three
+// rows; nothing keeps ticking.
+func TestModel_View_EmptySpeaker(t *testing.T) {
+	m := nowplaying.New(nowplaying.Track{Title: "Nothing queued", Artist: "f favourites · s search", Empty: true})
+
+	lines := strings.Split(m.View(), "\n")
+	require.Len(t, lines, 3)
+	assert.Equal(t, "  Nothing queued", strings.TrimRight(ansi.Strip(lines[0]), " "))
+	assert.Equal(t, "  f favourites · s search", strings.TrimRight(ansi.Strip(lines[1]), " "))
+	assert.NotContains(t, m.View(), "0:00")
+	assert.Nil(t, m.Init(), "an empty speaker keeps a tick running")
 }
 
 func TestModel_TrackMsg_UpdatesView(t *testing.T) {

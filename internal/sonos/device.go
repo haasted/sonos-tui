@@ -32,9 +32,10 @@ type Device struct {
 // DeviceState is a point-in-time snapshot of what Device knows about the
 // speaker, without going to the network.
 type DeviceState struct {
-	Transport TransportInfo
-	Current   TrackMetadata
-	RelTime   string
+	Transport  TransportInfo
+	Current    TrackMetadata
+	TrackKnown bool // Current was read, as against not read yet
+	RelTime    string
 
 	Volume int
 	Muted  bool
@@ -66,6 +67,13 @@ type DeviceState struct {
 	// rises whenever the queue changes, so a copy read at a lower id is
 	// stale. Zero until an event or a Browse has reported one.
 	QueueUpdateID int
+}
+
+// Empty reports a speaker known to have nothing to play: no track loaded, and
+// an empty queue or no source. A station between tracks has no track either,
+// so it is not empty; nor is a speaker not read yet.
+func (s DeviceState) Empty() bool {
+	return s.TrackKnown && s.Current.URI == "" && s.Tracks == 0 && (s.Source.URI == "" || s.Source.IsQueue())
 }
 
 // Live reports playback with no meaningful duration: a broadcast, or a station
@@ -166,7 +174,7 @@ func (d *Device) HandleAVTransportEvent(ctx context.Context, body []byte) error 
 		d.state.QueueSource = parsed.QueueSource
 	}
 	if parsed.HasCurrent {
-		d.state.Current = parsed.Current
+		d.state.Current, d.state.TrackKnown = parsed.Current, true
 	}
 	if parsed.HasTrack {
 		d.state.Track = parsed.Track
@@ -298,6 +306,7 @@ func (d *Device) RefreshTrack(ctx context.Context) error {
 		Album:       info.Album,
 		AlbumArtURI: info.AlbumArtURI,
 	}
+	d.state.TrackKnown = true
 	d.state.RelTime = info.RelTime
 	d.mu.Unlock()
 	return nil

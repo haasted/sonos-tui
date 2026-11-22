@@ -31,6 +31,10 @@ type Track struct {
 	// meaningful duration — "live", "radio", "stream". Empty for ordinary
 	// tracks, including those a station happens to be playing.
 	StreamLabel string
+
+	// Empty says the speaker has no track loaded. Title and Artist then hold
+	// a message and a hint, drawn without the glyph and the clock.
+	Empty bool
 }
 
 type TrackMsg struct {
@@ -146,6 +150,7 @@ type Model struct {
 	receivedAt  time.Time
 	duration    time.Duration
 	streamLabel string // non-empty while playback has no usable clock
+	empty       bool   // no track loaded: the title and artist are a message
 
 	labelGen   *int      // drives the label's idle glint
 	labelSweep time.Time // start of the current glint, zero between them
@@ -177,6 +182,7 @@ func (m Model) applyTrack(track Track) Model {
 
 	m.muted = track.Muted
 	m.playing = track.Playing
+	m.empty = track.Empty
 	m = m.markResting()
 	m.title = marquee.NewLine(track.Title, longTitleWindowWidth)
 	m.artist = marquee.NewLine(track.Artist, metaWindowWidth)
@@ -201,9 +207,10 @@ func (m Model) elapsed() time.Duration {
 }
 
 // resting reports a speaker that waits rather than plays. Muted counts even
-// while playing: the speaker runs, but nothing comes out of it.
+// while playing: the speaker runs, but nothing comes out of it. An empty
+// speaker shows no glyph, so it does not breathe.
 func (m Model) resting() bool {
-	return m.muted || !m.playing
+	return !m.empty && (m.muted || !m.playing)
 }
 
 // markResting starts the breath's clock on entry and clears it on exit. It
@@ -429,18 +436,6 @@ func (m Model) View() string {
 	if m.resting() {
 		spinnerGlyph = m.restingGlyph()
 	}
-	left := lipgloss.JoinHorizontal(lipgloss.Top, spinnerGlyph, " ", m.title.Render(trackStyle))
-	position := formatPosition(m.elapsed(), m.duration)
-	if m.streamLabel != "" {
-		position = m.streamReadout()
-	}
-
-	gap := titleRowWidth - lipgloss.Width(left) - lipgloss.Width(position)
-	if gap < 1 {
-		gap = 1
-	}
-	titleLine := left + strings.Repeat(" ", gap) + position
-
 	indent := strings.Repeat(" ", lipgloss.Width(spinnerGlyph)+1)
 
 	albumLine := indent + m.album.Render(albumStyle)
@@ -451,6 +446,19 @@ func (m Model) View() string {
 		gap := max(titleRowWidth-lipgloss.Width(albumLine)-lipgloss.Width(readout), 1)
 		albumLine += strings.Repeat(" ", gap) + readout
 	}
+
+	if m.empty {
+		return lipgloss.JoinVertical(lipgloss.Left,
+			indent+m.title.Render(trackStyle), indent+m.artist.Render(albumStyle), albumLine)
+	}
+
+	left := lipgloss.JoinHorizontal(lipgloss.Top, spinnerGlyph, " ", m.title.Render(trackStyle))
+	position := formatPosition(m.elapsed(), m.duration)
+	if m.streamLabel != "" {
+		position = m.streamReadout()
+	}
+	gap := max(titleRowWidth-lipgloss.Width(left)-lipgloss.Width(position), 1)
+	titleLine := left + strings.Repeat(" ", gap) + position
 
 	lines := []string{
 		titleLine,
