@@ -115,6 +115,21 @@ func TestClient_SignedInAsksNothing(t *testing.T) {
 	}
 }
 
+// Case: a saved session, and none. SessionEnds gives the cookie's expiry, or
+// the zero time, without a request.
+func TestClient_SessionEndsAsItsCookieSays(t *testing.T) {
+	var requests int
+	srv := fakeWebApp(t, func(w http.ResponseWriter, r *http.Request) { requests++ })
+	session := validSession(sessionName)
+
+	ends := newClient(t, srv, &memStore{session: session}).SessionEnds()
+	none := newClient(t, srv, &memStore{}).SessionEnds()
+
+	assert.True(t, ends.Equal(session.Expires()), "got %v, want %v", ends, session.Expires())
+	assert.True(t, none.IsZero())
+	assert.Zero(t, requests)
+}
+
 // Case: the server renews the session, as it does on every use. The new
 // value and its new expiry are saved at once.
 func TestClient_SavesARenewedSession(t *testing.T) {

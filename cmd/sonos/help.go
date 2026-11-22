@@ -72,6 +72,7 @@ var playerHelp = helpTable{
 			{"0", "last room"},
 		}},
 		{"App", []helpKey{
+			{",", "settings"},
 			{"esc", "close"},
 			{"q", "quit"},
 		}},

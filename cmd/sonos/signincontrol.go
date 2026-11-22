@@ -26,6 +26,14 @@ const (
 	signInFailed    = "could not sign in"
 )
 
+// signInFollow is what shows once a sign-in has worked: what asked for it.
+type signInFollow int
+
+const (
+	followSearch   signInFollow = iota // the search opens, and a stopped query runs again
+	followSettings                     // the settings show the new session
+)
+
 type (
 	// signInDoneMsg is how a sign-in went.
 	signInDoneMsg struct{ err error }
@@ -37,8 +45,10 @@ type (
 	signInTickMsg    struct{ gen int }
 )
 
-// openSignIn opens the sign-in, empty, over whatever is on screen.
-func (m appModel) openSignIn() (appModel, tea.Cmd) {
+// openSignIn opens the sign-in, empty, over whatever is on screen, and
+// remembers what shows once it has worked.
+func (m appModel) openSignIn(then signInFollow) (appModel, tea.Cmd) {
+	m.signInThen = then
 	content, blink := newSignIn()
 	m.signIn = m.signIn.Open()
 	m.signIn.Content = content
@@ -84,6 +94,9 @@ func (m appModel) applySignInDone(msg signInDoneMsg) (tea.Model, tea.Cmd) {
 	}
 	m.signIn = m.signIn.Close()
 	m.signInGen = nextGen()
+	if m.signInThen == followSettings {
+		return m.settingsSignedIn()
+	}
 	return m.afterSignIn()
 }
 

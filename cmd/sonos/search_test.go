@@ -439,7 +439,8 @@ type fakeCloud struct {
 	album     sonoscloud.Album
 	whole     sonoscloud.Album // what RestOfAlbum gives
 	signInErr error
-	signIns   []string // the usernames signed in with, in order
+	ends      time.Time // when the session runs out, as its cookie says
+	signIns   []string  // the usernames signed in with, in order
 	restErr   error
 	opened    []string // the artists and albums opened, by id, in order
 }
@@ -447,6 +448,8 @@ type fakeCloud struct {
 var _ musicCloud = &fakeCloud{}
 
 func (f *fakeCloud) SignedIn() bool { return f.signedIn }
+
+func (f *fakeCloud) SessionEnds() time.Time { return f.ends }
 
 // SignIn signs in unless signInErr is set, and records who signed in.
 func (f *fakeCloud) SignIn(_ context.Context, username, _ string) error {

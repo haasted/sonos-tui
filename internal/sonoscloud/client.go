@@ -195,6 +195,15 @@ func (c *Client) SignedIn() bool {
 	return c.jar.current().Valid(c.now())
 }
 
+// SessionEnds is when the saved session runs out, as its cookie says, or the
+// zero time when it does not say or no session is saved. It asks the server
+// nothing, and the server may end the session sooner.
+func (c *Client) SessionEnds() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.jar.current().Expires()
+}
+
 // get sends a GET that needs the session, and returns the answer's body. It
 // answers ErrSignedOut without a request when no valid session is saved.
 func (c *Client) get(ctx context.Context, path string, query url.Values) ([]byte, error) {

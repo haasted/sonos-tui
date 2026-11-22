@@ -181,7 +181,7 @@ func (m appModel) applyListClick(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 // and with it the reader's text selection.
 func (m appModel) listTakesTheWheel() bool {
 	_, open := m.openList()
-	return open && !m.help.IsOpen() && !m.signIn.IsOpen() && m.fits()
+	return open && !m.help.IsOpen() && !m.signIn.IsOpen() && !m.settings.IsOpen() && m.fits()
 }
 
 // restartListChain begins a fresh repaint chain and abandons any running one.
