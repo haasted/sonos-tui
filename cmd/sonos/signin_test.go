@@ -28,6 +28,16 @@ func TestSignIn_TheFieldsTakeEveryKey(t *testing.T) {
 	assert.Equal(t, "?q", s.password.Value())
 }
 
+// Case: a password pasted, as a password manager does. It lands in the field
+// the cursor is in.
+func TestSignIn_APasteReachesTheField(t *testing.T) {
+	m := pressKey(pressKey(searchModel(t, &fakeCloud{}), "s"), "tab")
+
+	m = deliver(m, tea.PasteMsg{Content: "pasted-pw"})
+
+	assert.Equal(t, "pasted-pw", signInOf(m).password.Value())
+}
+
 // Case: enter with a field empty. Nothing is sent; the cursor goes to the
 // empty field.
 func TestSignIn_EnterWithAFieldEmptySendsNothing(t *testing.T) {
@@ -140,6 +150,23 @@ func TestSignIn_ARefusedSearchRunsAgainAfterTheSignIn(t *testing.T) {
 	assert.Equal(t, []string{"bowie", "bowie"}, cloud.queries)
 	assert.Equal(t, []string{"Low", "Heroes"}, resultNames(searchOf(m)))
 	assert.False(t, searchOf(m).filtering, "the keys did not go to the results")
+}
+
+// Case: the session runs out while the search is open, and a new query is
+// asked. Once signed in, that query runs, not the one before it.
+func TestSignIn_TheQueryAskedSignedOutRunsAfterTheSignIn(t *testing.T) {
+	cloud := &fakeCloud{signedIn: true}
+	m := pressKey(searchModel(t, cloud), "s")
+	m.search.Content = searchContent{asked: "bowie"}
+	cloud.signedIn = false
+
+	m = deliver(m, searchAskMsg{query: "stones"})
+	require.True(t, m.signIn.IsOpen())
+	cloud.signedIn = true
+	m = deliver(m, signInDoneMsg{})
+
+	assert.Equal(t, "stones", searchOf(m).asked)
+	assert.True(t, searchOf(m).running, "the query did not run")
 }
 
 // Case: the sign-in left alone for the hint's time, and one with a key

@@ -116,7 +116,9 @@ func (m appModel) applySearchAsk(msg searchAskMsg) (tea.Model, tea.Cmd) {
 		m.search.Content = content.failed(searchNoCloud)
 		return m, nil
 	case !m.cloud.SignedIn():
-		m.search.Content = content.failed(searchSignedOut)
+		content = content.failed(searchSignedOut)
+		content.asked = msg.query // runs once signed in
+		m.search.Content = content
 		return m.openSignIn(followSearch)
 	}
 

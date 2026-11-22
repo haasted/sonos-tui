@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"slices"
@@ -181,9 +182,14 @@ func (c *Client) openAlbum(ctx context.Context, household string, service int, o
 
 	// The page holds the first 50; the album's track list gives up to
 	// firstAlbumTracks, the first 50 again among them.
+	// Without the list, the page's own tracks stand; the rest can be asked
+	// for again.
 	tracks, err := c.albumTracks(ctx, household, service, objectID, 0, min(album.Total, firstAlbumTracks))
 	if err != nil {
-		return Album{}, err
+		slog.Warn("sonoscloud: reading an album's tracks; showing the first page only", "err", err)
+		for _, e := range page.Tracks.Items {
+			tracks = append(tracks, e.track())
+		}
 	}
 	album.Tracks = tracks
 	return album, nil

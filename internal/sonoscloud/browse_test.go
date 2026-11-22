@@ -156,6 +156,7 @@ type fakeBrowse struct {
 	containerPages int  // how many container pages have entries, each with a nextUri but the last
 	gone           bool // answer every request 410
 	longAlbum      int  // the tracks a made-up long album holds; 0 serves the Blackstar fixture
+	tracksFail     bool // answer every track list 500
 
 	mu      sync.Mutex
 	paths   []string
@@ -182,6 +183,19 @@ func TestOpenAlbum_ALongAlbumStopsAt150(t *testing.T) {
 // Case: the rest of that album read. Every track comes once and in order,
 // though offset 150 is not a multiple of 100, and nothing is asked at or past
 // the end. Opening it again gives the whole album without a request.
+// Case: a long album whose track list fails. The album opens with the 50
+// tracks its page holds, and its total, so the rest can be asked for again.
+func TestOpenAlbum_AFailedTrackListKeepsThePage(t *testing.T) {
+	f := newFakeBrowse(t)
+	f.longAlbum, f.tracksFail = 294, true
+
+	album, err := f.client(t).OpenAlbum(t.Context(), "Sonos_home.cloud", 52231, "album:900")
+
+	require.NoError(t, err)
+	assert.Len(t, album.Tracks, 50)
+	assert.Equal(t, 294, album.Total)
+}
+
 func TestRestOfAlbum_ReadsEveryTrackOnce(t *testing.T) {
 	f := newFakeBrowse(t)
 	f.longAlbum = 294
@@ -283,6 +297,8 @@ func newFakeBrowse(t *testing.T) *fakeBrowse {
 		switch {
 		case f.gone:
 			w.WriteHeader(http.StatusGone)
+		case strings.HasSuffix(r.URL.EscapedPath(), "/tracks") && f.tracksFail:
+			w.WriteHeader(http.StatusInternalServerError)
 		case strings.HasSuffix(r.URL.EscapedPath(), "/tracks"):
 			f.writeTracks(w, r.URL.Query())
 		case strings.Contains(r.URL.EscapedPath(), "/albums/") && f.longAlbum > 0:

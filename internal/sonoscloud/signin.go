@@ -74,7 +74,7 @@ func (c *Client) SignIn(ctx context.Context, username, password string) error {
 	if err := c.store.Save(session); err != nil {
 		return err
 	}
-	c.jar, c.http = jar, browser{&hc}
+	c.jar.adopt(jar)
 	return nil
 }
 

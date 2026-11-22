@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -51,7 +52,7 @@ var ErrSignedOut = errors.New("sonoscloud: not signed in")
 type Client struct {
 	base       *url.URL
 	http       browser
-	jar        *sessionJar
+	jar        *sessionJar // the same jar for the client's life; a sign-in fills it anew
 	store      SessionStore
 	households HouseholdStore // where the household is kept; in memory unless given
 	accounts   map[int]int    // the household's account on each service, as last seen
@@ -188,19 +189,17 @@ func (c *Client) Session(ctx context.Context) (SessionInfo, error) {
 }
 
 // SignedIn reports whether a saved session has not run out. It asks the
-// server nothing, and the server may still refuse the session.
+// server nothing, and the server may still refuse the session. It does not
+// wait for a request in progress, so a sign-in or sign-out cannot hold it.
 func (c *Client) SignedIn() bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	return c.jar.current().Valid(c.now())
 }
 
 // SessionEnds is when the saved session runs out, as its cookie says, or the
 // zero time when it does not say or no session is saved. It asks the server
-// nothing, and the server may end the session sooner.
+// nothing, and the server may end the session sooner. Like SignedIn, it does
+// not wait for a request in progress.
 func (c *Client) SessionEnds() time.Time {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	return c.jar.current().Expires()
 }
 
@@ -389,6 +388,18 @@ func (j *sessionJar) SetCookies(u *url.URL, cookies []*http.Cookie) {
 		}
 		j.session[c.Name] = Cookie{Name: c.Name, Value: c.Value, Expires: expires}
 	}
+}
+
+// adopt takes over the cookies of another jar, such as a finished sign-in's.
+// The jar itself stays, so readers never see the client change jars.
+func (j *sessionJar) adopt(other *sessionJar) {
+	other.mu.Lock()
+	inner, session := other.inner, maps.Clone(other.session)
+	other.mu.Unlock()
+
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.inner, j.session, j.changed = inner, session, false
 }
 
 // reset drops every cookie the jar holds, the session's and any other.

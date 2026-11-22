@@ -672,9 +672,14 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// The sign-in's fields take what is not a key too, such as a paste.
+	var signInCmd tea.Cmd
+	if m.signIn.IsOpen() {
+		m.signIn, signInCmd = m.signIn.Update(msg)
+	}
 	tabs, cmd := m.tabs.Update(msg)
 	m.tabs = tabs
-	return m, cmd
+	return m, tea.Batch(signInCmd, cmd)
 }
 
 // applyVerified redraws a cached tab once its speaker has answered and its

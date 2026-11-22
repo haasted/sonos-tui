@@ -2,12 +2,14 @@ package sonoscloud_test
 
 import (
 	"bytes"
+	"cmp"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -87,6 +89,53 @@ func TestSignOut_LocalDataGoesWhenSonosIsNotTold(t *testing.T) {
 	assert.True(t, store.cleared, "dead: the saved session stayed")
 }
 
+// Case: the OAuth server's sign-out redirects on to a host not Sonos's. That
+// hop carries the token too, so it is not followed.
+func TestSignOut_EveryRedirectStaysWithSonos(t *testing.T) {
+	var foreignAsked int
+	foreign := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { foreignAsked++ }))
+	t.Cleanup(foreign.Close)
+	f := newFakeSignOut(t)
+	f.oauthNext = foreign.URL + "/logout?id_token_hint=" + idToken
+
+	err := newClient(t, f.srv, &memStore{session: validSession(sessionName)}).SignOut(t.Context())
+
+	assert.ErrorIs(t, err, sonoscloud.ErrServerNotTold)
+	assert.Zero(t, foreignAsked, "a redirect to a host not Sonos's was followed")
+}
+
+// Case: SignedIn and SessionEnds asked while a sign-out waits on the server.
+// They answer at once: the screen asks them, and must not wait.
+func TestSignOut_SignedInDoesNotWaitForIt(t *testing.T) {
+	release := make(chan struct{})
+	reached := make(chan struct{})
+	srv := fakeWebApp(t, func(http.ResponseWriter, *http.Request) {
+		close(reached)
+		<-release
+	})
+	c := newClient(t, srv, &memStore{session: validSession(sessionName)})
+	done := make(chan struct{})
+	go func() {
+		_ = c.SignOut(t.Context())
+		close(done)
+	}()
+	<-reached
+
+	answered := make(chan struct{})
+	go func() {
+		c.SignedIn()
+		c.SessionEnds()
+		close(answered)
+	}()
+	select {
+	case <-answered:
+	case <-time.After(time.Second):
+		t.Error("SignedIn waited for the sign-out")
+	}
+	close(release)
+	<-done
+}
+
 // Case: a sign-out with no valid session. Sonos is asked nothing, as there
 // is nothing to end, and what is kept is deleted all the same.
 func TestSignOut_SignedOutAsksNothing(t *testing.T) {
@@ -129,6 +178,7 @@ func TestSignOut_TheTokenNeverReachesOutput(t *testing.T) {
 type fakeSignOut struct {
 	srv         *httptest.Server
 	oauthStatus int                      // what the OAuth server answers; a redirect back when 0
+	oauthNext   string                   // where the OAuth server redirects; back to the web app when empty
 	requests    map[string]*http.Request // the last request for each path
 
 	mu sync.Mutex // guards requests
@@ -150,7 +200,7 @@ func newFakeSignOut(t *testing.T) *fakeSignOut {
 				w.WriteHeader(f.oauthStatus)
 				return
 			}
-			http.Redirect(w, r, r.URL.Query().Get("post_logout_redirect_uri"), http.StatusFound)
+			http.Redirect(w, r, cmp.Or(f.oauthNext, r.URL.Query().Get("post_logout_redirect_uri")), http.StatusFound)
 		}
 	})
 	return f

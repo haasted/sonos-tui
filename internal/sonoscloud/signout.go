@@ -93,7 +93,7 @@ func (c *Client) tellSignOut(ctx context.Context) error {
 		return err
 	}
 	req.Header.Set("Referer", origin(c.base)+"/")
-	resp, _, err = c.http.loggingRedirects().page(req)
+	resp, _, err = c.http.loggingRedirects(c.signOutHost).page(req)
 	if err != nil {
 		return err
 	}
@@ -114,11 +114,16 @@ func (c *Client) oauthSignOut(resp *http.Response) (*url.URL, error) {
 	if err != nil {
 		return nil, errors.New("sonoscloud: the sign-out did not say where to go next")
 	}
-	sonos := next.Scheme == "https" && strings.HasSuffix(next.Hostname(), ".sonos.com")
-	if !sonos && next.Host != c.base.Host {
+	if !c.signOutHost(next) {
 		return nil, fmt.Errorf("sonoscloud: the sign-out went to %s, not to Sonos", next.Host)
 	}
 	return next, nil
+}
+
+// signOutHost reports whether the sign-out may go to u: over HTTPS, to a
+// Sonos host or the web app's own.
+func (c *Client) signOutHost(u *url.URL) bool {
+	return u.Scheme == "https" && (strings.HasSuffix(u.Hostname(), ".sonos.com") || u.Host == c.base.Host)
 }
 
 // withoutRedirects is the browser, giving a redirect back instead of
@@ -130,13 +135,16 @@ func (b browser) withoutRedirects() browser {
 }
 
 // loggingRedirects is the browser, logging each redirect it follows as a
-// step of the sign-out.
-func (b browser) loggingRedirects() browser {
+// step of the sign-out, and following it only where allowed says.
+func (b browser) loggingRedirects(allowed func(*url.URL) bool) browser {
 	hc := *b.Client
 	hc.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		logSignOutStep("redirected", req.Response)
-		if len(via) >= 10 {
+		switch {
+		case len(via) >= 10:
 			return errors.New("sonoscloud: the sign-out redirected 10 times")
+		case !allowed(req.URL):
+			return fmt.Errorf("sonoscloud: the sign-out went to %s, not to Sonos", req.URL.Host)
 		}
 		return nil
 	}
