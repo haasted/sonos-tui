@@ -86,9 +86,8 @@ Flags, for when something needs looking at:
 
 ```bash
 go run ./cmd/sonos -logs                       # print the log once the program exits
-go run ./cmd/sonos -logfile                    # append the log to sonos-tui.log as it happens
-go run ./cmd/sonos -logfile=/tmp/sonos.log     # append the log to another file
-go run ./cmd/sonos -logfile -logcolor=false #, as plain text without colour codes
+go run ./cmd/sonos -logfile                    # append the log to sonos-tui.log in this directory as it happens
+go run ./cmd/sonos -logfile -logcolor=false    # the same, as plain text without colour codes
 ```
 
 `make run-nocache` wraps the one you reach for most — the

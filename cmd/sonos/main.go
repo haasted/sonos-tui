@@ -24,25 +24,14 @@ const (
 )
 
 var logsFlag = flag.Bool("logs", false, "capture and print log output once the program exits")
-var logFileFlag logFileValue
+var logFileFlag = flag.Bool("logfile", false, "append the log to "+log.DefaultLogFile+" in the start directory as it happens")
 var logColorFlag = flag.Bool("logcolor", true, "keep colour codes in the log file; -logcolor=false writes plain text")
 var dbFlag = flag.String("db", "", "path to the application database; empty means the default location")
-
-// logFileValue is the -logfile flag. Alone it names the default file in the
-// start directory; -logfile=<path> names another file. Empty means no file.
-type logFileValue string
-
-var _ flag.Value = new(logFileValue)
-
-func init() {
-	flag.Var(&logFileFlag, "logfile", "append the log to "+log.DefaultLogFile+
-		" in the start directory as it happens; -logfile=<path> appends to another file")
-}
 
 func main() {
 	flag.Parse()
 	if flag.NArg() > 0 {
-		report(os.Stderr, fmt.Errorf("sonos: unexpected argument %q (give a log file as -logfile=<path>)", flag.Arg(0)))
+		report(os.Stderr, fmt.Errorf("sonos: unexpected argument %q", flag.Arg(0)))
 		os.Exit(2)
 	}
 	if err := run(); err != nil {
@@ -58,9 +47,13 @@ func run() error {
 		return errors.New(why)
 	}
 
+	var logFile string
+	if *logFileFlag {
+		logFile = log.DefaultLogFile
+	}
 	stopLogs, err := log.Setup(log.Options{
 		Capture:   *logsFlag,
-		File:      string(logFileFlag),
+		File:      logFile,
 		FileColor: *logColorFlag,
 		Level:     slog.LevelDebug,
 	})
@@ -330,21 +323,3 @@ func waitForEvent(device *sonos.Device) tea.Cmd {
 		return event
 	}
 }
-
-func (v *logFileValue) String() string { return string(*v) }
-
-// Set takes the path after -logfile=, or "true" when the flag stands alone.
-func (v *logFileValue) Set(s string) error {
-	switch s {
-	case "true":
-		*v = log.DefaultLogFile
-	case "false":
-		*v = ""
-	default:
-		*v = logFileValue(s)
-	}
-	return nil
-}
-
-// IsBoolFlag lets -logfile stand alone, without a value.
-func (v *logFileValue) IsBoolFlag() bool { return true }

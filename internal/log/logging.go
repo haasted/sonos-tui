@@ -14,7 +14,7 @@ import (
 const (
 	timeFormat     = "15:04:05.000"
 	startFormat    = "2006-01-02 15:04:05 MST"
-	DefaultLogFile = "sonos-tui.log" // file name in the start directory when no path is given
+	DefaultLogFile = "sonos-tui.log" // the log file's name, in the directory the program starts in
 )
 
 // Options says where the log goes. With no destination, the log is discarded.
