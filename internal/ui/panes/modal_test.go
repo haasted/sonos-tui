@@ -149,6 +149,8 @@ func TestModal_IgnoresMessagesWhileClosed(t *testing.T) {
 // countingContent records how many messages reached it.
 type countingContent struct{ seen int }
 
+var _ tea.Model = countingContent{}
+
 func (c countingContent) Init() tea.Cmd { return nil }
 
 func (c countingContent) Update(tea.Msg) (tea.Model, tea.Cmd) {

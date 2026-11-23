@@ -88,6 +88,8 @@ type UPnPError struct {
 	Fault       string
 }
 
+var _ error = &UPnPError{}
+
 func (e *UPnPError) Error() string {
 	if e.Description == "" {
 		return fmt.Sprintf("UPnP error %d", e.Code)

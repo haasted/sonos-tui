@@ -235,6 +235,8 @@ type memHouseholds struct {
 	found     bool
 }
 
+var _ sonoscloud.HouseholdStore = &memHouseholds{}
+
 func (m *memHouseholds) LoadHousehold() (sonoscloud.Household, bool, error) {
 	return m.household, m.found, nil
 }
