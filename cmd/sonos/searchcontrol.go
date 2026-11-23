@@ -98,7 +98,11 @@ func (m appModel) openSearch() (tea.Model, tea.Cmd) {
 
 	m, sweeping := m.restartSweepChain()
 	hint := restartListHint(m.searchSlot())
-	return m, tea.Batch(sweeping, hint)
+	var warm tea.Cmd
+	if m.classifier != nil {
+		warm = warmClassifier(m.ctx, m.classifier)
+	}
+	return m, tea.Batch(sweeping, hint, warm)
 }
 
 // applySearchAsk starts a search, and stops the one still running: only the
@@ -129,7 +133,11 @@ func (m appModel) applySearchAsk(msg searchAskMsg) (tea.Model, tea.Cmd) {
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.searchCancel, m.searchRun = cancel, nextGen()
 	m.search.Content = content.searching(msg.query)
-	return m, runSearch(ctx, m.cloud, device, m.localHousehold, msg.query, m.searchRun)
+	search := runSearch(ctx, m.cloud, device, m.localHousehold, msg.query, m.searchRun)
+	if m.classifier == nil {
+		return m, search
+	}
+	return m, tea.Batch(search, guessSearch(ctx, m.classifier, msg.query, m.searchRun))
 }
 
 // applySearchDone shows a search's answer, unless a later query has been
@@ -141,6 +149,9 @@ func (m appModel) applySearchDone(msg searchDoneMsg) (tea.Model, tea.Cmd) {
 	content, ok := m.search.Content.(searchContent)
 	if !ok || msg.gen != m.searchRun {
 		return m, nil
+	}
+	if m.searchCancel != nil {
+		m.searchCancel() // a guess still on its way is too late now
 	}
 	m.searchCancel = nil
 	if msg.err != nil {

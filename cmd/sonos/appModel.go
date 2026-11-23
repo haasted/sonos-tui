@@ -62,6 +62,9 @@ type appModel struct {
 	settings      panes.Modal // the client's own settings: today, the Sonos cloud
 	cloud         musicCloud  // the Sonos cloud; nil when its client could not be made
 
+	classifier     musicClassifier                                // the local model's search guesses; nil until fm is known to answer
+	findClassifier func(context.Context) (musicClassifier, error) // looks for the classifier at startup; nil in tests
+
 	sized bool // a size has arrived; until then fits refuses nothing
 
 	// queueGen guards the queue arrows' breath. A new generation on every open
@@ -237,6 +240,9 @@ func (m appModel) Init() tea.Cmd {
 	cmds := []tea.Cmd{m.tabs.Init(), hintTimer()}
 	for _, speaker := range m.cached {
 		cmds = append(cmds, checkCachedSpeaker(m.ctx, speaker))
+	}
+	if m.findClassifier != nil {
+		cmds = append(cmds, lookForClassifier(m.ctx, m.findClassifier))
 	}
 	return tea.Batch(cmds...)
 }
@@ -575,6 +581,10 @@ func (m appModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.applySearchAsk(msg)
 	case searchDoneMsg:
 		return m.applySearchDone(msg)
+	case searchGuessMsg:
+		return m.applySearchGuess(msg)
+	case classifierFoundMsg:
+		return m.applyClassifierFound(msg)
 	case searchActionMsg:
 		return m.applySearchAction(msg)
 	case searchMarkMsg:

@@ -93,6 +93,7 @@ func run() error {
 	if cloud := openCloud(ctx, db); cloud != nil {
 		model.cloud = cloud
 	}
+	model.findClassifier = findLocalModel
 	if row, ok := startRow(); ok {
 		model.screenTop = row
 	}

@@ -62,6 +62,7 @@ type searchContent struct {
 	kind    sonoscloud.ResultType                         // the type in view; empty with no results
 	running bool                                          // a search is on its way
 	problem string                                        // why there are no results, said in the body
+	guess   sonoscloud.ResultType                         // the type the local model guessed for the search running; empty without one
 
 	levels       []browseLevel[sonoscloud.Result] // what was stepped into, the last on top; none at the results
 	opening      bool                             // the level on top waits for what it holds
@@ -193,7 +194,7 @@ func (s searchContent) listKey(msg tea.KeyMsg) (searchContent, tea.Cmd) {
 // last one go, so they are not taken for the new one's.
 func (s searchContent) searching(query string) searchContent {
 	s = s.leaveAll()
-	s.running, s.problem, s.asked = true, "", query
+	s.running, s.problem, s.asked, s.guess = true, "", query, ""
 	s.byType, s.kind = nil, ""
 	return s.show()
 }
@@ -218,6 +219,12 @@ func (s searchContent) found(query string, results sonoscloud.SearchResults) sea
 				s.byType[r.Type] = append(s.byType[r.Type], r)
 			}
 		}
+	}
+	// The local model's guess, when it came in time and its type has
+	// results; otherwise the first type that has any.
+	if len(s.byType[s.guess]) > 0 {
+		s.kind = s.guess
+		return s.show()
 	}
 	for _, kind := range searchTypes {
 		if len(s.byType[kind]) > 0 {
