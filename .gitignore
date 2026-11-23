@@ -15,6 +15,9 @@ ADRs/html/
 
 /worktrees/
 
+# Log written by `-logfile` in the start directory
+sonos-tui.log
+
 # Binaries
 /sonos
 

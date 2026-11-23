@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -22,11 +23,17 @@ const (
 	shutdownTimeout = 5 * time.Second
 )
 
-var logsFlag = flag.Bool("logs", false, "capture and print log output once the program exits; set to false to discard all logs")
+var logsFlag = flag.Bool("logs", false, "capture and print log output once the program exits")
+var logFileFlag = flag.Bool("logfile", false, "append the log to "+log.DefaultLogFile+" in the start directory as it happens")
+var logColorFlag = flag.Bool("logcolor", true, "keep colour codes in the log file; -logcolor=false writes plain text")
 var dbFlag = flag.String("db", "", "path to the application database; empty means the default location")
 
 func main() {
 	flag.Parse()
+	if flag.NArg() > 0 {
+		report(os.Stderr, fmt.Errorf("sonos: unexpected argument %q", flag.Arg(0)))
+		os.Exit(2)
+	}
 	if err := run(); err != nil {
 		report(os.Stderr, err)
 		os.Exit(1)
@@ -40,8 +47,24 @@ func run() error {
 		return errors.New(why)
 	}
 
-	dumpLogs := log.CaptureLogs(*logsFlag, slog.LevelDebug)
-	defer dumpLogs()
+	var logFile string
+	if *logFileFlag {
+		logFile = log.DefaultLogFile
+	}
+	stopLogs, err := log.Setup(log.Options{
+		Capture:   *logsFlag,
+		File:      logFile,
+		FileColor: *logColorFlag,
+		Level:     slog.LevelDebug,
+	})
+	if err != nil {
+		return fatal{"cannot open the log file", err}
+	}
+	defer func() {
+		if err := stopLogs(); err != nil {
+			fmt.Fprintln(os.Stderr, "sonos: closing the log:", err)
+		}
+	}()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

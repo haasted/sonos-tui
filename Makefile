@@ -1,4 +1,4 @@
-.PHONY: build fmt fmt-check vet tidy-check test test-verbose test-race test-live run run-logs run-nocache db queue-events notify-capture discover-probe music-services browse-mock demo-client uitest worktrees tidy adr-html help
+.PHONY: build fmt fmt-check vet tidy-check test test-verbose test-race test-live run run-logs run-logfile run-nocache db queue-events notify-capture discover-probe music-services browse-mock demo-client uitest worktrees tidy adr-html help
 
 .DEFAULT_GOAL := help
 
@@ -75,6 +75,9 @@ browse-mock: ## A mock-up of the favourites modal with made-up favourites, to tr
 
 run-logs: ## Run the CLI and print the logs once it exits
 	go run ./cmd/sonos -logs
+
+run-logfile: ## Run the CLI and append the logs to sonos-tui.log as they come (tail -f it)
+	go run ./cmd/sonos -logfile
 
 run-nocache: ## Delete speaker cache prior to starting
 	rm -f ~/Library/Application\ Support/sonos-tui/sonos.db*
