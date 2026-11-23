@@ -39,7 +39,7 @@ Output:
 
 `fm schema object` makes a schema from command-line options. It cannot make an `enum`, thus it is not sufficient for a classifier (see below).
 
-`fm serve` starts a local server with a Chat Completions API. It can be faster for many requests, because it does not start a new process for each request. We did not test it with these schemas.
+`fm serve` starts a local server with a Chat Completions API. It is not faster than `fm respond`, and it gave worse answers (see "fm serve compared with fm respond" below).
 
 ## Schema rules for `fm`
 
@@ -224,6 +224,55 @@ Short search strings that are also usual words or first names ("dylan", "cash") 
 
 We also tried to capitalize each word of an all-lowercase search string before the call. This change gave "Bob Dylan" for "dylan", but "Rolling Stones" (without "The") for "rolling stones". We do not recommend it.
 
+## Prefer album when a title is also a track
+
+Tested on 2026-11-22: can the schema or the instructions make the model choose `album` for a title that is both an album and a track? Ten such titles: thriller, wish you were here, purple rain, hotel california, paranoid, heroes, nevermind, born in the usa, bad, 1999. The program's schema (Schema 2 without `confidence`) gave `track` for all ten, also for "nevermind", which is only an album.
+
+| Change | Albums chosen | Side effects |
+|---|---|---|
+| `category` description adds: "When the search string is the title of both an album and a track, choose album." | 4 (Thriller, Wish You Were Here, Nevermind, 1999) | None seen |
+| `category` description: "If the search string is the title of an album, choose album, even when a track has the same title. Choose track only for a title that is not also an album." | 2 | "paranoid andriod" became `artist`; "1999" became "99" |
+| `album` first in the `enum` | 3 | None seen |
+| Instructions add: "When a title is both an album and a track, it refers to the album." | 4 | "paranoid" became "Paranoid - Black Sabbath" |
+
+Purple Rain, Hotel California, Paranoid, Heroes, Born in the USA and Bad stayed `track` in almost every test. The model possibly does not know that they are also album titles, so no wording can make it apply the rule. Make this preference in the program, with the search results, not in the model.
+
+## Several candidates in one answer
+
+Tested on 2026-11-22: can the model give more than one answer, so the program can choose? Two schemas, with the instructions "Identify what this music search string refers to.":
+
+- **A, a ranked list.** `candidates`: an array of 1 to 3 objects with `full_title` and `category`, described as "What the search string probably refers to, the most likely first. Give a separate candidate when the same title is both an album and a track." Each object needs its own `title` and `x-order`, as the root does.
+- **B, one field for each category.** `artist`, `album`, `track` and `radio_station`, each "the best-known one the search string probably refers to, or an empty string when none fits".
+
+Results:
+
+- **A** gave an `album` candidate for 9 of the 10 titles in the section above; only "heroes" gave a track and an artist. The first candidate agreed with the single answer for almost every search; "paranoid andriod" put `album` first and `track` second. Some titles were noisy: "Bruce Springsteen - Born in the USA" as a track, "The Dark Side of the Moon (track)". "dylan" and "cash" stayed weak.
+- **B** filled every field, also when nothing fits: "paranoid" gave the album "The Dark Side of the Moon" and the track "The Wall", "1999" gave "Billie Jean", and every search got a radio station. Do not use it.
+- **Time.** A took 0.7 to 1.3 s, against about 0.55 s for one answer, because the answer is longer.
+
+A is slower than one answer (see "Speed" below). The program's classifier does not use it.
+
+## Speed: what the model writes counts, not what it reads
+
+Measured on 2026-11-22, warm model, 18 search strings each (the 10 album-and-track titles and 8 others), median and maximum time:
+
+| Schema | Median | Max | Notes |
+|---|---|---|---|
+| One answer (`full_title`, `category`) | 0.53 s | 0.59 s | Album for none of the 10 titles |
+| One `full_title` and a ranked `categories` array (1 to 3, "Give both album and track when the title is both") | 0.57 s | 0.62 s | Album for 6 of 10; "1999" became "99 Luftballons" |
+| Candidate list (A above) | 0.91 s | 1.44 s | Album for 9 of 10; "kind of blu" gave "Kendrick Lamar -" three times |
+| Candidate list, short `full_title` description | 0.88 s | 1.38 s | "sinatra" stayed "Sinatra" |
+| Candidate list, minimal descriptions | 0.84 s | 1.18 s | "sinatra" gave "The Voice of Sinatra" |
+| Candidate list, at most 2 | 0.90 s | 1.16 s | |
+| Candidate list, keys `title` and `type` | 0.85 s | 1.28 s | |
+| Candidate list, all of the above | 0.81 s | 0.99 s | "ozzy" stayed "Ozzy" |
+
+- Shorter instructions and descriptions save about 0.1 s and cost quality: the long `full_title` description is what turns a surname into a full name.
+- The time follows the length of the answer. A ranked `categories` array after one `full_title` adds almost nothing to one answer.
+- The first call after a pause takes up to 1.8 s, while the model loads.
+
+The program's classifier (`internal/localmodel`) uses one `full_title` and a ranked `categories` array.
+
 ## Give the schema without a file
 
 `--schema` also accepts the JSON text. The help text does not say this, but `fm` tries the argument as JSON and as a file path.
@@ -268,12 +317,28 @@ An inline schema must also have `title` and `x-order`. If it does not, the error
 
 The last two failures possibly come from the sandbox that we used for the tests. Try them again in a usual terminal if you need them.
 
+## fm serve compared with fm respond
+
+Measured on 2026-11-22 with Schema 2, the same instructions and the same prompts. `fm serve --socket <path>` was called with `POST /v1/chat/completions`: the instructions as the `system` message, the prompt as the `user` message, `"temperature": 0`, `"stream": false` and the schema in `response_format` (`json_schema`). Without `"stream": false` it streams.
+
+| Search string | fm respond | fm serve |
+|---|---|---|
+| bowie (first call) | 0.64 s, David Bowie, artist | 1.26 s, "David Bowie - The Man Who Fell to Earth", album |
+| dark side moon | 0.67 s, The Dark Side of the Moon, album | 0.59 s, "Dark Side of the Moon", album |
+| kexp | 0.59 s, KEXP, radio_station | 0.56 s, KEXP, artist |
+| springsteen | 0.60 s, Bruce Springsteen, artist | 0.62 s, "Born to Run", album |
+| kind of blu | 0.58 s, Kind of Blue, album | 0.55 s, Kind of Blue, album |
+
+- **Speed.** Once the model is loaded, both take about 0.6 s. Starting a new `fm` process costs almost nothing; the model's work is the time. The first call after a pause is slower in both (up to 1.8 s seen with `fm respond`).
+- **Answers.** `fm serve` was wrong on 3 of 5. The server possibly does not give the `system` message as instructions, or does not use the schema's descriptions and `x-order` the same way. We did not look further.
+- **Conclusion.** Use `fm respond`. It needs no server to start, keep running or stop.
+
 ## Use from another program
 
 - **Output.** The result is one line of JSON on stdout. Errors go to stderr, and the exit code is 1.
 - **Key order.** The order of the keys in the output changes from call to call. Read the JSON by key name, not by position.
 - **Arguments.** Start `fm` directly with a list of arguments, not through a shell. Then the schema JSON does not need quotes or escape characters.
 - **Same input, same output.** Use `-g`.
-- **Confidence.** The model gave `high` for all tests, also for incorrect results. Do not trust this field much.
+- **Confidence.** The model gave `high` for all tests, also for incorrect results. The program's classifier (`internal/localmodel`) has no `confidence`; it uses one `full_title` and a ranked `categories` array (see "Speed").
 - **Full title.** The full title is a guess, and the model always gives one. If a search for `full_title` finds nothing, also search for the original search string.
 - **Inline schema.** The JSON text in `--schema` is not in the help text. A future version of `fm` can remove it. If it stops working, write the schema to a temporary file.
