@@ -65,9 +65,7 @@ app's backend call the Sonos cloud.
   Sonos access token inside the session.
 - `version`: 3.
 
-**The session renews when it is used.** `expires` is always 10 days after
-the last request. Three runs 12 minutes apart moved it 12 minutes forward.
-A session not used for 10 days ends, and the next use must sign in again.
+**Only `GET /api/auth/session` renews the session.** It answers with a new session cookie whose expiry is 10 days later. Measured on 2026-11-24 with a session 3 minutes old: `/api/auth/session` moved the expiry 2 m 39 s forward; `/api/mfe` and a content search set no cookie and moved nothing. So a client that only searches and browses loses its session 10 days after the sign-in. The web app calls `/api/auth/session` on every page load. (An earlier note said any use renews it; those runs called `/api/auth/session`.)
 
 **The access token inside lasts 24 hours, and renews itself.** Its
 `expiration` was 24 hours after the sign-in, and it did not move while the
