@@ -7,6 +7,8 @@ import tea "charm.land/bubbletea/v2"
 // built yet.
 type StaticContent string
 
+var _ tea.Model = StaticContent("")
+
 func (c StaticContent) Init() tea.Cmd                       { return nil }
 func (c StaticContent) Update(tea.Msg) (tea.Model, tea.Cmd) { return c, nil }
 func (c StaticContent) View() tea.View                      { return tea.NewView(string(c)) }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"io"
 	"log/slog"
 	"strings"
 	"testing"
@@ -154,6 +155,8 @@ var _ sonoscloud.SessionStore = liveSessions{}
 
 // testWriter writes each log line to the test's own output.
 type testWriter struct{ t *testing.T }
+
+var _ io.Writer = testWriter{}
 
 func (w testWriter) Write(p []byte) (int, error) {
 	w.t.Log(strings.TrimRight(string(p), "\n"))

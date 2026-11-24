@@ -1,6 +1,7 @@
 package flashsweep
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -11,6 +12,8 @@ import (
 // the text and travels outward to both ends; they differ in what they do with
 // colour, and one of them moves the runes themselves.
 type RevealStyle int
+
+var _ fmt.Stringer = RevealStyle(0)
 
 const (
 	// RevealMirror is Line folded in half — the same reveal band and hot core,

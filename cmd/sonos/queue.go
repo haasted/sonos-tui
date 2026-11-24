@@ -115,7 +115,10 @@ type queueContent struct {
 	highlightAt time.Time
 }
 
-var _ listContent = queueContent{}
+var (
+	_ listContent      = queueContent{}
+	_ panes.EscClaimer = queueContent{}
+)
 
 func (queueContent) Init() tea.Cmd { return nil }
 

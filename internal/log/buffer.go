@@ -11,6 +11,8 @@ type Buffer struct {
 	mu sync.Mutex // guards lines
 }
 
+var _ io.Writer = &Buffer{}
+
 func NewBuffer() *Buffer {
 	return &Buffer{}
 }

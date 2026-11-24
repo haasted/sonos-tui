@@ -11,6 +11,8 @@ type ElapsedHandler struct {
 	start time.Time
 }
 
+var _ slog.Handler = &ElapsedHandler{}
+
 func NewElapsedHandler(h slog.Handler, start time.Time) *ElapsedHandler {
 	return &ElapsedHandler{Handler: h, start: start}
 }

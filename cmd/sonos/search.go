@@ -9,6 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/haasted/sonos-tui/internal/sonoscloud"
+	"github.com/haasted/sonos-tui/internal/ui/panes"
 	"github.com/haasted/sonos-tui/internal/ui/theme"
 )
 
@@ -71,7 +72,10 @@ type searchContent struct {
 	loadingMore  bool                             // the rest of the album on top is on its way
 }
 
-var _ listContent = searchContent{}
+var (
+	_ listContent      = searchContent{}
+	_ panes.EscClaimer = searchContent{}
+)
 
 func (searchContent) Init() tea.Cmd { return nil }
 

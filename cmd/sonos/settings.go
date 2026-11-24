@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/haasted/sonos-tui/internal/ui/panes"
 	"github.com/haasted/sonos-tui/internal/ui/theme"
 )
 
@@ -52,7 +53,10 @@ type settingsContent struct {
 	signingOut bool // a sign-out is on its way, so the keys wait
 }
 
-var _ tea.Model = settingsContent{}
+var (
+	_ tea.Model        = settingsContent{}
+	_ panes.EscClaimer = settingsContent{}
+)
 
 func (settingsContent) Init() tea.Cmd { return nil }
 

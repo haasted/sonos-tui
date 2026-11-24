@@ -12,6 +12,7 @@ import (
 
 	"github.com/haasted/sonos-tui/internal/sonos"
 	"github.com/haasted/sonos-tui/internal/store"
+	"github.com/haasted/sonos-tui/internal/ui/panes"
 	"github.com/haasted/sonos-tui/internal/ui/theme"
 )
 
@@ -100,7 +101,10 @@ type favouritesContent struct {
 	err       error
 }
 
-var _ listContent = favouritesContent{}
+var (
+	_ listContent      = favouritesContent{}
+	_ panes.EscClaimer = favouritesContent{}
+)
 
 func (favouritesContent) Init() tea.Cmd { return nil }
 

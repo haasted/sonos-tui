@@ -1,6 +1,7 @@
 package flashsweep
 
 import (
+	"fmt"
 	"math/rand"
 	"strings"
 	"time"
@@ -12,6 +13,8 @@ import (
 // Every style ends on the same unbroken rule; they differ in the order the
 // cells come back and in what the rule looks like on the way.
 type ReturnStyle int
+
+var _ fmt.Stringer = ReturnStyle(0)
 
 const (
 	// ReturnFade brings the whole gap up from the backdrop at once.

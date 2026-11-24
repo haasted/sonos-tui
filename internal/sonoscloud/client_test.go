@@ -235,6 +235,8 @@ type memStore struct {
 	cleared bool
 }
 
+var _ sonoscloud.SessionStore = &memStore{}
+
 func (m *memStore) Load() (sonoscloud.Session, error) { return m.saved(), nil }
 
 func (m *memStore) Save(s sonoscloud.Session) error {
